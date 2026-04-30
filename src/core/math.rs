@@ -10,3 +10,13 @@ impl ScaledAdd<f64> for Vec<f64> {
         }
     }
 }
+
+pub trait NormSquared {
+    fn norm_squared(&self) -> f64;
+}
+
+impl NormSquared for Vec<f64> {
+    fn norm_squared(&self) -> f64 {
+        self.iter().map(|x| x * x).sum()
+    }
+}

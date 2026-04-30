@@ -1,4 +1,4 @@
-use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
+use basin::{Backtracking, BasicState, CostFunction, Executor, Gradient, GradientDescent};
 
 struct Rosenbrock;
 
@@ -38,6 +38,28 @@ fn gradient_descent_decreases_rosenbrock_cost() {
     .run();
 
     assert_eq!(result.iter, 10_000, "should hit max_iter");
+    assert!(
+        result.cost < initial_cost * 0.1,
+        "expected cost to drop by >10x: initial={}, final={}",
+        initial_cost,
+        result.cost
+    );
+}
+
+#[test]
+fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
+    let problem = Rosenbrock;
+    let initial = vec![-1.2, 1.0];
+    let initial_cost = problem.cost(&initial);
+
+    let result = Executor::new(
+        problem,
+        GradientDescent::with_step_size(Backtracking::new()),
+        BasicState::new(initial),
+    )
+    .max_iter(10_000)
+    .run();
+
     assert!(
         result.cost < initial_cost * 0.1,
         "expected cost to drop by >10x: initial={}, final={}",

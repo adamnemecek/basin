@@ -2,8 +2,8 @@ pub mod core;
 pub mod solver;
 
 pub use crate::core::executor::Executor;
-pub use crate::core::math::ScaledAdd;
+pub use crate::core::math::{NormSquared, ScaledAdd};
 pub use crate::core::problem::{CostFunction, Gradient};
 pub use crate::core::solver::Solver;
 pub use crate::core::state::{BasicState, State};
-pub use crate::solver::GradientDescent;
+pub use crate::solver::{Backtracking, Constant, GradientDescent, StepSize};
