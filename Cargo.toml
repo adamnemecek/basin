@@ -1,0 +1,17 @@
+[package]
+name = "basin"
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.84.1"
+description = "An optimization library for Rust"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/jolars/basin"
+keywords = ["optimization", "math", "numerics", "solver"]
+categories = ["mathematics", "science"]
+
+[lib]
+name = "basin"
+path = "src/lib.rs"
+
+[dependencies]

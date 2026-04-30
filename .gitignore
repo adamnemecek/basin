@@ -19,3 +19,33 @@ target
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
+
+# Devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
+
+# nix -----------------------------------------------
+
+# Ignore build outputs from performing a nix-build or `nix build` command
+result
+result-*
+
+# direnv
+.direnv/
+
+# devenv
+.devenv*
+devenv.local.nix
+devenv.local.yaml
+
+
+# Added by cargo
+
+/target
