@@ -1,0 +1,47 @@
+use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
+
+struct Rosenbrock;
+
+impl CostFunction for Rosenbrock {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+    }
+}
+
+impl Gradient for Rosenbrock {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+
+    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        vec![
+            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
+            200.0 * (x[1] - x[0].powi(2)),
+        ]
+    }
+}
+
+#[test]
+fn gradient_descent_decreases_rosenbrock_cost() {
+    let problem = Rosenbrock;
+    let initial = vec![-1.2, 1.0];
+    let initial_cost = problem.cost(&initial);
+
+    let result = Executor::new(
+        problem,
+        GradientDescent::new(0.001),
+        BasicState::new(initial),
+    )
+    .max_iter(10_000)
+    .run();
+
+    assert_eq!(result.iter, 10_000, "should hit max_iter");
+    assert!(
+        result.cost < initial_cost * 0.1,
+        "expected cost to drop by >10x: initial={}, final={}",
+        initial_cost,
+        result.cost
+    );
+}

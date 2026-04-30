@@ -1,1 +1,3 @@
-// Solver implementations will live here.
+pub mod gradient_descent;
+
+pub use gradient_descent::GradientDescent;

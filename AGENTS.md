@@ -36,7 +36,42 @@ These shape API decisions and are non-obvious from the code alone:
 
 1. **Keep argmin's vocabulary and overall shape** (`Executor`, `Solver`, `Problem` traits, `IterState`-style state). Diverge only when one of the tenets below demands it.
 2. **No per-version backend feature gates.** Linear-algebra backends (nalgebra, ndarray, plain `Vec`, …) gate behind a *single* feature each (`nalgebra`, `ndarray`), pinning one version. A backend major bump becomes a basin major bump. Do **not** introduce features like `nalgebra-v0_33` / `nalgebra-v0_34` — argmin does this for compatibility, basin deliberately doesn't.
-3. **Termination criteria are framework-level, not per-solver.** Generic stopping conditions (`max_iter`, `gradient_tolerance`, `param_tolerance`, `cost_tolerance`, `max_time`) belong on the `Executor` / a shared termination layer, configured uniformly across solvers. Solver-specific knobs stay on the solver. Subtlety: derivative-free solvers (Nelder-Mead, SA) have no gradient, so termination must be pluggable / opt-in based on what state and problem expose — not a fixed set of fields.
+3. **Termination criteria are framework-level, not per-solver.** Generic stopping conditions (`max_iter`, `gradient_tolerance`, `param_tolerance`, `cost_tolerance`, `max_time`, and once constraints land `feasibility_tolerance` / `kkt_tolerance`) belong on the `Executor` / a shared termination layer, configured uniformly across solvers. Solver-specific knobs stay on the solver. Subtlety: derivative-free solvers (Nelder-Mead, SA) have no gradient, so termination must be pluggable / opt-in based on what state and problem expose — not a fixed set of fields.
+4. **First-class constraints (planned).** argmin has no general constraint interface; basin will. Box bounds and linear (in)equalities at minimum, with a generic hook for nonlinear constraints later. Constraints describe the *problem*, so they live on the problem side, not as executor config. Solvers declare support via marker traits / associated types; constrained problems handed to unconstrained solvers should be a compile-time error, with an opt-in adapter (projection / penalty / barrier) to wrap unconstrained solvers when needed. Concrete trait design is deferred until the first constrained solver (likely projected gradient on box constraints) — designing on paper without a solver to validate against tends to need redoing.
+
+## WASM as a hard constraint
+
+basin must build for `wasm32-unknown-unknown` out of the box. This is a constraint on dependencies, not a feature:
+
+- Every default dep must be wasm-compatible. Anything that isn't (file I/O, threads, BLAS/LAPACK-linked math, system clocks pre-recent-Rust) must sit behind a non-default feature.
+- For `max_time` termination, use `web-time` or feature-gate the time-based criterion — `std::time::Instant` is only reliable on recent wasm targets.
+- No rayon / parallelism in default features. Gate parallel evaluation behind an opt-in feature.
+- nalgebra and ndarray are wasm-fine in their pure-Rust configurations; BLAS-backed configurations are not — pick the pure-Rust paths when both exist.
+- Some solvers (e.g. L-BFGS-B) traditionally lean on BLAS/LAPACK. Prefer pure-Rust implementations; if a solver can't realistically run on wasm, document that in a per-solver compat note rather than weakening the wasm guarantee.
+- CI must include `cargo build --target wasm32-unknown-unknown` so wasm regressions can't slip in. The `wasm32-unknown-unknown` target is already installed via `devenv.nix`.
+
+## MSRV is externally constrained — do not bump casually
+
+basin's MSRV (currently **Rust 1.84.1**, pinned in `Cargo.toml` and `devenv.nix`) is set by downstream consumers, not by basin's own preferences:
+
+- **Primary constraint: CRAN.** A planned R-package wrapper around basin must build under whatever Rust toolchain CRAN ships. CRAN's pin moves slowly and lags stable Rust significantly. Bumping basin's MSRV above CRAN's pin makes the R bindings unshippable.
+- **Secondary (currently non-binding): Python bindings.** Planned eventually. PyO3 / maturin track recent stable Rust, so this is unlikely to bind tighter than CRAN — noting it for completeness.
+
+Practical consequences:
+
+- Do **not** bump `rust-version` or the `devenv.nix` Rust pin without verifying the current CRAN Rust toolchain version first.
+- Every new dependency (and dev-dependency, which `cargo publish --dry-run` and CI exercise) must compile under the MSRV. Transitive deps that pull in newer-edition crates (e.g. `clap 4.6+` requiring `edition2024`, only stable in Rust 1.85) need to be pinned, replaced, or worked around.
+- Prefer deps with small, stable transitive trees over feature-rich ones with sprawling dep graphs. Each transitive dep is another chance to silently lose MSRV compatibility.
+- When MSRV pain forces a workaround (e.g. pinning a transitive dep to an older major), document the *reason* in `Cargo.toml` next to the pin so future-you doesn't lift it without re-checking CRAN.
+
+## Provisional choices (deferred, not tenets)
+
+These are working decisions to revisit, not permanent design.
+
+- **Scalar type is hardcoded to `f64`.** Solvers, `BasicState`, and tolerance defaults all assume `f64`. Trade: simpler trait bounds and clearer algorithm-constant defaults today, at the cost of a future mechanical refactor when scalar-genericity is wanted.
+  - **Why deferred:** project scope explicitly includes ensmallen-style stochastic optimization (SGD, Adam, RMSProp) eventually, where f32 is the natural scalar. So scalar-genericity *is* coming — just not now.
+  - **Trigger to generalize:** the first stochastic solver lands, OR a real f32 use case appears, OR the bound-boilerplate cost of doing it preemptively starts feeling cheaper than the refactor cost. Plan: switch to `F: num_traits::Float` on `BasicState<P, F>`, `GradientDescent<F>`, etc. The `ScaledAdd<S>` trait is already generic, so the math layer is ready.
+  - **Not to do:** add a "fake" scalar generic where defaults still only work in `f64`. Either commit to scalar-genericity properly (per-scalar algorithm constants, validated f32 paths) or stay f64-only honestly.
 
 ## Repo structure: single crate, not a workspace
 

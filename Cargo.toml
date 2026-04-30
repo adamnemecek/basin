@@ -15,3 +15,12 @@ name = "basin"
 path = "src/lib.rs"
 
 [dependencies]
+
+[dev-dependencies]
+# Benches are hand-rolled (no criterion/divan) because their transitive
+# clap dep tree requires edition2024 (Rust 1.85+), above basin's MSRV 1.84.1
+# (CRAN constraint — see AGENTS.md). Revisit when CRAN's Rust pin moves.
+
+[[bench]]
+name = "rosenbrock"
+harness = false
