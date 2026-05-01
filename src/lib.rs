@@ -9,8 +9,8 @@ pub use crate::core::state::{
     BasicSimplexState, BasicState, GradientState, IntoInitialSimplex, SimplexState, State,
 };
 pub use crate::core::termination::{
-    CostTolerance, GradientTolerance, MaxCostEvals, MaxIter, MaxTime, ParamTolerance,
-    SimplexTolerance, TerminationCriterion, TerminationReason,
+    CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
+    ParamTolerance, SimplexTolerance, TerminationCriterion, TerminationReason,
 };
 pub use crate::solver::{
     Backtracking, Constant, GradientDescent, NelderMead, StepResult, StepSize,

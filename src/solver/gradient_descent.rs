@@ -35,6 +35,7 @@ where
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
+        state.gradient_evals += 1;
         state
     }
 
@@ -52,6 +53,7 @@ where
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
+        state.gradient_evals += 1;
         state
     }
 }

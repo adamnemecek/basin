@@ -1,7 +1,7 @@
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
-    GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxIter, MaxTime, NelderMead,
-    ParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
+    GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter,
+    MaxTime, NelderMead, ParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -239,6 +239,21 @@ fn cost_evals_exceeds_iter_for_nelder_mead_shrinks() {
     .run();
 
     assert!(result.state.cost_evals() >= result.iter() + 3);
+}
+
+#[test]
+fn max_gradient_evals_fires_before_max_iter() {
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![10.0, 10.0]),
+    )
+    .max_iter(10_000)
+    .terminate_on(MaxGradientEvals(5))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxGradientEvals);
+    assert!(result.state.gradient_evals() >= 5);
 }
 
 #[test]

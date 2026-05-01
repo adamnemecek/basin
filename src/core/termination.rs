@@ -7,6 +7,7 @@ use crate::core::state::{GradientState, SimplexState, State};
 pub enum TerminationReason {
     MaxIter,
     MaxCostEvals,
+    MaxGradientEvals,
     GradientTolerance,
     ParamTolerance,
     CostTolerance,
@@ -52,6 +53,21 @@ impl<S: State> TerminationCriterion<S> for MaxCostEvals {
     fn check(&mut self, state: &S) -> Option<TerminationReason> {
         if state.cost_evals() >= self.0 {
             Some(TerminationReason::MaxCostEvals)
+        } else {
+            None
+        }
+    }
+}
+
+/// Stop after `state.gradient_evals() >= n` gradient evaluations. Bound
+/// on `S: GradientState` so it can't be paired with derivative-free
+/// solvers — a compile error rather than a silently no-op criterion.
+pub struct MaxGradientEvals(pub u64);
+
+impl<S: GradientState> TerminationCriterion<S> for MaxGradientEvals {
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        if state.gradient_evals() >= self.0 {
+            Some(TerminationReason::MaxGradientEvals)
         } else {
             None
         }

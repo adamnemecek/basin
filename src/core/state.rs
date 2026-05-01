@@ -22,6 +22,11 @@ pub trait State {
 /// (e.g. before `Solver::init` has run).
 pub trait GradientState: State {
     fn gradient(&self) -> Option<&Self::Param>;
+    /// Cumulative count of gradient evaluations performed so far. Lives
+    /// on `GradientState` rather than `State` so derivative-free states
+    /// don't carry a counter they can never increment.
+    fn gradient_evals(&self) -> u64;
+    fn increment_gradient_evals(&mut self, by: u64);
 }
 
 /// States built around a simplex of `n + 1` vertices and parallel costs.
@@ -42,6 +47,7 @@ pub struct BasicState<P> {
     pub(crate) gradient: Option<P>,
     pub(crate) iter: u64,
     pub(crate) cost_evals: u64,
+    pub(crate) gradient_evals: u64,
 }
 
 impl<P> BasicState<P> {
@@ -52,6 +58,7 @@ impl<P> BasicState<P> {
             gradient: None,
             iter: 0,
             cost_evals: 0,
+            gradient_evals: 0,
         }
     }
 }
@@ -92,6 +99,14 @@ impl<P> State for BasicState<P> {
 impl<P> GradientState for BasicState<P> {
     fn gradient(&self) -> Option<&P> {
         self.gradient.as_ref()
+    }
+
+    fn gradient_evals(&self) -> u64 {
+        self.gradient_evals
+    }
+
+    fn increment_gradient_evals(&mut self, by: u64) {
+        self.gradient_evals += by;
     }
 }
 
