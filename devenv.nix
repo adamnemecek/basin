@@ -30,6 +30,29 @@
       targets = [ "wasm32-unknown-unknown" ];
     };
 
+    fortran = {
+      enable = true;
+    };
+
+    r = {
+      enable = true;
+    };
+
+    python = {
+      enable = true;
+
+      directory = "./tools";
+
+      venv.enable = true;
+      uv = {
+        enable = true;
+        sync = {
+          enable = true;
+          allGroups = true;
+        };
+      };
+    };
+
     javascript = {
       enable = true;
     };

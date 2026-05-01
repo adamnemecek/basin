@@ -1,0 +1,18 @@
+[project]
+description = "Ad-hoc tooling for basin (paper ingestion etc.). Not published."
+name = "basin-tools"
+version = "0"
+requires-python = ">=3.10"
+dependencies = [
+  # Fast first-pass parser. Pure-Python wrapper over PyMuPDF, ~1s per paper,
+  # produces structured markdown (good for pseudocode and prose; mangles math).
+  "pymupdf4llm",
+  # Heavy second-pass parser. ML-based, slow on CPU (~minutes/paper), produces
+  # LaTeX equations and decent figure handling. Used selectively on pages where
+  # math fidelity matters — see ../README and the ingest-paper skill.
+  "marker-pdf",
+]
+
+[tool.uv]
+# Don't try to package this — it's just a dependency container.
+package = false

@@ -9,6 +9,19 @@ readme = "README.md"
 repository = "https://github.com/jolars/basin"
 keywords = ["optimization", "math", "numerics", "solver"]
 categories = ["mathematics", "science"]
+# Keep maintainer-only artifacts out of the published crate.
+exclude = [
+    "tools/",
+    "references/",
+    ".github/",
+    "TODO.md",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "devenv.nix",
+    "devenv.lock",
+    "devenv.yaml",
+    ".envrc",
+]
 
 [lib]
 name = "basin"

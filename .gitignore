@@ -49,3 +49,8 @@ devenv.local.yaml
 # Added by cargo
 
 /target
+
+# uv-managed Python tooling (see tools/pyproject.toml)
+tools/.venv/
+# References dir (papers, reference impls — see tools/README once added)
+references/
