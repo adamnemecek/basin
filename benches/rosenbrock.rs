@@ -45,10 +45,12 @@ fn main() {
         "gradient_descent_step",
         100_000,
         || {
-            (
-                GradientDescent::new(0.001),
-                BasicState::new(vec![-1.2, 1.0]),
-            )
+            let mut solver = GradientDescent::new(0.001);
+            // `Solver::init` populates cost + gradient at the initial param,
+            // matching the contract `next_iter` expects (gradient cached
+            // from the previous iter or from init).
+            let state = solver.init(&Rosenbrock, BasicState::new(vec![-1.2, 1.0]));
+            (solver, state)
         },
         |(mut solver, state)| solver.next_iter(&Rosenbrock, state),
     );
