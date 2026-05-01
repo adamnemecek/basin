@@ -105,6 +105,21 @@ These shape API decisions and are non-obvious from the code alone:
    when needed. Concrete trait design is deferred until the first constrained
    solver (likely projected gradient on box constraints) --- designing on paper
    without a solver to validate against tends to need redoing.
+5. **Backends are tiered; not every solver works on every backend.** The shared
+   math layer (`ScaledAdd`, `NormSquared`, `NormInfinity`, ...) stays small and
+   honest: only ops that every backend can implement well belong there.
+   First-order and derivative-free solvers (gradient descent, Nelder-Mead, SA,
+   ...) stay backend-generic via that layer. LA-heavy solvers (Newton,
+   trust-region, L-BFGS, anything needing Cholesky / QR / eigensolves) may
+   require a specific backend (most likely faer or nalgebra) and bound their
+   param type on a richer trait that only that backend implements --- so a
+   `Vec<f64>` user gets a *compile-time* error, not a runtime surprise. Same
+   spirit as tenet 3: bound on the minimum capability the solver actually needs.
+   Do **not** add LA ops (`Cholesky`, `Eigen`, `LinearSolve`, ...) to the shared
+   math traits just to preserve symmetry across backends; if only one backend
+   can implement an op well, it shouldn't be in the shared layer. Per-solver
+   doc comments must include a "Backends" note listing supported param types,
+   mirroring the wasm compat-note pattern below.
 
 ## WASM as a hard constraint
 
