@@ -1,3 +1,4 @@
+pub mod constraint;
 pub mod executor;
 pub mod math;
 pub mod problem;

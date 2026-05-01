@@ -10,6 +10,7 @@ pub trait NormInfinity {
     fn norm_infinity(&self) -> f64;
 }
 
+mod scalar;
 mod vec;
 
 #[cfg(feature = "nalgebra")]
