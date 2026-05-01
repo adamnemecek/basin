@@ -28,18 +28,26 @@ where
     V: ScaledAdd<f64>,
     S: StepSize<P, V>,
 {
+    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+        // Seed cost and gradient at the initial param so iter-0 termination
+        // checks (e.g. `GradientTolerance` on a near-optimal start) see a
+        // complete state. Same work we'd do on iter 1, hoisted.
+        state.cost = problem.cost(&state.param);
+        state.gradient = Some(problem.gradient(&state.param));
+        state
+    }
+
     fn next_iter(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
-        // Invariant: state.cost matches state.param on entry. BasicState::new
-        // seeds cost as INFINITY, so evaluate it lazily on the first iteration.
-        if !state.cost.is_finite() {
-            state.cost = problem.cost(&state.param);
-        }
-        let grad = problem.gradient(&state.param);
+        let grad = state
+            .gradient
+            .take()
+            .expect("gradient not set: Solver::init must run before next_iter");
         let alpha = self
             .step_size
             .next(problem, &state.param, state.cost, &grad);
         state.param.scaled_add(-alpha, &grad);
         state.cost = problem.cost(&state.param);
+        state.gradient = Some(problem.gradient(&state.param));
         state
     }
 }

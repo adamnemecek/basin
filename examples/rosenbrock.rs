@@ -37,9 +37,10 @@ fn main() {
 
     let solver = GradientDescent::new(0.001);
     let state = BasicState::new(initial);
-    let result = Executor::new(problem, solver, state).max_iter(50_000).run();
+    let (result, reason) = Executor::new(problem, solver, state).max_iter(50_000).run();
 
     println!("final iter:    {}", result.iter);
     println!("final param:   {:?}", result.param);
     println!("final cost:    {}", result.cost);
+    println!("termination:   {:?}", reason);
 }

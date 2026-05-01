@@ -1,0 +1,202 @@
+use basin::{
+    BasicState, CostFunction, CostTolerance, Executor, Gradient, GradientDescent,
+    GradientTolerance, MaxIter, MaxTime, ParamTolerance, Solver, State, TerminationCriterion,
+    TerminationReason,
+};
+use std::time::Duration;
+
+/// f(x) = ½ ‖x‖² — convex quadratic with minimum at origin, gradient = x.
+struct Quadratic;
+
+impl CostFunction for Quadratic {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        0.5 * x.iter().map(|v| v * v).sum::<f64>()
+    }
+}
+
+impl Gradient for Quadratic {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+
+    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        x.clone()
+    }
+}
+
+#[test]
+fn gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {
+    // Initial param is the optimum: gradient = 0. Should terminate before
+    // doing any iterations.
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![0.0, 0.0]),
+    )
+    .terminate_on(GradientTolerance(1e-8))
+    .run();
+
+    assert_eq!(reason, TerminationReason::GradientTolerance);
+    assert_eq!(state.iter, 0, "should not have done any iterations");
+}
+
+#[test]
+fn gradient_tolerance_fires_after_convergence() {
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, -1.0, 0.5]),
+    )
+    .max_iter(1_000)
+    .terminate_on(GradientTolerance(1e-6))
+    .run();
+
+    assert_eq!(reason, TerminationReason::GradientTolerance);
+    assert!(state.iter > 0 && state.iter < 1_000);
+    let g = state.gradient.as_ref().unwrap();
+    let g_norm = g.iter().map(|v| v * v).sum::<f64>().sqrt();
+    assert!(g_norm <= 1e-6);
+}
+
+#[test]
+fn max_iter_field_default_is_one_thousand() {
+    // No criteria configured: the default `max_iter = 1000` should fire.
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001), // tiny step → won't converge in 1000
+        BasicState::new(vec![10.0, 10.0]),
+    )
+    .run();
+
+    assert_eq!(reason, TerminationReason::MaxIter);
+    assert_eq!(state.iter, 1_000);
+}
+
+#[test]
+fn explicit_max_iter_criterion_works_alongside_default() {
+    // `MaxIter(5)` via `terminate_on` fires before the default 1000.
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![10.0, 10.0]),
+    )
+    .terminate_on(MaxIter(5))
+    .run();
+
+    assert_eq!(reason, TerminationReason::MaxIter);
+    assert_eq!(state.iter, 5);
+}
+
+#[test]
+fn param_tolerance_fires_when_steps_become_small() {
+    let (_state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(ParamTolerance::new(1e-8))
+    .run();
+
+    assert_eq!(reason, TerminationReason::ParamTolerance);
+}
+
+#[test]
+fn cost_tolerance_fires_when_cost_stagnates() {
+    let (_state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(CostTolerance::new(1e-12))
+    .run();
+
+    assert_eq!(reason, TerminationReason::CostTolerance);
+}
+
+#[test]
+fn first_criterion_to_fire_wins() {
+    // ParamTolerance with a huge tolerance fires immediately on iter 1
+    // (any movement < 100). MaxIter(1000) would otherwise fire later.
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(ParamTolerance::new(100.0))
+    .run();
+
+    assert_eq!(reason, TerminationReason::ParamTolerance);
+    assert!(state.iter < 5);
+}
+
+#[test]
+fn max_time_eventually_fires() {
+    // Use a tiny budget so the test is fast but deterministic.
+    let (_state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![1e6, 1e6, 1e6]),
+    )
+    .max_iter(u64::MAX)
+    .terminate_on(MaxTime::new(Duration::from_millis(50)))
+    .run();
+
+    assert_eq!(reason, TerminationReason::MaxTime);
+}
+
+/// Solver that always reports converged via the `terminate` hook, used to
+/// verify the per-solver hook still works after framework criteria are
+/// checked.
+struct AlwaysConverged;
+
+impl Solver<Quadratic, BasicState<Vec<f64>>> for AlwaysConverged {
+    fn next_iter(
+        &mut self,
+        _problem: &Quadratic,
+        state: BasicState<Vec<f64>>,
+    ) -> BasicState<Vec<f64>> {
+        state
+    }
+
+    fn terminate(&self, _state: &BasicState<Vec<f64>>) -> Option<TerminationReason> {
+        Some(TerminationReason::SolverConverged)
+    }
+}
+
+#[test]
+fn solver_terminate_hook_is_honored() {
+    let (state, reason) =
+        Executor::new(Quadratic, AlwaysConverged, BasicState::new(vec![1.0, 2.0])).run();
+
+    assert_eq!(reason, TerminationReason::SolverConverged);
+    assert_eq!(state.iter, 0);
+}
+
+/// Verify that a custom criterion plays correctly through `Box<dyn>`.
+struct StopAt(u64);
+
+impl<S: State> TerminationCriterion<S> for StopAt {
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        (state.iter() == self.0).then_some(TerminationReason::SolverConverged)
+    }
+}
+
+#[test]
+fn custom_termination_criterion() {
+    let (state, reason) = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![5.0, 5.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(StopAt(7))
+    .run();
+
+    assert_eq!(reason, TerminationReason::SolverConverged);
+    assert_eq!(state.iter, 7);
+}

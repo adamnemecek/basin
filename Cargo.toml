@@ -24,6 +24,10 @@ nalgebra = ["dep:nalgebra"]
 # Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
 # MSRV of 1.84.1 (CRAN constraint — see AGENTS.md). Revisit when CRAN's pin moves.
 nalgebra = { version = "0.33", optional = true }
+# Re-exports `std::time::Instant` on native and a wasm-compatible shim on
+# `wasm32-unknown-unknown`, so `MaxTime` works on both without feature gating.
+# Tiny crate, MSRV 1.60, no transitive deps on native.
+web-time = "1"
 
 [dev-dependencies]
 # Benches are hand-rolled (no criterion/divan) because their transitive
