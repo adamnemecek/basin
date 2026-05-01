@@ -2,6 +2,38 @@ use crate::core::solver::Solver;
 use crate::core::state::State;
 use crate::core::termination::{TerminationCriterion, TerminationReason};
 
+/// Outcome of an optimisation run.
+///
+/// Owns the final solver state plus the reason the executor stopped.
+/// Delegates `param()` / `cost()` / `iter()` to the underlying state so
+/// callers don't need to import `State` for the common reads.
+pub struct OptimizationResult<S> {
+    pub state: S,
+    pub reason: TerminationReason,
+}
+
+impl<S: State> OptimizationResult<S> {
+    pub fn param(&self) -> &S::Param {
+        self.state.param()
+    }
+
+    pub fn cost(&self) -> S::Float {
+        self.state.cost()
+    }
+
+    pub fn iter(&self) -> u64 {
+        self.state.iter()
+    }
+
+    pub fn reason(&self) -> TerminationReason {
+        self.reason
+    }
+
+    pub fn into_state(self) -> S {
+        self.state
+    }
+}
+
 pub struct Executor<P, S, So> {
     problem: P,
     state: S,
@@ -44,19 +76,28 @@ where
         self
     }
 
-    pub fn run(mut self) -> (S, TerminationReason) {
+    pub fn run(mut self) -> OptimizationResult<S> {
         self.state = self.solver.init(&self.problem, self.state);
         loop {
             if self.state.iter() >= self.max_iter {
-                return (self.state, TerminationReason::MaxIter);
+                return OptimizationResult {
+                    state: self.state,
+                    reason: TerminationReason::MaxIter,
+                };
             }
             for criterion in &mut self.criteria {
                 if let Some(reason) = criterion.check(&self.state) {
-                    return (self.state, reason);
+                    return OptimizationResult {
+                        state: self.state,
+                        reason,
+                    };
                 }
             }
             if let Some(reason) = self.solver.terminate(&self.state) {
-                return (self.state, reason);
+                return OptimizationResult {
+                    state: self.state,
+                    reason,
+                };
             }
             self.state = self.solver.next_iter(&self.problem, self.state);
             self.state.increment_iter();

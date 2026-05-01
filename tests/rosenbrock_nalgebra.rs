@@ -30,7 +30,7 @@ fn gradient_descent_with_nalgebra_dvector() {
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
     let initial_cost = problem.cost(&initial);
 
-    let (result, _reason) = Executor::new(
+    let result = Executor::new(
         problem,
         GradientDescent::new(0.001),
         BasicState::new(initial),
@@ -39,10 +39,10 @@ fn gradient_descent_with_nalgebra_dvector() {
     .run();
 
     assert!(
-        result.cost < initial_cost * 0.1,
+        result.cost() < initial_cost * 0.1,
         "expected cost to drop by >10x: initial={}, final={}",
         initial_cost,
-        result.cost
+        result.cost()
     );
 }
 
@@ -52,7 +52,7 @@ fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
     let initial_cost = problem.cost(&initial);
 
-    let (result, _reason) = Executor::new(
+    let result = Executor::new(
         problem,
         GradientDescent::with_step_size(Backtracking::new()),
         BasicState::new(initial),
@@ -61,9 +61,9 @@ fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
     .run();
 
     assert!(
-        result.cost < initial_cost * 0.1,
+        result.cost() < initial_cost * 0.1,
         "expected cost to drop by >10x: initial={}, final={}",
         initial_cost,
-        result.cost
+        result.cost()
     );
 }

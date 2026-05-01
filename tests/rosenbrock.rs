@@ -31,7 +31,7 @@ fn gradient_descent_decreases_rosenbrock_cost() {
     let initial = vec![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 
-    let (result, reason) = Executor::new(
+    let result = Executor::new(
         problem,
         GradientDescent::new(0.001),
         BasicState::new(initial),
@@ -39,13 +39,13 @@ fn gradient_descent_decreases_rosenbrock_cost() {
     .max_iter(10_000)
     .run();
 
-    assert_eq!(result.iter, 10_000, "should hit max_iter");
-    assert_eq!(reason, TerminationReason::MaxIter);
+    assert_eq!(result.iter(), 10_000, "should hit max_iter");
+    assert_eq!(result.reason, TerminationReason::MaxIter);
     assert!(
-        result.cost < initial_cost * 0.1,
+        result.cost() < initial_cost * 0.1,
         "expected cost to drop by >10x: initial={}, final={}",
         initial_cost,
-        result.cost
+        result.cost()
     );
 }
 
@@ -55,7 +55,7 @@ fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
     let initial = vec![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 
-    let (result, _reason) = Executor::new(
+    let result = Executor::new(
         problem,
         GradientDescent::with_step_size(Backtracking::new()),
         BasicState::new(initial),
@@ -64,9 +64,9 @@ fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
     .run();
 
     assert!(
-        result.cost < initial_cost * 0.1,
+        result.cost() < initial_cost * 0.1,
         "expected cost to drop by >10x: initial={}, final={}",
         initial_cost,
-        result.cost
+        result.cost()
     );
 }

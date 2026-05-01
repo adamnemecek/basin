@@ -10,34 +10,43 @@ use crate::core::state::SimplexState;
 /// `α` (reflection), `β` (expansion), `γ` (contraction), `δ` (shrink), with
 /// the constraints `α > 0`, `β > 1`, `0 < γ < 1`, `0 < δ < 1`.
 pub struct NelderMead {
+    config: ParamConfig,
+    /// Resolved parameters; populated by `init` once the dimension is known.
+    params: Option<Params>,
+}
+
+#[derive(Clone, Copy)]
+struct Params {
     alpha: f64,
     beta: f64,
     gamma: f64,
     delta: f64,
 }
 
+#[derive(Clone, Copy)]
+enum ParamConfig {
+    Standard,
+    Adaptive,
+    Fixed(Params),
+}
+
 impl NelderMead {
     /// Standard parameters (Nelder & Mead 1965): α=1, β=2, γ=0.5, δ=0.5.
     pub fn standard() -> Self {
         Self {
-            alpha: 1.0,
-            beta: 2.0,
-            gamma: 0.5,
-            delta: 0.5,
+            config: ParamConfig::Standard,
+            params: None,
         }
     }
 
     /// Adaptive parameters from Gao & Han (2012), eq. (4.1):
-    /// α=1, β=1+2/n, γ=0.75−1/(2n), δ=1−1/n. Coincides with `standard()`
+    /// α=1, β=1+2/n, γ=0.75−1/(2n), δ=1−1/n, with `n` inferred from the
+    /// initial simplex during `Solver::init`. Coincides with `standard()`
     /// when `n == 2`.
-    pub fn adaptive(n: usize) -> Self {
-        assert!(n >= 2, "NelderMead::adaptive requires n >= 2");
-        let n = n as f64;
+    pub fn adaptive() -> Self {
         Self {
-            alpha: 1.0,
-            beta: 1.0 + 2.0 / n,
-            gamma: 0.75 - 1.0 / (2.0 * n),
-            delta: 1.0 - 1.0 / n,
+            config: ParamConfig::Adaptive,
+            params: None,
         }
     }
 
@@ -47,10 +56,35 @@ impl NelderMead {
         assert!(gamma > 0.0 && gamma < 1.0, "γ must be in (0, 1)");
         assert!(delta > 0.0 && delta < 1.0, "δ must be in (0, 1)");
         Self {
-            alpha,
-            beta,
-            gamma,
-            delta,
+            config: ParamConfig::Fixed(Params {
+                alpha,
+                beta,
+                gamma,
+                delta,
+            }),
+            params: None,
+        }
+    }
+
+    fn resolve(config: ParamConfig, n: usize) -> Params {
+        assert!(n >= 1, "NelderMead requires at least a 1-D problem");
+        match config {
+            ParamConfig::Standard => Params {
+                alpha: 1.0,
+                beta: 2.0,
+                gamma: 0.5,
+                delta: 0.5,
+            },
+            ParamConfig::Adaptive => {
+                let n = n as f64;
+                Params {
+                    alpha: 1.0,
+                    beta: 1.0 + 2.0 / n,
+                    gamma: 0.75 - 1.0 / (2.0 * n),
+                    delta: 1.0 - 1.0 / n,
+                }
+            }
+            ParamConfig::Fixed(p) => p,
         }
     }
 }
@@ -116,6 +150,8 @@ where
     V: Clone + ScaledAdd<f64>,
 {
     fn init(&mut self, problem: &P, mut state: SimplexState<V>) -> SimplexState<V> {
+        let n = state.vertices.len() - 1;
+        self.params = Some(Self::resolve(self.config, n));
         for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
             *c = problem.cost(v);
         }
@@ -126,6 +162,9 @@ where
     fn next_iter(&mut self, problem: &P, mut state: SimplexState<V>) -> SimplexState<V> {
         // Vertices are sorted (best at index 0) on entry; we restore that
         // invariant before returning. The simplex has n+1 vertices in n-D.
+        let p = self
+            .params
+            .expect("NelderMead::init must run before next_iter");
         let m = state.vertices.len();
         let n = m - 1;
         let worst = m - 1;
@@ -137,7 +176,7 @@ where
         let fnp1 = state.costs[worst];
 
         // Reflection: x_r = x_bar + α(x_bar − x_{n+1}) = (1+α)·x_bar − α·x_{n+1}
-        let x_r = affine(&x_bar, &state.vertices[worst], -self.alpha);
+        let x_r = affine(&x_bar, &state.vertices[worst], -p.alpha);
         let fr = problem.cost(&x_r);
 
         if f1 <= fr && fr < fn_ {
@@ -146,7 +185,7 @@ where
             state.costs[worst] = fr;
         } else if fr < f1 {
             // Try expansion: x_e = x_bar + β(x_r − x_bar).
-            let x_e = affine(&x_bar, &x_r, self.beta);
+            let x_e = affine(&x_bar, &x_r, p.beta);
             let fe = problem.cost(&x_e);
             if fe < fr {
                 state.vertices[worst] = x_e;
@@ -158,24 +197,24 @@ where
         } else if fr < fnp1 {
             // fn ≤ fr < f_{n+1}: outside contraction.
             // x_oc = x_bar + γ(x_r − x_bar).
-            let x_oc = affine(&x_bar, &x_r, self.gamma);
+            let x_oc = affine(&x_bar, &x_r, p.gamma);
             let foc = problem.cost(&x_oc);
             if foc <= fr {
                 state.vertices[worst] = x_oc;
                 state.costs[worst] = foc;
             } else {
-                self.shrink(problem, &mut state);
+                self.shrink(problem, &mut state, p.delta);
             }
         } else {
             // fr ≥ f_{n+1}: inside contraction.
             // x_ic = x_bar − γ(x_bar − x_{n+1}) = (1−γ)·x_bar + γ·x_{n+1}.
-            let x_ic = affine(&x_bar, &state.vertices[worst], self.gamma);
+            let x_ic = affine(&x_bar, &state.vertices[worst], p.gamma);
             let fic = problem.cost(&x_ic);
             if fic < fnp1 {
                 state.vertices[worst] = x_ic;
                 state.costs[worst] = fic;
             } else {
-                self.shrink(problem, &mut state);
+                self.shrink(problem, &mut state, p.delta);
             }
         }
 
@@ -185,7 +224,7 @@ where
 }
 
 impl NelderMead {
-    fn shrink<P, V>(&self, problem: &P, state: &mut SimplexState<V>)
+    fn shrink<P, V>(&self, problem: &P, state: &mut SimplexState<V>, delta: f64)
     where
         P: CostFunction<Param = V, Output = f64>,
         V: Clone + ScaledAdd<f64>,
@@ -195,7 +234,7 @@ impl NelderMead {
         let (best_slice, rest) = state.vertices.split_at_mut(1);
         let best = &best_slice[0];
         for (v, c) in rest.iter_mut().zip(&mut state.costs[1..]) {
-            *v = affine(best, v, self.delta);
+            *v = affine(best, v, delta);
             *c = problem.cost(v);
         }
     }

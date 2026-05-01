@@ -76,7 +76,10 @@ pub struct SimplexState<V> {
 }
 
 impl<V> SimplexState<V> {
-    pub fn new(vertices: Vec<V>) -> Self {
+    /// Build from a pre-constructed simplex (advanced users / non-default
+    /// initial geometries). For the common case of "I just have a starting
+    /// point", prefer the backend-specific `SimplexState::new` constructors.
+    pub fn from_simplex(vertices: Vec<V>) -> Self {
         assert!(
             vertices.len() >= 2,
             "SimplexState requires at least 2 vertices (n+1 for an n-D problem)"
@@ -88,6 +91,43 @@ impl<V> SimplexState<V> {
             iter: 0,
         }
     }
+}
+
+impl SimplexState<Vec<f64>> {
+    /// Build a simplex around a starting point using the FMINSEARCH/SciPy
+    /// default: each non-zero coordinate `i` perturbs to `1.05 · x0[i]`,
+    /// zero coordinates use an absolute step of `0.00025`. Mirrors
+    /// `BasicState::new` ergonomically — the solver infers dimension from
+    /// `x0`.
+    pub fn new(x0: Vec<f64>) -> Self {
+        Self::from_simplex(default_simplex(&x0))
+    }
+
+    /// Like `new`, but with a custom relative step (defaults to `0.05`).
+    /// Zero coordinates still use the FMINSEARCH absolute step `0.00025`.
+    pub fn with_step(x0: Vec<f64>, relative_step: f64) -> Self {
+        Self::from_simplex(simplex_with_step(&x0, relative_step))
+    }
+}
+
+fn default_simplex(x0: &[f64]) -> Vec<Vec<f64>> {
+    simplex_with_step(x0, 0.05)
+}
+
+fn simplex_with_step(x0: &[f64], relative_step: f64) -> Vec<Vec<f64>> {
+    let n = x0.len();
+    let mut simplex = Vec::with_capacity(n + 1);
+    simplex.push(x0.to_vec());
+    for i in 0..n {
+        let mut v = x0.to_vec();
+        v[i] = if x0[i] != 0.0 {
+            (1.0 + relative_step) * x0[i]
+        } else {
+            0.00025
+        };
+        simplex.push(v);
+    }
+    simplex
 }
 
 impl<V> State for SimplexState<V> {
