@@ -62,3 +62,51 @@ impl<P> GradientState for BasicState<P> {
         self.gradient.as_ref()
     }
 }
+
+/// State for simplex-based solvers (Nelder-Mead, etc.).
+///
+/// Holds `n + 1` vertices and their costs in parallel vectors. The solver is
+/// expected to keep them sorted by ascending cost at the start and end of
+/// every `next_iter`, so `param()` and `cost()` always return the current
+/// best vertex.
+pub struct SimplexState<V> {
+    pub vertices: Vec<V>,
+    pub costs: Vec<f64>,
+    pub iter: u64,
+}
+
+impl<V> SimplexState<V> {
+    pub fn new(vertices: Vec<V>) -> Self {
+        assert!(
+            vertices.len() >= 2,
+            "SimplexState requires at least 2 vertices (n+1 for an n-D problem)"
+        );
+        let n = vertices.len();
+        Self {
+            vertices,
+            costs: vec![f64::INFINITY; n],
+            iter: 0,
+        }
+    }
+}
+
+impl<V> State for SimplexState<V> {
+    type Param = V;
+    type Float = f64;
+
+    fn iter(&self) -> u64 {
+        self.iter
+    }
+
+    fn increment_iter(&mut self) {
+        self.iter += 1;
+    }
+
+    fn param(&self) -> &V {
+        &self.vertices[0]
+    }
+
+    fn cost(&self) -> f64 {
+        self.costs[0]
+    }
+}

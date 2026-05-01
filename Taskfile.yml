@@ -25,9 +25,8 @@ tasks:
       - >
         uv run --project tools python -c
         "import pymupdf4llm, pathlib;
-         p = pathlib.Path('references/{{.NAME}}');
-         p.joinpath('source.md').write_text(
-           pymupdf4llm.to_markdown(str(p / 'source.pdf')))"
+        p = pathlib.Path('references/{{.NAME}}');
+        p.joinpath('source.md').write_text(pymupdf4llm.to_markdown(str(p / 'source.pdf')))"
 
   ingest-paper-pages:
     desc: "Marker pass on selected PDF pages (slow, high quality math/figures). Outputs source.marker.md."

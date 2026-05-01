@@ -63,6 +63,36 @@ gets harder to fix as more code piles on.
       When `ndarray` lands it'll be three copies. Extract a
       `tests/common/rosenbrock.rs` module or a generic helper. Cheap now,
       gets worse linearly.
+- [ ] **`SimplexState` as a trait, not just a struct.** Termination criteria
+      bound on `S: State` (single point) or `S: GradientState`. Nelder-Mead's
+      natural convergence test is *simplex collapse*
+      (`max‖x_i − x_1‖_∞`, `max|f_i − f_1|` — the paper's (T1)), which the
+      generic `ParamTolerance` / `CostTolerance` can't express because they
+      only see `param()` / `cost()` of the best vertex. Mirror the
+      `GradientState` pattern: a `SimplexState` *trait* exposing
+      `vertices()` / `costs()`, with a `SimplexTolerance` criterion that
+      bounds on it. Do this *before* the second simplex / population-based
+      solver lands, not after.
+- [ ] **`ParamVec<F>` marker for solvers doing linear algebra on params.**
+      Nelder-Mead needs `V: Clone + ScaledAdd<f64>`; gradient descent needs
+      `V: ScaledAdd<f64>`; future solvers will repeat the bound pair. Add a
+      blanket-impl marker like
+      `trait ParamVec<F>: Clone + ScaledAdd<F> + NormSquared {}` once the
+      third solver wants it — premature with only two users.
+- [ ] **Initial-simplex construction helper for `Vec<f64>` / nalgebra.**
+      `tests/nelder_mead.rs` reimplements FMINSEARCH-style simplex
+      construction inline; every Nelder-Mead user will rewrite that.
+      Provide a backend-specific helper (e.g.
+      `SimplexState::<Vec<f64>>::around(&x0, step)`) once a second user
+      shows up, gated per-backend.
+- [ ] **Track function-evaluation count on `State`.** Paper's (T3)
+      criterion is `MaxFunEvals`, and a Nelder-Mead shrink does `n` evals
+      while a normal step does 1–2 — so `iter` and `nfev` diverge, and
+      `nfev` is what users actually budget against. Same need will hit any
+      line-search-heavy method (L-BFGS, etc.). Add `nfev()` to `State` and
+      have solvers/problems increment it; pairs with a `MaxFunEvals`
+      termination criterion. Trigger: first user who asks "why does
+      `max_iter=1000` actually evaluate the function 8000 times?"
 
 See `AGENTS.md` for the design tenets and constraints that shape these
 decisions.
