@@ -1,7 +1,7 @@
 use crate::core::math::ScaledAdd;
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
-use crate::core::state::SimplexState;
+use crate::core::state::BasicSimplexState;
 
 /// Nelder-Mead simplex method (derivative-free).
 ///
@@ -144,12 +144,12 @@ fn apply_permutation<T>(slice: &mut [T], idx: &[usize]) {
     }
 }
 
-impl<P, V> Solver<P, SimplexState<V>> for NelderMead
+impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ScaledAdd<f64>,
 {
-    fn init(&mut self, problem: &P, mut state: SimplexState<V>) -> SimplexState<V> {
+    fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
         let n = state.vertices.len() - 1;
         self.params = Some(Self::resolve(self.config, n));
         for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
@@ -159,7 +159,7 @@ where
         state
     }
 
-    fn next_iter(&mut self, problem: &P, mut state: SimplexState<V>) -> SimplexState<V> {
+    fn next_iter(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
         // Vertices are sorted (best at index 0) on entry; we restore that
         // invariant before returning. The simplex has n+1 vertices in n-D.
         let p = self
@@ -224,7 +224,7 @@ where
 }
 
 impl NelderMead {
-    fn shrink<P, V>(&self, problem: &P, state: &mut SimplexState<V>, delta: f64)
+    fn shrink<P, V>(&self, problem: &P, state: &mut BasicSimplexState<V>, delta: f64)
     where
         P: CostFunction<Param = V, Output = f64>,
         V: Clone + ScaledAdd<f64>,

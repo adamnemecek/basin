@@ -18,6 +18,18 @@ pub trait GradientState: State {
     fn gradient(&self) -> Option<&Self::Param>;
 }
 
+/// States built around a simplex of `n + 1` vertices and parallel costs.
+///
+/// Mirrors `GradientState`: the trait exists so termination criteria
+/// (e.g. simplex-collapse tests à la Lagarias et al. 1998 (T1)) can bound
+/// on a richer view than `State::param()` / `cost()`, which only see the
+/// best vertex. The vertex/cost arrays are sorted by ascending cost at the
+/// start and end of every `Solver::next_iter`.
+pub trait SimplexState: State {
+    fn vertices(&self) -> &[Self::Param];
+    fn costs(&self) -> &[Self::Float];
+}
+
 pub struct BasicState<P> {
     pub(crate) param: P,
     pub(crate) cost: Option<f64>,
@@ -67,40 +79,25 @@ impl<P> GradientState for BasicState<P> {
     }
 }
 
-/// State for simplex-based solvers (Nelder-Mead, etc.).
-///
-/// Holds `n + 1` vertices and their costs in parallel vectors. The solver is
-/// expected to keep them sorted by ascending cost at the start and end of
-/// every `next_iter`, so `param()` and `cost()` always return the current
-/// best vertex.
-pub struct SimplexState<V> {
+/// Default `SimplexState` implementation: `n + 1` vertices and their costs
+/// in parallel `Vec`s. The solver keeps both sorted by ascending cost at
+/// the start and end of every `next_iter`, so `param()` / `cost()` always
+/// return the current best vertex.
+pub struct BasicSimplexState<V> {
     pub(crate) vertices: Vec<V>,
     pub(crate) costs: Vec<f64>,
     pub(crate) iter: u64,
 }
 
-impl<V> SimplexState<V> {
-    /// Read-only access to the simplex vertices, sorted by ascending cost
-    /// at the start and end of every iteration.
-    pub fn vertices(&self) -> &[V] {
-        &self.vertices
-    }
-
-    /// Read-only access to the per-vertex cached costs, parallel to
-    /// `vertices()`.
-    pub fn costs(&self) -> &[f64] {
-        &self.costs
-    }
-}
-
-impl<V> SimplexState<V> {
+impl<V> BasicSimplexState<V> {
     /// Build from a pre-constructed simplex (advanced users / non-default
     /// initial geometries). For the common case of "I just have a starting
-    /// point", prefer the backend-specific `SimplexState::new` constructors.
+    /// point", prefer the backend-specific `BasicSimplexState::new`
+    /// constructors.
     pub fn from_simplex(vertices: Vec<V>) -> Self {
         assert!(
             vertices.len() >= 2,
-            "SimplexState requires at least 2 vertices (n+1 for an n-D problem)"
+            "BasicSimplexState requires at least 2 vertices (n+1 for an n-D problem)"
         );
         let n = vertices.len();
         Self {
@@ -114,7 +111,7 @@ impl<V> SimplexState<V> {
 /// FMINSEARCH/SciPy-style initial simplex from a single starting point.
 ///
 /// Implemented per backend (`Vec<f64>`, `nalgebra::DVector<f64>`, …) so a
-/// single `SimplexState::new(x0)` constructor works uniformly across
+/// single `BasicSimplexState::new(x0)` constructor works uniformly across
 /// backends. The default step is 5% on non-zero coordinates and an
 /// absolute `0.00025` on zero coordinates.
 pub trait IntoInitialSimplex<V> {
@@ -158,7 +155,7 @@ impl IntoInitialSimplex<nalgebra::DVector<f64>> for nalgebra::DVector<f64> {
     }
 }
 
-impl<V> SimplexState<V> {
+impl<V> BasicSimplexState<V> {
     /// Build an FMINSEARCH/SciPy-style simplex around a starting point
     /// `x0`. Mirrors `BasicState::new` ergonomically — the solver infers
     /// dimension from the simplex during `init`.
@@ -173,7 +170,7 @@ impl<V> SimplexState<V> {
     }
 }
 
-impl<V> State for SimplexState<V> {
+impl<V> State for BasicSimplexState<V> {
     type Param = V;
     type Float = f64;
 
@@ -191,5 +188,15 @@ impl<V> State for SimplexState<V> {
 
     fn cost(&self) -> f64 {
         self.costs[0]
+    }
+}
+
+impl<V> SimplexState for BasicSimplexState<V> {
+    fn vertices(&self) -> &[V] {
+        &self.vertices
+    }
+
+    fn costs(&self) -> &[f64] {
+        &self.costs
     }
 }

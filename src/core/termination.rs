@@ -1,7 +1,7 @@
 use web_time::{Duration, Instant};
 
-use crate::core::math::{NormSquared, ScaledAdd};
-use crate::core::state::{GradientState, State};
+use crate::core::math::{NormInfinity, NormSquared, ScaledAdd};
+use crate::core::state::{GradientState, SimplexState, State};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminationReason {
@@ -9,6 +9,7 @@ pub enum TerminationReason {
     GradientTolerance,
     ParamTolerance,
     CostTolerance,
+    SimplexTolerance,
     MaxTime,
     /// Solver determined it has converged (e.g. fixed point reached).
     SolverConverged,
@@ -118,6 +119,53 @@ where
             .is_some_and(|l| (l - curr).abs() <= self.tol && curr.is_finite());
         self.last = Some(curr);
         triggered.then_some(TerminationReason::CostTolerance)
+    }
+}
+
+/// Simplex-collapse test for simplex-based solvers (e.g. Nelder-Mead),
+/// per Lagarias et al. (1998), eq. (T1):
+///
+/// stop when `max_i ‖x_i − x_1‖_∞ ≤ tol_x` **and**
+/// `max_i |f_i − f_1| ≤ tol_f`, where `x_1` / `f_1` are the best vertex
+/// and its cost.
+///
+/// Bound on `S: SimplexState` so derivative-free solvers that don't carry
+/// a simplex can't be paired with it.
+pub struct SimplexTolerance {
+    tol_x: f64,
+    tol_f: f64,
+}
+
+impl SimplexTolerance {
+    pub fn new(tol_x: f64, tol_f: f64) -> Self {
+        Self { tol_x, tol_f }
+    }
+}
+
+impl<S> TerminationCriterion<S> for SimplexTolerance
+where
+    S: SimplexState<Float = f64>,
+    S::Param: Clone + ScaledAdd<f64> + NormInfinity,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let vertices = state.vertices();
+        let costs = state.costs();
+        let best = &vertices[0];
+        let best_cost = costs[0];
+
+        for x_i in &vertices[1..] {
+            let mut diff = x_i.clone();
+            diff.scaled_add(-1.0, best);
+            if diff.norm_infinity() > self.tol_x {
+                return None;
+            }
+        }
+        for &f_i in &costs[1..] {
+            if (f_i - best_cost).abs() > self.tol_f {
+                return None;
+            }
+        }
+        Some(TerminationReason::SimplexTolerance)
     }
 }
 

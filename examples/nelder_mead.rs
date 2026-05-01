@@ -3,7 +3,7 @@
 //!
 //! Run with `cargo run --example nelder_mead`.
 
-use basin::{CostFunction, Executor, NelderMead, SimplexState};
+use basin::{BasicSimplexState, CostFunction, Executor, NelderMead};
 
 struct Rosenbrock;
 
@@ -23,14 +23,14 @@ fn main() {
     println!("initial param: {:?}", x0);
     println!("initial cost:  {}", problem.cost(&x0));
 
-    // `SimplexState::new(x0)` builds a default initial simplex around the
+    // `BasicSimplexState::new(x0)` builds a default initial simplex around the
     // starting point (FMINSEARCH/SciPy convention). For full control over
-    // the simplex use `SimplexState::with_step` or `::from_simplex`.
+    // the simplex use `BasicSimplexState::with_step` or `::from_simplex`.
     //
     // `NelderMead::adaptive()` infers `n` from the simplex during `init`
     // and uses the dimension-aware parameters of Gao & Han (2012).
     let solver = NelderMead::adaptive();
-    let state = SimplexState::new(x0);
+    let state = BasicSimplexState::new(x0);
     let result = Executor::new(problem, solver, state).max_iter(2_000).run();
 
     println!("final iter:    {}", result.iter());

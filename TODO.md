@@ -50,16 +50,6 @@ gets harder to fix as more code piles on.
       When `ndarray` lands it'll be three copies. Extract a
       `tests/common/rosenbrock.rs` module or a generic helper. Cheap now,
       gets worse linearly.
-- [ ] **`SimplexState` as a trait, not just a struct.** Termination criteria
-      bound on `S: State` (single point) or `S: GradientState`. Nelder-Mead's
-      natural convergence test is *simplex collapse*
-      (`max‖x_i − x_1‖_∞`, `max|f_i − f_1|` — the paper's (T1)), which the
-      generic `ParamTolerance` / `CostTolerance` can't express because they
-      only see `param()` / `cost()` of the best vertex. Mirror the
-      `GradientState` pattern: a `SimplexState` *trait* exposing
-      `vertices()` / `costs()`, with a `SimplexTolerance` criterion that
-      bounds on it. Do this *before* the second simplex / population-based
-      solver lands, not after.
 - [ ] **`ParamVec<F>` marker for solvers doing linear algebra on params.**
       Nelder-Mead needs `V: Clone + ScaledAdd<f64>`; gradient descent needs
       `V: ScaledAdd<f64>`; future solvers will repeat the bound pair. Add a

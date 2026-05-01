@@ -1,6 +1,6 @@
 use basin::{
-    Backtracking, BasicState, CostFunction, Executor, Gradient, GradientDescent, NelderMead,
-    SimplexState,
+    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
+    NelderMead,
 };
 use nalgebra::DVector;
 
@@ -76,9 +76,13 @@ fn nelder_mead_with_nalgebra_dvector() {
     let problem = Rosenbrock;
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
 
-    let result = Executor::new(problem, NelderMead::adaptive(), SimplexState::new(initial))
-        .max_iter(2_000)
-        .run();
+    let result = Executor::new(
+        problem,
+        NelderMead::adaptive(),
+        BasicSimplexState::new(initial),
+    )
+    .max_iter(2_000)
+    .run();
 
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
 }

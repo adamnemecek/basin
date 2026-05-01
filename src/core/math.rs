@@ -6,6 +6,10 @@ pub trait NormSquared {
     fn norm_squared(&self) -> f64;
 }
 
+pub trait NormInfinity {
+    fn norm_infinity(&self) -> f64;
+}
+
 mod vec;
 
 #[cfg(feature = "nalgebra")]

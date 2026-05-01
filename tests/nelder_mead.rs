@@ -1,4 +1,7 @@
-use basin::{CostFunction, Executor, NelderMead, SimplexState, TerminationReason};
+use basin::{
+    BasicSimplexState, CostFunction, Executor, NelderMead, SimplexState, SimplexTolerance,
+    TerminationReason,
+};
 
 struct Rosenbrock;
 
@@ -19,7 +22,7 @@ fn nelder_mead_standard_minimises_rosenbrock() {
     let result = Executor::new(
         problem,
         NelderMead::standard(),
-        SimplexState::new(vec![-1.2, 1.0]),
+        BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(2_000)
     .run();
@@ -42,7 +45,7 @@ fn nelder_mead_adaptive_minimises_rosenbrock() {
     let result = Executor::new(
         problem,
         NelderMead::adaptive(),
-        SimplexState::new(vec![-1.2, 1.0]),
+        BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(2_000)
     .run();
@@ -58,7 +61,7 @@ fn nelder_mead_hits_max_iter_when_too_few() {
     let result = Executor::new(
         problem,
         NelderMead::standard(),
-        SimplexState::new(vec![-1.2, 1.0]),
+        BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(5)
     .run();
@@ -74,7 +77,7 @@ fn nelder_mead_keeps_best_first_after_each_iter() {
     let result = Executor::new(
         problem,
         NelderMead::standard(),
-        SimplexState::new(vec![-1.2, 1.0]),
+        BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(100)
     .run();
@@ -105,12 +108,44 @@ fn nelder_mead_adaptive_sphere_5d() {
     let result = Executor::new(
         problem,
         NelderMead::adaptive(),
-        SimplexState::new(vec![1.0; 5]),
+        BasicSimplexState::new(vec![1.0; 5]),
     )
     .max_iter(2_000)
     .run();
 
     assert!(result.cost() < 1e-8, "cost = {}", result.cost());
+}
+
+#[test]
+fn simplex_tolerance_fires_when_simplex_collapses() {
+    let problem = Rosenbrock;
+
+    let result = Executor::new(
+        problem,
+        NelderMead::standard(),
+        BasicSimplexState::new(vec![-1.2, 1.0]),
+    )
+    .max_iter(2_000)
+    .terminate_on(SimplexTolerance::new(1e-8, 1e-8))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SimplexTolerance);
+    assert!(result.iter() > 0 && result.iter() < 2_000);
+
+    // Verify the (T1) invariant actually holds at termination.
+    let vertices = result.state.vertices();
+    let costs = result.state.costs();
+    for x_i in &vertices[1..] {
+        let max = x_i
+            .iter()
+            .zip(&vertices[0])
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0_f64, f64::max);
+        assert!(max <= 1e-8, "‖x_i − x_1‖_∞ = {} exceeds 1e-8", max);
+    }
+    for &f_i in &costs[1..] {
+        assert!((f_i - costs[0]).abs() <= 1e-8);
+    }
 }
 
 #[test]
@@ -123,7 +158,7 @@ fn nelder_mead_from_simplex_accepts_custom_geometry() {
     let result = Executor::new(
         problem,
         NelderMead::standard(),
-        SimplexState::from_simplex(simplex),
+        BasicSimplexState::from_simplex(simplex),
     )
     .max_iter(2_000)
     .run();

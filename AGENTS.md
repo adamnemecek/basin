@@ -43,11 +43,12 @@ iterates a `Solver` over a `State`, calling into user-provided `Problem` traits.
   - `problem.rs`: traits the *user* implements: `CostFunction`, `Gradient` (more
     to come: `Hessian`, `Jacobian`, `Operator`).
   - `state.rs`: the `State` trait plus concrete states. `BasicState<P>` for
-    single-iterate solvers (param, cost, gradient, iter); `SimplexState<V>`
-    for simplex-based solvers (n+1 vertices, parallel costs, iter).
-    `GradientState` extends `State` for solvers that produce gradients.
-    Fields are `pub(crate)`; external access goes through trait methods or
-    accessors like `SimplexState::vertices()` / `costs()`.
+    single-iterate solvers (param, cost, gradient, iter);
+    `BasicSimplexState<V>` for simplex-based solvers (n+1 vertices, parallel
+    costs, iter). `GradientState` extends `State` for solvers that produce
+    gradients; `SimplexState` extends it for solvers that carry a simplex,
+    exposing `vertices()` / `costs()` so termination criteria can bound on
+    them. Fields are `pub(crate)`; external access goes through trait methods.
   - `solver.rs`: `Solver` trait: `init(&problem, state) -> state` (one-time
     setup, e.g. seeding cost/gradient at iter 0) and
     `next_iter(&problem, state) -> state`, plus a `terminate` hook.
@@ -56,12 +57,14 @@ iterates a `Solver` over a `State`, calling into user-provided `Problem` traits.
     the final state and `TerminationReason`.
   - `termination.rs`: `TerminationCriterion<S>` trait plus framework-level
     criteria (`MaxIter`, `GradientTolerance`, `ParamTolerance`,
-    `CostTolerance`, `MaxTime`). Per tenet 3, criteria are bound on the
-    minimum state shape they need (e.g. `GradientTolerance` requires
-    `S: GradientState`), so derivative-free solvers can't be paired with
-    them by mistake.
+    `CostTolerance`, `SimplexTolerance`, `MaxTime`). Per tenet 3, criteria
+    are bound on the minimum state shape they need (e.g. `GradientTolerance`
+    requires `S: GradientState`, `SimplexTolerance` requires
+    `S: SimplexState`), so derivative-free solvers can't be paired with
+    gradient-based criteria by mistake, and single-iterate solvers can't be
+    paired with simplex-based ones.
   - `math.rs` + `math/`: the math layer the solvers depend on. Traits
-    (`ScaledAdd<S>`, `NormSquared`) plus per-backend impls
+    (`ScaledAdd<S>`, `NormSquared`, `NormInfinity`) plus per-backend impls
     (`math/vec.rs` for `Vec<f64>`, `math/nalgebra_backend.rs` behind the
     `nalgebra` feature).
 - `src/solver.rs` + `src/solver/`: concrete solvers. Currently
