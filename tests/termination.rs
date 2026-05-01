@@ -211,7 +211,7 @@ fn cost_evals_exceeds_iter_with_backtracking() {
     // most iterations, so cost_evals > iter + 1.
     let result = Executor::new(
         Quadratic,
-        GradientDescent::with_step_size(Backtracking::new().alpha_init(8.0).rho(0.5)),
+        GradientDescent::with_line_search(Backtracking::new().alpha_init(8.0).rho(0.5)),
         BasicState::new(vec![1.0, 1.0]),
     )
     .terminate_on(MaxIter(10))

@@ -1,4 +1,5 @@
 pub mod core;
+pub mod line_search;
 pub mod solver;
 
 pub use crate::core::constraint::BoxConstrained;
@@ -13,6 +14,5 @@ pub use crate::core::termination::{
     CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
     ParamTolerance, SimplexTolerance, TerminationCriterion, TerminationReason,
 };
-pub use crate::solver::{
-    Backtracking, Brent, Constant, GradientDescent, NelderMead, StepResult, StepSize,
-};
+pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResult};
+pub use crate::solver::{Brent, GradientDescent, NelderMead};

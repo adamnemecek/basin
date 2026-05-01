@@ -1,14 +1,14 @@
 use crate::core::math::{NormSquared, ScaledAdd};
 use crate::core::problem::CostFunction;
 
-pub trait StepSize<P, V> {
+pub trait LineSearch<P, V> {
     /// Compute a step size and report the number of cost evaluations spent
     /// finding it. Callers add `cost_evals` to their state's counter.
-    fn next(&mut self, problem: &P, param: &V, cost: f64, gradient: &V) -> StepResult;
+    fn next(&mut self, problem: &P, param: &V, cost: f64, gradient: &V) -> LineSearchResult;
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct StepResult {
+pub struct LineSearchResult {
     pub alpha: f64,
     pub cost_evals: u64,
 }
@@ -21,9 +21,9 @@ impl Constant {
     }
 }
 
-impl<P, V> StepSize<P, V> for Constant {
-    fn next(&mut self, _problem: &P, _param: &V, _cost: f64, _gradient: &V) -> StepResult {
-        StepResult {
+impl<P, V> LineSearch<P, V> for Constant {
+    fn next(&mut self, _problem: &P, _param: &V, _cost: f64, _gradient: &V) -> LineSearchResult {
+        LineSearchResult {
             alpha: self.0,
             cost_evals: 0,
         }
@@ -74,12 +74,12 @@ impl Backtracking {
     }
 }
 
-impl<P, V> StepSize<P, V> for Backtracking
+impl<P, V> LineSearch<P, V> for Backtracking
 where
     P: CostFunction<Param = V, Output = f64>,
     V: ScaledAdd<f64> + NormSquared + Clone,
 {
-    fn next(&mut self, problem: &P, param: &V, cost: f64, gradient: &V) -> StepResult {
+    fn next(&mut self, problem: &P, param: &V, cost: f64, gradient: &V) -> LineSearchResult {
         // Armijo on direction d = -grad: f(x + α d) ≤ f(x) + c α (∇f · d).
         // With d = -grad, ∇f · d = -|grad|², so the threshold is f(x) - c α |grad|².
         let g_norm_sq = gradient.norm_squared();
@@ -91,10 +91,10 @@ where
             let trial_cost = problem.cost(&trial);
             cost_evals += 1;
             if trial_cost <= cost - self.c * alpha * g_norm_sq {
-                return StepResult { alpha, cost_evals };
+                return LineSearchResult { alpha, cost_evals };
             }
             alpha *= self.rho;
         }
-        StepResult { alpha, cost_evals }
+        LineSearchResult { alpha, cost_evals }
     }
 }

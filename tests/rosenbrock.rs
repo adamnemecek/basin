@@ -57,7 +57,7 @@ fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
 
     let result = Executor::new(
         problem,
-        GradientDescent::with_step_size(Backtracking::new()),
+        GradientDescent::with_line_search(Backtracking::new()),
         BasicState::new(initial),
     )
     .max_iter(10_000)

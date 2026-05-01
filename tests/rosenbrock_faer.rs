@@ -60,7 +60,7 @@ fn gradient_descent_with_faer_col_and_backtracking() {
 
     let result = Executor::new(
         problem,
-        GradientDescent::with_step_size(Backtracking::new()),
+        GradientDescent::with_line_search(Backtracking::new()),
         BasicState::new(initial),
     )
     .max_iter(10_000)
