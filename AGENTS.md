@@ -11,8 +11,11 @@ free to iterate on it and make breaking changes as needed.
 ## What this is
 
 `basin` is a Rust library crate for numerical optimization, inspired by
-`argmin`. It is in the earliest scaffolding stage: the public surface is a
-handful of empty traits and an `Executor` skeleton.
+`argmin`. The framework (problem traits, state, solver loop, termination
+layer, math abstraction) is in place along with two concrete solvers
+(gradient descent, Nelder-Mead) and two param backends (`Vec<f64>`,
+`nalgebra`). The public API is still iterating; see the "State" section
+above.
 
 ## Commands
 
@@ -39,14 +42,31 @@ iterates a `Solver` over a `State`, calling into user-provided `Problem` traits.
 - `src/core.rs` (module file) + `src/core/`: the framework:
   - `problem.rs`: traits the *user* implements: `CostFunction`, `Gradient` (more
     to come: `Hessian`, `Jacobian`, `Operator`).
-  - `state.rs`: `State` trait carrying per-iteration data (param, iter count,
-    gradient, etc.).
-  - `solver.rs`: `Solver` trait: `next_iter(&problem, state) -> state` plus a
-    `terminate` hook.
+  - `state.rs`: the `State` trait plus concrete states. `BasicState<P>` for
+    single-iterate solvers (param, cost, gradient, iter); `SimplexState<V>`
+    for simplex-based solvers (n+1 vertices, parallel costs, iter).
+    `GradientState` extends `State` for solvers that produce gradients.
+    Fields are `pub(crate)`; external access goes through trait methods or
+    accessors like `SimplexState::vertices()` / `costs()`.
+  - `solver.rs`: `Solver` trait: `init(&problem, state) -> state` (one-time
+    setup, e.g. seeding cost/gradient at iter 0) and
+    `next_iter(&problem, state) -> state`, plus a `terminate` hook.
   - `executor.rs`: `Executor` owns problem + state + solver and drives the loop
-    until termination.
-- `src/solver.rs`: placeholder for concrete solver implementations (gradient
-  descent, L-BFGS, Nelder-Mead, etc.).
+    until termination. `run()` returns an `OptimizationResult<S>` carrying
+    the final state and `TerminationReason`.
+  - `termination.rs`: `TerminationCriterion<S>` trait plus framework-level
+    criteria (`MaxIter`, `GradientTolerance`, `ParamTolerance`,
+    `CostTolerance`, `MaxTime`). Per tenet 3, criteria are bound on the
+    minimum state shape they need (e.g. `GradientTolerance` requires
+    `S: GradientState`), so derivative-free solvers can't be paired with
+    them by mistake.
+  - `math.rs` + `math/`: the math layer the solvers depend on. Traits
+    (`ScaledAdd<S>`, `NormSquared`) plus per-backend impls
+    (`math/vec.rs` for `Vec<f64>`, `math/nalgebra_backend.rs` behind the
+    `nalgebra` feature).
+- `src/solver.rs` + `src/solver/`: concrete solvers. Currently
+  `gradient_descent.rs` (with pluggable `step_size.rs`: `Constant`,
+  `Backtracking`) and `nelder_mead.rs`.
 
 Module convention: **newer style, no `mod.rs`**: use `src/foo.rs` for the module
 file and `src/foo/bar.rs` for submodules. Do not introduce `mod.rs` files.
