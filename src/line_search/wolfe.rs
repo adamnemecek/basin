@@ -1,0 +1,340 @@
+use crate::core::math::{Dot, ScaledAdd};
+use crate::core::problem::{CostFunction, Gradient};
+use crate::line_search::{LineSearch, LineSearchResult};
+
+/// Strong Wolfe line search via bracketing + bisection-based zoom.
+///
+/// Returns an `α > 0` along the caller-supplied descent direction `d`
+/// satisfying both
+///
+/// * Armijo (sufficient decrease): `f(x + α d) ≤ f(x) + c1 · α · ∇f(x)ᵀd`
+/// * Strong curvature: `|∇f(x + α d)ᵀd| ≤ c2 · |∇f(x)ᵀd|`
+///
+/// Defaults are the quasi-Newton conventions from Nocedal & Wright §3.5
+/// (`c1 = 1e-4`, `c2 = 0.9`) and `α_init = 1.0` so BFGS gets the unit step
+/// it expects asymptotically.
+///
+/// Algorithms 3.5 (bracketing) and 3.6 (zoom) from Nocedal & Wright. The
+/// zoom phase uses bisection (always-progress, no interpolation pitfalls);
+/// cubic-interpolation in zoom is a possible future perf improvement.
+pub struct Wolfe {
+    pub c1: f64,
+    pub c2: f64,
+    pub alpha_init: f64,
+    pub alpha_max: f64,
+    pub max_iter: u32,
+}
+
+impl Default for Wolfe {
+    fn default() -> Self {
+        Self {
+            c1: 1e-4,
+            c2: 0.9,
+            alpha_init: 1.0,
+            alpha_max: 10.0,
+            max_iter: 25,
+        }
+    }
+}
+
+impl Wolfe {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn c1(mut self, c1: f64) -> Self {
+        assert!(0.0 < c1 && c1 < 1.0, "c1 must be in (0, 1)");
+        self.c1 = c1;
+        self
+    }
+
+    pub fn c2(mut self, c2: f64) -> Self {
+        assert!(0.0 < c2 && c2 < 1.0, "c2 must be in (0, 1)");
+        self.c2 = c2;
+        self
+    }
+
+    pub fn alpha_init(mut self, alpha_init: f64) -> Self {
+        assert!(alpha_init > 0.0, "alpha_init must be > 0");
+        self.alpha_init = alpha_init;
+        self
+    }
+
+    pub fn alpha_max(mut self, alpha_max: f64) -> Self {
+        assert!(alpha_max > 0.0, "alpha_max must be > 0");
+        self.alpha_max = alpha_max;
+        self
+    }
+
+    pub fn max_iter(mut self, max_iter: u32) -> Self {
+        self.max_iter = max_iter;
+        self
+    }
+}
+
+impl<P, V> LineSearch<P, V> for Wolfe
+where
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    V: ScaledAdd<f64> + Dot + Clone,
+{
+    fn next(
+        &mut self,
+        problem: &P,
+        param: &V,
+        cost: f64,
+        gradient: &V,
+        direction: &V,
+    ) -> LineSearchResult {
+        let phi0 = cost;
+        let phi0_prime = gradient.dot(direction);
+
+        // If `direction` is not a descent direction (or `phi0_prime` is
+        // NaN), bail with α = 0 rather than looping forever. Written
+        // positively so NaN routes here too — `NaN < 0.0` is false.
+        if phi0_prime >= 0.0 || phi0_prime.is_nan() {
+            return LineSearchResult {
+                alpha: 0.0,
+                cost_evals: 0,
+                gradient_evals: 0,
+            };
+        }
+
+        let mut cost_evals = 0u64;
+        let mut gradient_evals = 0u64;
+
+        let mut alpha_prev = 0.0;
+        let mut phi_prev = phi0;
+        let mut alpha = self.alpha_init.min(self.alpha_max);
+
+        for i in 0..self.max_iter {
+            let mut trial = param.clone();
+            trial.scaled_add(alpha, direction);
+            let phi = problem.cost(&trial);
+            cost_evals += 1;
+
+            // Armijo failed OR φ stopped decreasing → minimum is in
+            // (alpha_prev, alpha). Hand to zoom.
+            if phi > phi0 + self.c1 * alpha * phi0_prime || (i > 0 && phi >= phi_prev) {
+                return self.zoom(
+                    problem,
+                    param,
+                    direction,
+                    phi0,
+                    phi0_prime,
+                    alpha_prev,
+                    phi_prev,
+                    alpha,
+                    cost_evals,
+                    gradient_evals,
+                );
+            }
+
+            let g_trial = problem.gradient(&trial);
+            gradient_evals += 1;
+            let phi_prime = g_trial.dot(direction);
+
+            // Strong curvature satisfied → accept.
+            if phi_prime.abs() <= -self.c2 * phi0_prime {
+                return LineSearchResult {
+                    alpha,
+                    cost_evals,
+                    gradient_evals,
+                };
+            }
+
+            // Slope flipped sign → minimum is in (alpha, alpha_prev). Note
+            // the swapped argument order so `alpha_lo < alpha_hi` is *not*
+            // assumed inside zoom (matches N&W).
+            if phi_prime >= 0.0 {
+                return self.zoom(
+                    problem,
+                    param,
+                    direction,
+                    phi0,
+                    phi0_prime,
+                    alpha,
+                    phi,
+                    alpha_prev,
+                    cost_evals,
+                    gradient_evals,
+                );
+            }
+
+            alpha_prev = alpha;
+            phi_prev = phi;
+            // Expansion: double, capped at alpha_max. Once we're at the
+            // cap, the next iteration's φ check will end up in zoom anyway.
+            let next_alpha = (alpha * 2.0).min(self.alpha_max);
+            if next_alpha == alpha {
+                // Cannot expand further. Best we can do is return current
+                // α — Armijo is satisfied here even if curvature isn't.
+                return LineSearchResult {
+                    alpha,
+                    cost_evals,
+                    gradient_evals,
+                };
+            }
+            alpha = next_alpha;
+        }
+
+        // Bracketing exhausted without locating a Wolfe step; return the
+        // last α (Armijo held there). Caller (BFGS) treats this like any
+        // other α — the curvature condition guard will detect the failure
+        // and skip the H update if needed.
+        LineSearchResult {
+            alpha,
+            cost_evals,
+            gradient_evals,
+        }
+    }
+}
+
+impl Wolfe {
+    /// Zoom on bracket `(alpha_lo, alpha_hi)` with `φ(alpha_lo) = phi_lo`.
+    /// `alpha_hi` may be either side of `alpha_lo`; the algorithm only
+    /// requires that the bracket contains a Wolfe-satisfying step.
+    #[allow(clippy::too_many_arguments)]
+    fn zoom<P, V>(
+        &self,
+        problem: &P,
+        param: &V,
+        direction: &V,
+        phi0: f64,
+        phi0_prime: f64,
+        mut alpha_lo: f64,
+        mut phi_lo: f64,
+        mut alpha_hi: f64,
+        mut cost_evals: u64,
+        mut gradient_evals: u64,
+    ) -> LineSearchResult
+    where
+        P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+        V: ScaledAdd<f64> + Dot + Clone,
+    {
+        for _ in 0..self.max_iter {
+            // Bisection. Cubic-safeguarded interpolation would converge
+            // faster but is brittle; bisection always halves the bracket.
+            let alpha_j = 0.5 * (alpha_lo + alpha_hi);
+
+            let mut trial = param.clone();
+            trial.scaled_add(alpha_j, direction);
+            let phi_j = problem.cost(&trial);
+            cost_evals += 1;
+
+            if phi_j > phi0 + self.c1 * alpha_j * phi0_prime || phi_j >= phi_lo {
+                alpha_hi = alpha_j;
+            } else {
+                let g_j = problem.gradient(&trial);
+                gradient_evals += 1;
+                let phi_j_prime = g_j.dot(direction);
+
+                if phi_j_prime.abs() <= -self.c2 * phi0_prime {
+                    return LineSearchResult {
+                        alpha: alpha_j,
+                        cost_evals,
+                        gradient_evals,
+                    };
+                }
+
+                if phi_j_prime * (alpha_hi - alpha_lo) >= 0.0 {
+                    alpha_hi = alpha_lo;
+                }
+                alpha_lo = alpha_j;
+                phi_lo = phi_j;
+            }
+
+            // Bracket collapsed — return the best α we have.
+            if (alpha_hi - alpha_lo).abs() <= f64::EPSILON * alpha_hi.abs().max(1.0) {
+                break;
+            }
+        }
+
+        LineSearchResult {
+            alpha: alpha_lo,
+            cost_evals,
+            gradient_evals,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Simple 1D quadratic via Vec<f64>: f(x) = (x[0] - 3)^2.
+    /// Minimum at x = 3, ∇f = 2(x - 3).
+    struct Quadratic;
+
+    impl CostFunction for Quadratic {
+        type Param = Vec<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Vec<f64>) -> f64 {
+            (x[0] - 3.0).powi(2)
+        }
+    }
+
+    impl Gradient for Quadratic {
+        type Param = Vec<f64>;
+        type Gradient = Vec<f64>;
+        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+            vec![2.0 * (x[0] - 3.0)]
+        }
+    }
+
+    #[test]
+    fn satisfies_strong_wolfe_on_quadratic() {
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![-g[0]]; // = +6, descent direction since g[0] = -6
+        let mut ls = Wolfe::new();
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        assert!(r.alpha > 0.0);
+
+        // Verify Armijo and strong curvature at the returned α.
+        let c1 = 1e-4;
+        let c2 = 0.9;
+        let mut x_new = x.clone();
+        x_new[0] += r.alpha * d[0];
+        let f_new = p.cost(&x_new);
+        let g_new = p.gradient(&x_new);
+        let g0_dot_d = g[0] * d[0];
+        let gnew_dot_d = g_new[0] * d[0];
+
+        assert!(
+            f_new <= f0 + c1 * r.alpha * g0_dot_d + 1e-12,
+            "Armijo failed: f_new={f_new}, threshold={}",
+            f0 + c1 * r.alpha * g0_dot_d,
+        );
+        assert!(
+            gnew_dot_d.abs() <= -c2 * g0_dot_d + 1e-12,
+            "Strong curvature failed: |g_new·d|={}, threshold={}",
+            gnew_dot_d.abs(),
+            -c2 * g0_dot_d,
+        );
+    }
+
+    #[test]
+    fn unit_step_accepted_when_quadratic_minimum_inside_bracket() {
+        // For a 1D quadratic with minimum at x_min=3, starting at x=0 with
+        // d = -g = 6, the exact line minimum is α* = 0.5. Wolfe should land
+        // close to it with strong curvature.
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![6.0];
+        let mut ls = Wolfe::new();
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        // Strong curvature with c2=0.9 admits a wide range; just check we
+        // ended up reasonably close to the line minimum.
+        assert!(
+            (r.alpha - 0.5).abs() < 0.5,
+            "expected α near 0.5, got {}",
+            r.alpha
+        );
+    }
+}

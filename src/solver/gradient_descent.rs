@@ -1,4 +1,4 @@
-use crate::core::math::ScaledAdd;
+use crate::core::math::{NegInPlace, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
@@ -25,7 +25,7 @@ impl<S> GradientDescent<S> {
 impl<P, V, S> Solver<P, BasicState<V>> for GradientDescent<S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
-    V: ScaledAdd<f64>,
+    V: ScaledAdd<f64> + NegInPlace + Clone,
     S: LineSearch<P, V>,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
@@ -47,11 +47,14 @@ where
         let prev_cost = state
             .cost
             .expect("cost not set: Solver::init must run before next_iter");
+        let mut direction = grad.clone();
+        direction.neg_in_place();
         let step = self
             .line_search
-            .next(problem, &state.param, prev_cost, &grad);
+            .next(problem, &state.param, prev_cost, &grad, &direction);
         state.cost_evals += step.cost_evals;
-        state.param.scaled_add(-step.alpha, &grad);
+        state.gradient_evals += step.gradient_evals;
+        state.param.scaled_add(step.alpha, &direction);
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;

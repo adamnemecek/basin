@@ -279,3 +279,89 @@ impl<V> SimplexState for BasicSimplexState<V> {
         &self.costs
     }
 }
+
+/// State for quasi-Newton solvers that maintain a dense inverse-Hessian
+/// approximation `H ≈ ∇²f(x)⁻¹` (BFGS, DFP, SR1).
+///
+/// Hardcoded to nalgebra dynamic vectors/matrices for v1 (BFGS only
+/// supports the nalgebra backend — see `solver::bfgs` doc). L-BFGS will
+/// need a different state shape (history of `(s, y)` pairs) when it lands.
+///
+/// `initial_scaling_done` tracks whether we've applied the standard
+/// `H₀ ← (sᵀy / yᵀy)·I` rescaling after the first accepted step (Nocedal
+/// & Wright (6.20)). This makes the unit step well-scaled on poorly
+/// conditioned problems where plain identity initialization stalls.
+#[cfg(feature = "nalgebra")]
+pub struct QuasiNewtonState<V, M> {
+    pub(crate) param: V,
+    pub(crate) cost: Option<f64>,
+    pub(crate) gradient: Option<V>,
+    pub(crate) inverse_hessian: M,
+    pub(crate) initial_scaling_done: bool,
+    pub(crate) iter: u64,
+    pub(crate) cost_evals: u64,
+    pub(crate) gradient_evals: u64,
+}
+
+#[cfg(feature = "nalgebra")]
+impl QuasiNewtonState<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>> {
+    pub fn new(param: nalgebra::DVector<f64>) -> Self {
+        let n = param.len();
+        Self {
+            param,
+            cost: None,
+            gradient: None,
+            inverse_hessian: nalgebra::DMatrix::identity(n, n),
+            initial_scaling_done: false,
+            iter: 0,
+            cost_evals: 0,
+            gradient_evals: 0,
+        }
+    }
+}
+
+#[cfg(feature = "nalgebra")]
+impl<V, M> State for QuasiNewtonState<V, M> {
+    type Param = V;
+    type Float = f64;
+
+    fn iter(&self) -> u64 {
+        self.iter
+    }
+
+    fn increment_iter(&mut self) {
+        self.iter += 1;
+    }
+
+    fn cost_evals(&self) -> u64 {
+        self.cost_evals
+    }
+
+    fn increment_cost_evals(&mut self, by: u64) {
+        self.cost_evals += by;
+    }
+
+    fn param(&self) -> &V {
+        &self.param
+    }
+
+    fn cost(&self) -> f64 {
+        self.cost
+            .expect("QuasiNewtonState::cost read before Solver::init populated it")
+    }
+}
+
+#[cfg(feature = "nalgebra")]
+impl<V, M> GradientState for QuasiNewtonState<V, M> {
+    fn gradient(&self) -> Option<&V> {
+        self.gradient.as_ref()
+    }
+
+    fn gradient_evals(&self) -> u64 {
+        self.gradient_evals
+    }
+
+    fn increment_gradient_evals(&mut self, by: u64) {
+        self.gradient_evals += by;
+    }
+}
