@@ -43,6 +43,8 @@ jobs:
             flags: "--features nalgebra"
           - features: ndarray
             flags: "--features ndarray"
+          - features: faer
+            flags: "--features faer"
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
@@ -64,6 +66,8 @@ jobs:
             flags: "--features nalgebra"
           - features: ndarray
             flags: "--features ndarray"
+          - features: faer
+            flags: "--features faer"
     steps:
       - uses: actions/checkout@v4
       - name: Add wasm target

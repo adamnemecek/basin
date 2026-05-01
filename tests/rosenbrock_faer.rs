@@ -1,38 +1,39 @@
-#![cfg(feature = "nalgebra")]
+#![cfg(feature = "faer")]
 
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
     NelderMead,
 };
-use nalgebra::DVector;
+use faer::Col;
 
 struct Rosenbrock;
 
 impl CostFunction for Rosenbrock {
-    type Param = DVector<f64>;
+    type Param = Col<f64>;
     type Output = f64;
 
-    fn cost(&self, x: &DVector<f64>) -> f64 {
+    fn cost(&self, x: &Col<f64>) -> f64 {
         (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
     }
 }
 
 impl Gradient for Rosenbrock {
-    type Param = DVector<f64>;
-    type Gradient = DVector<f64>;
+    type Param = Col<f64>;
+    type Gradient = Col<f64>;
 
-    fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-        DVector::from_vec(vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ])
+    fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        Col::from_fn(2, |i| match i {
+            0 => -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
+            1 => 200.0 * (x[1] - x[0].powi(2)),
+            _ => unreachable!(),
+        })
     }
 }
 
 #[test]
-fn gradient_descent_with_nalgebra_dvector() {
+fn gradient_descent_with_faer_col() {
     let problem = Rosenbrock;
-    let initial = DVector::from_vec(vec![-1.2, 1.0]);
+    let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
     let initial_cost = problem.cost(&initial);
 
     let result = Executor::new(
@@ -52,9 +53,9 @@ fn gradient_descent_with_nalgebra_dvector() {
 }
 
 #[test]
-fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
+fn gradient_descent_with_faer_col_and_backtracking() {
     let problem = Rosenbrock;
-    let initial = DVector::from_vec(vec![-1.2, 1.0]);
+    let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
     let initial_cost = problem.cost(&initial);
 
     let result = Executor::new(
@@ -74,9 +75,9 @@ fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
 }
 
 #[test]
-fn nelder_mead_with_nalgebra_dvector() {
+fn nelder_mead_with_faer_col() {
     let problem = Rosenbrock;
-    let initial = DVector::from_vec(vec![-1.2, 1.0]);
+    let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
 
     let result = Executor::new(
         problem,

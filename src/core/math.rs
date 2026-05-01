@@ -17,3 +17,6 @@ mod nalgebra_backend;
 
 #[cfg(feature = "ndarray")]
 mod ndarray_backend;
+
+#[cfg(feature = "faer")]
+mod faer_backend;

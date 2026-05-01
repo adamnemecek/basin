@@ -13,9 +13,9 @@ free to iterate on it and make breaking changes as needed.
 `basin` is a Rust library crate for numerical optimization, inspired by
 `argmin`. The framework (problem traits, state, solver loop, termination
 layer, math abstraction) is in place along with two concrete solvers
-(gradient descent, Nelder-Mead) and two param backends (`Vec<f64>`,
-`nalgebra`). The public API is still iterating; see the "State" section
-above.
+(gradient descent, Nelder-Mead) and four param backends (`Vec<f64>`,
+`nalgebra`, `ndarray`, `faer`). The public API is still iterating; see the
+"State" section above.
 
 ## Commands
 

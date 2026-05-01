@@ -188,6 +188,25 @@ impl IntoInitialSimplex<nalgebra::DVector<f64>> for nalgebra::DVector<f64> {
     }
 }
 
+#[cfg(feature = "faer")]
+impl IntoInitialSimplex<faer::Col<f64>> for faer::Col<f64> {
+    fn into_initial_simplex(self, relative_step: f64) -> Vec<faer::Col<f64>> {
+        let n = self.nrows();
+        let mut simplex = Vec::with_capacity(n + 1);
+        simplex.push(self.clone());
+        for i in 0..n {
+            let mut v = self.clone();
+            v[i] = if self[i] != 0.0 {
+                (1.0 + relative_step) * self[i]
+            } else {
+                0.00025
+            };
+            simplex.push(v);
+        }
+        simplex
+    }
+}
+
 #[cfg(feature = "ndarray")]
 impl IntoInitialSimplex<ndarray::Array1<f64>> for ndarray::Array1<f64> {
     fn into_initial_simplex(self, relative_step: f64) -> Vec<ndarray::Array1<f64>> {

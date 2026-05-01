@@ -1,3 +1,5 @@
+#![cfg(feature = "ndarray")]
+
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
     NelderMead,

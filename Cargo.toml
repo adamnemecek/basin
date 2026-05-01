@@ -31,10 +31,14 @@ path = "src/lib.rs"
 
 [features]
 default = []
-# Pin one version per backend (tenet 2 in AGENTS.md). A nalgebra/ndarray major
-# bump becomes a basin major bump — do not introduce per-version features.
+# Pin one version per backend (tenet 2 in AGENTS.md). A backend major bump
+# becomes a basin major bump — do not introduce per-version features.
 nalgebra = ["dep:nalgebra"]
 ndarray = ["dep:ndarray"]
+# `generativity` is pulled in transitively by faer; we force the older 1.1
+# line because 1.2.1 requires edition2024 (Rust 1.85+), above basin's MSRV.
+# Listed here so it only enters the dep graph when `faer` is enabled.
+faer = ["dep:faer", "dep:generativity"]
 
 [dependencies]
 # Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
@@ -43,6 +47,15 @@ nalgebra = { version = "0.33", optional = true }
 # Pure-Rust (no BLAS feature) so it stays wasm-compatible per the WASM hard
 # constraint in AGENTS.md. 0.16's MSRV is well below basin's 1.84.1.
 ndarray = { version = "0.16", optional = true, default-features = false }
+# default-features off because faer's defaults pull in rayon (breaks wasm,
+# tenet: no parallelism in default features) and npy (file I/O). We enable
+# only `std` + `linalg` so the core dense types work on native and wasm.
+# faer 0.24 has rust-version = 1.84.0, exactly at basin's MSRV.
+faer = { version = "0.24", optional = true, default-features = false, features = ["std", "linalg"] }
+# Transitive dep of faer. Pinned to 1.1 because 1.2.1 requires edition2024
+# (Rust 1.85+), above basin's MSRV 1.84.1 (CRAN constraint — see AGENTS.md).
+# basin doesn't use this crate directly. Drop the pin once CRAN's pin moves.
+generativity = { version = "1.1", optional = true }
 # Re-exports `std::time::Instant` on native and a wasm-compatible shim on
 # `wasm32-unknown-unknown`, so `MaxTime` works on both without feature gating.
 # Tiny crate, MSRV 1.60, no transitive deps on native.
@@ -57,10 +70,7 @@ web-time = "1"
 name = "rosenbrock"
 harness = false
 
-[[test]]
-name = "rosenbrock_nalgebra"
-required-features = ["nalgebra"]
-
-[[test]]
-name = "rosenbrock_ndarray"
-required-features = ["ndarray"]
+# Per-backend integration tests (`tests/rosenbrock_<backend>.rs`) gate
+# themselves with `#![cfg(feature = "<backend>")]` rather than declaring
+# `required-features` here — keeps the manifest free of one stanza per
+# backend.
