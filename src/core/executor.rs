@@ -34,6 +34,49 @@ impl<S: State> OptimizationResult<S> {
     }
 }
 
+/// Drive a solver to completion against a borrowed problem.
+///
+/// `Executor` is a thin owning wrapper over this. Composed solvers
+/// (e.g. CG inside CMA, NM inside DE) call `run_loop` directly so they
+/// can run an inner solver against the outer's `&P` without taking
+/// ownership of the problem.
+///
+/// Semantics match `Executor::run`: `init` is called once, then on each
+/// iteration framework `criteria` are checked in insertion order before
+/// the solver's own `terminate` hook, before stepping. `max_iter` is
+/// checked against `state.iter()` and exits with `TerminationReason::MaxIter`.
+pub fn run_loop<P, S, So>(
+    problem: &P,
+    mut state: S,
+    solver: &mut So,
+    criteria: &mut [Box<dyn TerminationCriterion<S>>],
+    max_iter: u64,
+) -> OptimizationResult<S>
+where
+    S: State,
+    So: Solver<P, S>,
+{
+    state = solver.init(problem, state);
+    loop {
+        if state.iter() >= max_iter {
+            return OptimizationResult {
+                state,
+                reason: TerminationReason::MaxIter,
+            };
+        }
+        for criterion in criteria.iter_mut() {
+            if let Some(reason) = criterion.check(&state) {
+                return OptimizationResult { state, reason };
+            }
+        }
+        if let Some(reason) = solver.terminate(&state) {
+            return OptimizationResult { state, reason };
+        }
+        state = solver.next_iter(problem, state);
+        state.increment_iter();
+    }
+}
+
 pub struct Executor<P, S, So> {
     problem: P,
     state: S,
@@ -76,31 +119,14 @@ where
         self
     }
 
-    pub fn run(mut self) -> OptimizationResult<S> {
-        self.state = self.solver.init(&self.problem, self.state);
-        loop {
-            if self.state.iter() >= self.max_iter {
-                return OptimizationResult {
-                    state: self.state,
-                    reason: TerminationReason::MaxIter,
-                };
-            }
-            for criterion in &mut self.criteria {
-                if let Some(reason) = criterion.check(&self.state) {
-                    return OptimizationResult {
-                        state: self.state,
-                        reason,
-                    };
-                }
-            }
-            if let Some(reason) = self.solver.terminate(&self.state) {
-                return OptimizationResult {
-                    state: self.state,
-                    reason,
-                };
-            }
-            self.state = self.solver.next_iter(&self.problem, self.state);
-            self.state.increment_iter();
-        }
+    pub fn run(self) -> OptimizationResult<S> {
+        let Executor {
+            problem,
+            state,
+            mut solver,
+            max_iter,
+            mut criteria,
+        } = self;
+        run_loop(&problem, state, &mut solver, &mut criteria, max_iter)
     }
 }

@@ -1,7 +1,7 @@
 pub mod core;
 pub mod solver;
 
-pub use crate::core::executor::{Executor, OptimizationResult};
+pub use crate::core::executor::{run_loop, Executor, OptimizationResult};
 pub use crate::core::math::{NormInfinity, NormSquared, ScaledAdd};
 pub use crate::core::problem::{CostFunction, Gradient};
 pub use crate::core::solver::Solver;
