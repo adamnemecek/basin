@@ -14,3 +14,6 @@ mod vec;
 
 #[cfg(feature = "nalgebra")]
 mod nalgebra_backend;
+
+#[cfg(feature = "ndarray")]
+mod ndarray_backend;

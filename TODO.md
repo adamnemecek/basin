@@ -19,8 +19,6 @@ the previous lands.
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
       provisional-choices section in `AGENTS.md`. Triggered by the first
       stochastic solver or a real f32 use case.
-- [ ] **`ndarray`backend.** `nalgebra` is in; add `ndarray` behind a `ndarray`
-      feature when the first user/example wants it.
 - [ ] **Real bench tool (divan / Criterion) when MSRV pressure lifts.**
       Hand-rolled bench works for now; revisit when CRAN's Rust pin moves past
       1.85.
@@ -46,8 +44,8 @@ gets harder to fix as more code piles on.
       type signatures. Do this *before* the larger rustdoc pass since these
       pin down current decisions.
 - [ ] **Share the Rosenbrock test problem across backends.** `tests/
-      rosenbrock.rs` and `tests/rosenbrock_nalgebra.rs` are 90% duplicate.
-      When `ndarray` lands it'll be three copies. Extract a
+      rosenbrock.rs`, `tests/rosenbrock_nalgebra.rs`, and `tests/
+      rosenbrock_ndarray.rs` are 90% duplicate. Extract a
       `tests/common/rosenbrock.rs` module or a generic helper. Cheap now,
       gets worse linearly.
 - [ ] **`ParamVec<F>` marker for solvers doing linear algebra on params.**
