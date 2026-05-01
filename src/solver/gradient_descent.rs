@@ -34,6 +34,7 @@ where
         // complete state. Same work we'd do on iter 1, hoisted.
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
+        state.cost_evals += 1;
         state
     }
 
@@ -45,10 +46,12 @@ where
         let prev_cost = state
             .cost
             .expect("cost not set: Solver::init must run before next_iter");
-        let alpha = self.step_size.next(problem, &state.param, prev_cost, &grad);
-        state.param.scaled_add(-alpha, &grad);
+        let step = self.step_size.next(problem, &state.param, prev_cost, &grad);
+        state.cost_evals += step.cost_evals;
+        state.param.scaled_add(-step.alpha, &grad);
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
+        state.cost_evals += 1;
         state
     }
 }

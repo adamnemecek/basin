@@ -6,6 +6,7 @@ use crate::core::state::{GradientState, SimplexState, State};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminationReason {
     MaxIter,
+    MaxCostEvals,
     GradientTolerance,
     ParamTolerance,
     CostTolerance,
@@ -35,6 +36,22 @@ impl<S: State> TerminationCriterion<S> for MaxIter {
     fn check(&mut self, state: &S) -> Option<TerminationReason> {
         if state.iter() >= self.0 {
             Some(TerminationReason::MaxIter)
+        } else {
+            None
+        }
+    }
+}
+
+/// Stop after `state.cost_evals() >= n` cost-function evaluations.
+/// Lagarias et al. (1998) (T3) — the budget users actually care about
+/// when one iteration can spend many evals (line search, Nelder-Mead
+/// shrink).
+pub struct MaxCostEvals(pub u64);
+
+impl<S: State> TerminationCriterion<S> for MaxCostEvals {
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        if state.cost_evals() >= self.0 {
+            Some(TerminationReason::MaxCostEvals)
         } else {
             None
         }

@@ -4,6 +4,12 @@ pub trait State {
 
     fn iter(&self) -> u64;
     fn increment_iter(&mut self);
+    /// Cumulative count of cost-function evaluations performed so far.
+    /// Diverges from `iter()` whenever a single iteration evaluates the
+    /// cost more than once (line searches, Nelder-Mead shrinks, etc.) —
+    /// this is what users actually budget against.
+    fn cost_evals(&self) -> u64;
+    fn increment_cost_evals(&mut self, by: u64);
     fn param(&self) -> &Self::Param;
     fn cost(&self) -> Self::Float;
 }
@@ -35,6 +41,7 @@ pub struct BasicState<P> {
     pub(crate) cost: Option<f64>,
     pub(crate) gradient: Option<P>,
     pub(crate) iter: u64,
+    pub(crate) cost_evals: u64,
 }
 
 impl<P> BasicState<P> {
@@ -44,6 +51,7 @@ impl<P> BasicState<P> {
             cost: None,
             gradient: None,
             iter: 0,
+            cost_evals: 0,
         }
     }
 }
@@ -58,6 +66,14 @@ impl<P> State for BasicState<P> {
 
     fn increment_iter(&mut self) {
         self.iter += 1;
+    }
+
+    fn cost_evals(&self) -> u64 {
+        self.cost_evals
+    }
+
+    fn increment_cost_evals(&mut self, by: u64) {
+        self.cost_evals += by;
     }
 
     fn param(&self) -> &P {
@@ -87,6 +103,7 @@ pub struct BasicSimplexState<V> {
     pub(crate) vertices: Vec<V>,
     pub(crate) costs: Vec<f64>,
     pub(crate) iter: u64,
+    pub(crate) cost_evals: u64,
 }
 
 impl<V> BasicSimplexState<V> {
@@ -104,6 +121,7 @@ impl<V> BasicSimplexState<V> {
             vertices,
             costs: vec![f64::INFINITY; n],
             iter: 0,
+            cost_evals: 0,
         }
     }
 }
@@ -180,6 +198,14 @@ impl<V> State for BasicSimplexState<V> {
 
     fn increment_iter(&mut self) {
         self.iter += 1;
+    }
+
+    fn cost_evals(&self) -> u64 {
+        self.cost_evals
+    }
+
+    fn increment_cost_evals(&mut self, by: u64) {
+        self.cost_evals += by;
     }
 
     fn param(&self) -> &V {

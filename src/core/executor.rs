@@ -25,6 +25,10 @@ impl<S: State> OptimizationResult<S> {
         self.state.iter()
     }
 
+    pub fn cost_evals(&self) -> u64 {
+        self.state.cost_evals()
+    }
+
     pub fn into_state(self) -> S {
         self.state
     }

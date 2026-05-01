@@ -56,14 +56,5 @@ gets harder to fix as more code piles on.
       blanket-impl marker like
       `trait ParamVec<F>: Clone + ScaledAdd<F> + NormSquared {}` once the
       third solver wants it — premature with only two users.
-- [ ] **Track function-evaluation count on `State`.** Paper's (T3)
-      criterion is `MaxFunEvals`, and a Nelder-Mead shrink does `n` evals
-      while a normal step does 1–2 — so `iter` and `nfev` diverge, and
-      `nfev` is what users actually budget against. Same need will hit any
-      line-search-heavy method (L-BFGS, etc.). Add `nfev()` to `State` and
-      have solvers/problems increment it; pairs with a `MaxFunEvals`
-      termination criterion. Trigger: first user who asks "why does
-      `max_iter=1000` actually evaluate the function 8000 times?"
-
 See `AGENTS.md` for the design tenets and constraints that shape these
 decisions.

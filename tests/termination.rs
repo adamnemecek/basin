@@ -1,7 +1,7 @@
 use basin::{
-    BasicState, CostFunction, CostTolerance, Executor, Gradient, GradientDescent, GradientState,
-    GradientTolerance, MaxIter, MaxTime, ParamTolerance, Solver, State, TerminationCriterion,
-    TerminationReason,
+    Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
+    GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxIter, MaxTime, NelderMead,
+    ParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -186,6 +186,78 @@ impl<S: State> TerminationCriterion<S> for StopAt {
     fn check(&mut self, state: &S) -> Option<TerminationReason> {
         (state.iter() == self.0).then_some(TerminationReason::SolverConverged)
     }
+}
+
+#[test]
+fn cost_evals_matches_iter_for_constant_step_gradient_descent() {
+    // Constant step + cost+gradient per iter ⇒ exactly 1 cost eval per
+    // iter, plus 1 in init. So cost_evals == iter + 1.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![10.0, 10.0]),
+    )
+    .terminate_on(MaxIter(20))
+    .run();
+
+    assert_eq!(result.iter(), 20);
+    assert_eq!(result.state.cost_evals(), 21);
+}
+
+#[test]
+fn cost_evals_exceeds_iter_with_backtracking() {
+    // Each backtracking call evaluates the cost at least once. A
+    // sufficiently aggressive `alpha_init` forces several rejections on
+    // most iterations, so cost_evals > iter + 1.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::with_step_size(Backtracking::new().alpha_init(8.0).rho(0.5)),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .terminate_on(MaxIter(10))
+    .run();
+
+    assert_eq!(result.iter(), 10);
+    assert!(
+        result.state.cost_evals() > result.iter() + 1,
+        "expected line search to inflate cost_evals beyond iter+1: cost_evals={}, iter={}",
+        result.state.cost_evals(),
+        result.iter()
+    );
+}
+
+#[test]
+fn cost_evals_exceeds_iter_for_nelder_mead_shrinks() {
+    // Init evaluates n+1 vertices and each iteration spends 1–2 extra
+    // cost evals (more on shrink), so cost_evals ≥ iter + 3.
+    let result = Executor::new(
+        Quadratic,
+        NelderMead::standard(),
+        BasicSimplexState::new(vec![2.0, -3.0]),
+    )
+    .terminate_on(MaxIter(50))
+    .run();
+
+    assert!(result.state.cost_evals() >= result.iter() + 3);
+}
+
+#[test]
+fn max_cost_evals_fires_before_max_iter() {
+    let result = Executor::new(
+        Quadratic,
+        NelderMead::standard(),
+        BasicSimplexState::new(vec![5.0, -2.0, 4.0]),
+    )
+    .max_iter(10_000)
+    .terminate_on(MaxCostEvals(25))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxCostEvals);
+    assert!(
+        result.state.cost_evals() >= 25,
+        "cost_evals should have reached the budget: {}",
+        result.state.cost_evals()
+    );
 }
 
 #[test]

@@ -155,6 +155,7 @@ where
         for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
             *c = problem.cost(v);
         }
+        state.cost_evals += state.vertices.len() as u64;
         sort_simplex(&mut state.vertices, &mut state.costs);
         state
     }
@@ -178,6 +179,7 @@ where
         // Reflection: x_r = x_bar + α(x_bar − x_{n+1}) = (1+α)·x_bar − α·x_{n+1}
         let x_r = affine(&x_bar, &state.vertices[worst], -p.alpha);
         let fr = problem.cost(&x_r);
+        state.cost_evals += 1;
 
         if f1 <= fr && fr < fn_ {
             // Accept reflection.
@@ -187,6 +189,7 @@ where
             // Try expansion: x_e = x_bar + β(x_r − x_bar).
             let x_e = affine(&x_bar, &x_r, p.beta);
             let fe = problem.cost(&x_e);
+            state.cost_evals += 1;
             if fe < fr {
                 state.vertices[worst] = x_e;
                 state.costs[worst] = fe;
@@ -199,6 +202,7 @@ where
             // x_oc = x_bar + γ(x_r − x_bar).
             let x_oc = affine(&x_bar, &x_r, p.gamma);
             let foc = problem.cost(&x_oc);
+            state.cost_evals += 1;
             if foc <= fr {
                 state.vertices[worst] = x_oc;
                 state.costs[worst] = foc;
@@ -210,6 +214,7 @@ where
             // x_ic = x_bar − γ(x_bar − x_{n+1}) = (1−γ)·x_bar + γ·x_{n+1}.
             let x_ic = affine(&x_bar, &state.vertices[worst], p.gamma);
             let fic = problem.cost(&x_ic);
+            state.cost_evals += 1;
             if fic < fnp1 {
                 state.vertices[worst] = x_ic;
                 state.costs[worst] = fic;
@@ -233,9 +238,11 @@ impl NelderMead {
         // Split-borrow lets us read x[0] while mutating x[i].
         let (best_slice, rest) = state.vertices.split_at_mut(1);
         let best = &best_slice[0];
+        let n_shrunk = rest.len() as u64;
         for (v, c) in rest.iter_mut().zip(&mut state.costs[1..]) {
             *v = affine(best, v, delta);
             *c = problem.cost(v);
         }
+        state.cost_evals += n_shrunk;
     }
 }
