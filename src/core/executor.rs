@@ -25,10 +25,6 @@ impl<S: State> OptimizationResult<S> {
         self.state.iter()
     }
 
-    pub fn reason(&self) -> TerminationReason {
-        self.reason
-    }
-
     pub fn into_state(self) -> S {
         self.state
     }

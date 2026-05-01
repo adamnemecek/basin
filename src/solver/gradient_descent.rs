@@ -32,7 +32,7 @@ where
         // Seed cost and gradient at the initial param so iter-0 termination
         // checks (e.g. `GradientTolerance` on a near-optimal start) see a
         // complete state. Same work we'd do on iter 1, hoisted.
-        state.cost = problem.cost(&state.param);
+        state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state
     }
@@ -42,11 +42,12 @@ where
             .gradient
             .take()
             .expect("gradient not set: Solver::init must run before next_iter");
-        let alpha = self
-            .step_size
-            .next(problem, &state.param, state.cost, &grad);
+        let prev_cost = state
+            .cost
+            .expect("cost not set: Solver::init must run before next_iter");
+        let alpha = self.step_size.next(problem, &state.param, prev_cost, &grad);
         state.param.scaled_add(-alpha, &grad);
-        state.cost = problem.cost(&state.param);
+        state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state
     }

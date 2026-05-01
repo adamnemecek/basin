@@ -19,17 +19,17 @@ pub trait GradientState: State {
 }
 
 pub struct BasicState<P> {
-    pub param: P,
-    pub cost: f64,
-    pub gradient: Option<P>,
-    pub iter: u64,
+    pub(crate) param: P,
+    pub(crate) cost: Option<f64>,
+    pub(crate) gradient: Option<P>,
+    pub(crate) iter: u64,
 }
 
 impl<P> BasicState<P> {
     pub fn new(param: P) -> Self {
         Self {
             param,
-            cost: f64::INFINITY,
+            cost: None,
             gradient: None,
             iter: 0,
         }
@@ -52,8 +52,12 @@ impl<P> State for BasicState<P> {
         &self.param
     }
 
+    /// Reads the cost cached at the current `param`. Panics if accessed
+    /// before `Solver::init` has run — by contract, `Executor::run` calls
+    /// `init` before any criterion check, so this is safe in practice.
     fn cost(&self) -> f64 {
         self.cost
+            .expect("BasicState::cost read before Solver::init populated it")
     }
 }
 
@@ -70,9 +74,23 @@ impl<P> GradientState for BasicState<P> {
 /// every `next_iter`, so `param()` and `cost()` always return the current
 /// best vertex.
 pub struct SimplexState<V> {
-    pub vertices: Vec<V>,
-    pub costs: Vec<f64>,
-    pub iter: u64,
+    pub(crate) vertices: Vec<V>,
+    pub(crate) costs: Vec<f64>,
+    pub(crate) iter: u64,
+}
+
+impl<V> SimplexState<V> {
+    /// Read-only access to the simplex vertices, sorted by ascending cost
+    /// at the start and end of every iteration.
+    pub fn vertices(&self) -> &[V] {
+        &self.vertices
+    }
+
+    /// Read-only access to the per-vertex cached costs, parallel to
+    /// `vertices()`.
+    pub fn costs(&self) -> &[f64] {
+        &self.costs
+    }
 }
 
 impl<V> SimplexState<V> {
@@ -93,41 +111,66 @@ impl<V> SimplexState<V> {
     }
 }
 
-impl SimplexState<Vec<f64>> {
-    /// Build a simplex around a starting point using the FMINSEARCH/SciPy
-    /// default: each non-zero coordinate `i` perturbs to `1.05 · x0[i]`,
-    /// zero coordinates use an absolute step of `0.00025`. Mirrors
-    /// `BasicState::new` ergonomically — the solver infers dimension from
-    /// `x0`.
-    pub fn new(x0: Vec<f64>) -> Self {
-        Self::from_simplex(default_simplex(&x0))
+/// FMINSEARCH/SciPy-style initial simplex from a single starting point.
+///
+/// Implemented per backend (`Vec<f64>`, `nalgebra::DVector<f64>`, …) so a
+/// single `SimplexState::new(x0)` constructor works uniformly across
+/// backends. The default step is 5% on non-zero coordinates and an
+/// absolute `0.00025` on zero coordinates.
+pub trait IntoInitialSimplex<V> {
+    fn into_initial_simplex(self, relative_step: f64) -> Vec<V>;
+}
+
+impl IntoInitialSimplex<Vec<f64>> for Vec<f64> {
+    fn into_initial_simplex(self, relative_step: f64) -> Vec<Vec<f64>> {
+        let n = self.len();
+        let mut simplex = Vec::with_capacity(n + 1);
+        simplex.push(self.clone());
+        for i in 0..n {
+            let mut v = self.clone();
+            v[i] = if self[i] != 0.0 {
+                (1.0 + relative_step) * self[i]
+            } else {
+                0.00025
+            };
+            simplex.push(v);
+        }
+        simplex
+    }
+}
+
+#[cfg(feature = "nalgebra")]
+impl IntoInitialSimplex<nalgebra::DVector<f64>> for nalgebra::DVector<f64> {
+    fn into_initial_simplex(self, relative_step: f64) -> Vec<nalgebra::DVector<f64>> {
+        let n = self.len();
+        let mut simplex = Vec::with_capacity(n + 1);
+        simplex.push(self.clone());
+        for i in 0..n {
+            let mut v = self.clone();
+            v[i] = if self[i] != 0.0 {
+                (1.0 + relative_step) * self[i]
+            } else {
+                0.00025
+            };
+            simplex.push(v);
+        }
+        simplex
+    }
+}
+
+impl<V> SimplexState<V> {
+    /// Build an FMINSEARCH/SciPy-style simplex around a starting point
+    /// `x0`. Mirrors `BasicState::new` ergonomically — the solver infers
+    /// dimension from the simplex during `init`.
+    pub fn new<X: IntoInitialSimplex<V>>(x0: X) -> Self {
+        Self::from_simplex(x0.into_initial_simplex(0.05))
     }
 
-    /// Like `new`, but with a custom relative step (defaults to `0.05`).
+    /// Like `new`, but with a custom relative step (default is `0.05`).
     /// Zero coordinates still use the FMINSEARCH absolute step `0.00025`.
-    pub fn with_step(x0: Vec<f64>, relative_step: f64) -> Self {
-        Self::from_simplex(simplex_with_step(&x0, relative_step))
+    pub fn with_step<X: IntoInitialSimplex<V>>(x0: X, relative_step: f64) -> Self {
+        Self::from_simplex(x0.into_initial_simplex(relative_step))
     }
-}
-
-fn default_simplex(x0: &[f64]) -> Vec<Vec<f64>> {
-    simplex_with_step(x0, 0.05)
-}
-
-fn simplex_with_step(x0: &[f64], relative_step: f64) -> Vec<Vec<f64>> {
-    let n = x0.len();
-    let mut simplex = Vec::with_capacity(n + 1);
-    simplex.push(x0.to_vec());
-    for i in 0..n {
-        let mut v = x0.to_vec();
-        v[i] = if x0[i] != 0.0 {
-            (1.0 + relative_step) * x0[i]
-        } else {
-            0.00025
-        };
-        simplex.push(v);
-    }
-    simplex
 }
 
 impl<V> State for SimplexState<V> {

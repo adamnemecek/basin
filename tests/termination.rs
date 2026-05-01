@@ -1,5 +1,5 @@
 use basin::{
-    BasicState, CostFunction, CostTolerance, Executor, Gradient, GradientDescent,
+    BasicState, CostFunction, CostTolerance, Executor, Gradient, GradientDescent, GradientState,
     GradientTolerance, MaxIter, MaxTime, ParamTolerance, Solver, State, TerminationCriterion,
     TerminationReason,
 };
@@ -39,7 +39,7 @@ fn gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
-    assert_eq!(result.state.iter, 0, "should not have done any iterations");
+    assert_eq!(result.iter(), 0, "should not have done any iterations");
 }
 
 #[test]
@@ -54,8 +54,11 @@ fn gradient_tolerance_fires_after_convergence() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
-    assert!(result.state.iter > 0 && result.state.iter < 1_000);
-    let g = result.state.gradient.as_ref().unwrap();
+    assert!(result.iter() > 0 && result.iter() < 1_000);
+    let g = result
+        .state
+        .gradient()
+        .expect("gradient should be populated");
     let g_norm = g.iter().map(|v| v * v).sum::<f64>().sqrt();
     assert!(g_norm <= 1e-6);
 }
@@ -71,7 +74,7 @@ fn max_iter_field_default_is_one_thousand() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
-    assert_eq!(result.state.iter, 1_000);
+    assert_eq!(result.iter(), 1_000);
 }
 
 #[test]
@@ -86,7 +89,7 @@ fn explicit_max_iter_criterion_works_alongside_default() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
-    assert_eq!(result.state.iter, 5);
+    assert_eq!(result.iter(), 5);
 }
 
 #[test]
@@ -131,7 +134,7 @@ fn first_criterion_to_fire_wins() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::ParamTolerance);
-    assert!(result.state.iter < 5);
+    assert!(result.iter() < 5);
 }
 
 #[test]
@@ -173,7 +176,7 @@ fn solver_terminate_hook_is_honored() {
     let result = Executor::new(Quadratic, AlwaysConverged, BasicState::new(vec![1.0, 2.0])).run();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
-    assert_eq!(result.state.iter, 0);
+    assert_eq!(result.iter(), 0);
 }
 
 /// Verify that a custom criterion plays correctly through `Box<dyn>`.
@@ -197,5 +200,5 @@ fn custom_termination_criterion() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
-    assert_eq!(result.state.iter, 7);
+    assert_eq!(result.iter(), 7);
 }

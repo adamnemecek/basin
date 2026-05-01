@@ -38,19 +38,6 @@ gets harder to fix as more code piles on.
       return `(S, Option<TerminationReason>)` or `Result<S,
       TerminationReason>`. Trigger: first solver that needs to fail mid-iter
       (L-BFGS line search is the obvious one).
-- [ ] **Encapsulate `BasicState` fields.** Fields are `pub` *and* exposed via
-      `State::param()` / `State::cost()` / `GradientState::gradient()`. Two
-      access paths means representation changes break consumers. Pick one
-      — make fields `pub(crate)` and force everyone through the trait.
-      Tests reach into `state.cost` etc. directly today; they'd need
-      updating.
-- [ ] **`cost: f64::INFINITY` sentinel and `gradient: Option<P>` are
-      asymmetric.** Cost uses INF to mean "not evaluated yet"; gradient uses
-      `None`. After `Solver::init`, both are populated, but a user who
-      bypasses `init` (possible because fields are pub) can hit nonsensical
-      `cost_tolerance` behavior. Make cost `Option<f64>` too and force the
-      lifecycle through `init`. Pairs naturally with the encapsulation TODO
-      above.
 - [ ] **Rustdoc the load-bearing invariants on public traits.** Things like
       "`Solver::init` must populate cost/gradient before `next_iter`",
       "criteria are checked before iter 0", "first criterion to fire wins",
@@ -79,12 +66,6 @@ gets harder to fix as more code piles on.
       blanket-impl marker like
       `trait ParamVec<F>: Clone + ScaledAdd<F> + NormSquared {}` once the
       third solver wants it — premature with only two users.
-- [ ] **Initial-simplex construction helper for `Vec<f64>` / nalgebra.**
-      `tests/nelder_mead.rs` reimplements FMINSEARCH-style simplex
-      construction inline; every Nelder-Mead user will rewrite that.
-      Provide a backend-specific helper (e.g.
-      `SimplexState::<Vec<f64>>::around(&x0, step)`) once a second user
-      shows up, gated per-backend.
 - [ ] **Track function-evaluation count on `State`.** Paper's (T3)
       criterion is `MaxFunEvals`, and a Nelder-Mead shrink does `n` evals
       while a normal step does 1–2 — so `iter` and `nfev` diverge, and

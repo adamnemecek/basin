@@ -79,8 +79,12 @@ fn nelder_mead_keeps_best_first_after_each_iter() {
     .max_iter(100)
     .run();
 
-    for w in result.state.costs.windows(2) {
-        assert!(w[0] <= w[1], "simplex not sorted: {:?}", result.state.costs);
+    for w in result.state.costs().windows(2) {
+        assert!(
+            w[0] <= w[1],
+            "simplex not sorted: {:?}",
+            result.state.costs()
+        );
     }
 }
 
