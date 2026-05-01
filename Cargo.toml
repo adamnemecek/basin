@@ -14,7 +14,16 @@ categories = ["mathematics", "science"]
 name = "basin"
 path = "src/lib.rs"
 
+[features]
+default = []
+# Pin one version per backend (tenet 2 in AGENTS.md). A nalgebra major bump
+# becomes a basin major bump — do not introduce per-version features.
+nalgebra = ["dep:nalgebra"]
+
 [dependencies]
+# Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
+# MSRV of 1.84.1 (CRAN constraint — see AGENTS.md). Revisit when CRAN's pin moves.
+nalgebra = { version = "0.33", optional = true }
 
 [dev-dependencies]
 # Benches are hand-rolled (no criterion/divan) because their transitive
@@ -24,3 +33,7 @@ path = "src/lib.rs"
 [[bench]]
 name = "rosenbrock"
 harness = false
+
+[[test]]
+name = "rosenbrock_nalgebra"
+required-features = ["nalgebra"]
