@@ -28,14 +28,6 @@ the previous lands.
 Surfaced while implementing the termination layer. Not blocking, but each
 gets harder to fix as more code piles on.
 
-- [ ] **Mid-iter solver failure reporting.** `Solver::terminate(&S) ->
-      Option<TerminationReason>` is checked *between* `next_iter` calls, but
-      solvers usually know they've failed *during* `next_iter` (line search
-      ran out, step direction not a descent, etc.). Today they'd have to
-      stash a flag and report it on the next call. Cleaner: have `next_iter`
-      return `(S, Option<TerminationReason>)` or `Result<S,
-      TerminationReason>`. Trigger: first solver that needs to fail mid-iter
-      (L-BFGS line search is the obvious one).
 - [ ] **Rustdoc the load-bearing invariants on public traits.** Things like
       "`Solver::init` must populate cost/gradient before `next_iter`",
       "criteria are checked before iter 0", "first criterion to fire wins",

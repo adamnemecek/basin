@@ -45,6 +45,9 @@ impl<S: State> OptimizationResult<S> {
 /// iteration framework `criteria` are checked in insertion order before
 /// the solver's own `terminate` hook, before stepping. `max_iter` is
 /// checked against `state.iter()` and exits with `TerminationReason::MaxIter`.
+/// `next_iter` may also report a mid-iter termination via its return tuple;
+/// in that case the iteration counter is left untouched so the final
+/// `state.iter()` still reflects the last fully completed iteration.
 pub fn run_loop<P, S, So>(
     problem: &P,
     mut state: S,
@@ -72,7 +75,11 @@ where
         if let Some(reason) = solver.terminate(&state) {
             return OptimizationResult { state, reason };
         }
-        state = solver.next_iter(problem, state);
+        let (next_state, mid_iter_reason) = solver.next_iter(problem, state);
+        state = next_state;
+        if let Some(reason) = mid_iter_reason {
+            return OptimizationResult { state, reason };
+        }
         state.increment_iter();
     }
 }

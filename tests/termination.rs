@@ -162,8 +162,8 @@ impl Solver<Quadratic, BasicState<Vec<f64>>> for AlwaysConverged {
         &mut self,
         _problem: &Quadratic,
         state: BasicState<Vec<f64>>,
-    ) -> BasicState<Vec<f64>> {
-        state
+    ) -> (BasicState<Vec<f64>>, Option<TerminationReason>) {
+        (state, None)
     }
 
     fn terminate(&self, _state: &BasicState<Vec<f64>>) -> Option<TerminationReason> {
@@ -177,6 +177,45 @@ fn solver_terminate_hook_is_honored() {
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert_eq!(result.iter(), 0);
+}
+
+/// Solver that completes one full iteration, then reports a mid-iter
+/// failure on the next call via the tuple return value. Verifies that
+/// `next_iter`'s second return slot halts the executor and that
+/// `state.iter()` is *not* incremented for the bailed iteration.
+struct FailsOnSecondCall {
+    calls: u64,
+}
+
+impl Solver<Quadratic, BasicState<Vec<f64>>> for FailsOnSecondCall {
+    fn next_iter(
+        &mut self,
+        _problem: &Quadratic,
+        state: BasicState<Vec<f64>>,
+    ) -> (BasicState<Vec<f64>>, Option<TerminationReason>) {
+        self.calls += 1;
+        if self.calls >= 2 {
+            (state, Some(TerminationReason::SolverFailed))
+        } else {
+            (state, None)
+        }
+    }
+}
+
+#[test]
+fn solver_can_signal_termination_mid_iter() {
+    let result = Executor::new(
+        Quadratic,
+        FailsOnSecondCall { calls: 0 },
+        BasicState::new(vec![1.0, 2.0]),
+    )
+    .max_iter(100)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverFailed);
+    // First call completed (iter 0 → 1), second call bailed without
+    // incrementing, so iter stays at 1.
+    assert_eq!(result.iter(), 1);
 }
 
 /// Verify that a custom criterion plays correctly through `Box<dyn>`.

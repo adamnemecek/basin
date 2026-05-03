@@ -2,6 +2,7 @@ use crate::core::math::ScaledAdd;
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
 use crate::core::state::BasicSimplexState;
+use crate::core::termination::TerminationReason;
 
 /// Nelder-Mead simplex method (derivative-free).
 ///
@@ -160,7 +161,11 @@ where
         state
     }
 
-    fn next_iter(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: BasicSimplexState<V>,
+    ) -> (BasicSimplexState<V>, Option<TerminationReason>) {
         // Vertices are sorted (best at index 0) on entry; we restore that
         // invariant before returning. The simplex has n+1 vertices in n-D.
         let p = self
@@ -224,7 +229,7 @@ where
         }
 
         sort_simplex(&mut state.vertices, &mut state.costs);
-        state
+        (state, None)
     }
 }
 

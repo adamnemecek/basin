@@ -101,7 +101,11 @@ where
         state
     }
 
-    fn next_iter(&mut self, problem: &P, mut state: BasicState<f64>) -> BasicState<f64> {
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<f64>,
+    ) -> (BasicState<f64>, Option<TerminationReason>) {
         let s = self.inner.as_mut().expect("Brent::init must run first");
         let m = 0.5 * (s.a + s.b);
         let tol1 = self.tol_rel * s.x.abs() + self.tol_abs;
@@ -182,7 +186,7 @@ where
         state.param = s.x;
         state.cost = Some(s.fx);
         state.cost_evals += 1;
-        state
+        (state, None)
     }
 
     fn terminate(&self, _state: &BasicState<f64>) -> Option<TerminationReason> {

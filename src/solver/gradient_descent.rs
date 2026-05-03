@@ -2,6 +2,7 @@ use crate::core::math::{NegInPlace, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
+use crate::core::termination::TerminationReason;
 use crate::line_search::{Constant, LineSearch};
 
 pub struct GradientDescent<S> {
@@ -39,7 +40,11 @@ where
         state
     }
 
-    fn next_iter(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> (BasicState<V>, Option<TerminationReason>) {
         let grad = state
             .gradient
             .take()
@@ -59,6 +64,6 @@ where
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        (state, None)
     }
 }

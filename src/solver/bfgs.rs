@@ -32,11 +32,6 @@ use crate::line_search::{LineSearch, Wolfe};
 pub struct BFGS<S = Wolfe> {
     line_search: S,
     epsilon: f64,
-    /// Set to true on a no-progress step (line search returned α = 0,
-    /// e.g. because the search direction wasn't a descent direction —
-    /// happens at machine-precision optima). Read by `terminate` to halt
-    /// instead of spinning forever.
-    converged: bool,
 }
 
 impl Default for BFGS<Wolfe> {
@@ -50,7 +45,6 @@ impl BFGS<Wolfe> {
         Self {
             line_search: Wolfe::new(),
             epsilon: 1e-10,
-            converged: false,
         }
     }
 }
@@ -60,7 +54,6 @@ impl<S> BFGS<S> {
         Self {
             line_search,
             epsilon: 1e-10,
-            converged: false,
         }
     }
 
@@ -96,7 +89,10 @@ where
         &mut self,
         problem: &P,
         mut state: QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
-    ) -> QuasiNewtonState<DVector<f64>, DMatrix<f64>> {
+    ) -> (
+        QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
+        Option<TerminationReason>,
+    ) {
         let g = state
             .gradient
             .take()
@@ -117,13 +113,13 @@ where
 
         // Line search bailed (α = 0): direction wasn't descent, or we're
         // at numerical convergence. Restore gradient/cost so the state
-        // stays consistent and signal converged for `terminate`. NaN
-        // routes here too (`NaN > 0.0` is false).
+        // stays consistent and report it as a mid-iter termination so the
+        // executor halts immediately. NaN routes here too
+        // (`NaN > 0.0` is false).
         if !(step.alpha.is_finite() && step.alpha > 0.0) {
             state.gradient = Some(g);
             state.cost = Some(cost_old);
-            self.converged = true;
-            return state;
+            return (state, Some(TerminationReason::SolverConverged));
         }
 
         // s = α d, x ← x + s.
@@ -171,17 +167,6 @@ where
         state.cost = Some(problem.cost(&state.param));
         state.cost_evals += 1;
         state.gradient = Some(g_new);
-        state
-    }
-
-    fn terminate(
-        &self,
-        _state: &QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
-    ) -> Option<TerminationReason> {
-        if self.converged {
-            Some(TerminationReason::SolverConverged)
-        } else {
-            None
-        }
+        (state, None)
     }
 }
