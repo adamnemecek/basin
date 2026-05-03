@@ -6,6 +6,7 @@
   packages = with pkgs; [
     go-task
     llvmPackages.bintools
+    liteparse
     cargo-llvm-cov
     cargo-flamegraph
     cargo-audit
