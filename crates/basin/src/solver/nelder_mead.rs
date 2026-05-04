@@ -60,6 +60,9 @@ impl NelderMead {
         }
     }
 
+    /// Nelder-Mead with explicit reflection / expansion / contraction /
+    /// shrink coefficients (`α`, `β`, `γ`, `δ`). Panics if any coefficient
+    /// is outside its admissible range.
     pub fn with_params(alpha: f64, beta: f64, gamma: f64, delta: f64) -> Self {
         assert!(alpha > 0.0, "α must be > 0");
         assert!(beta > 1.0, "β must be > 1");

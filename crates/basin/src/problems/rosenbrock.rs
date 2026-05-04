@@ -10,6 +10,7 @@ use core::marker::PhantomData;
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 use crate::{CostFunction, Gradient, Residual};
 
+/// Catalogue entry for the Rosenbrock function.
 pub static ROSENBROCK_SPEC: ProblemSpec = ProblemSpec {
     name: "Rosenbrock",
     dim: Dimensionality::NDimensional { min: 2 },
@@ -70,6 +71,8 @@ pub fn rosenbrock_gradient(x: &[f64], out: &mut [f64]) {
 pub struct Rosenbrock<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> Rosenbrock<P> {
+    /// Build a freshly typed Rosenbrock instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -247,6 +250,9 @@ pub fn rosenbrock_residuals_jacobian(x: &[f64], out: &mut [f64]) {
 pub struct RosenbrockResiduals<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> RosenbrockResiduals<P> {
+    /// Build a freshly typed Rosenbrock-as-residuals instance. Pair with
+    /// the LA-heavy backend impls (nalgebra, faer) that supply the
+    /// `Jacobian` matrix type.
     pub const fn new() -> Self {
         Self(PhantomData)
     }

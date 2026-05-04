@@ -132,6 +132,9 @@ pub trait SimplexState: State {
     fn costs(&self) -> &[Self::Float];
 }
 
+/// Default state for single-iterate solvers (gradient descent,
+/// Gauss-Newton, …): one `param`, optional cached cost and gradient,
+/// plus iteration / evaluation counters.
 pub struct BasicState<P> {
     pub(crate) param: P,
     pub(crate) cost: Option<f64>,
@@ -142,6 +145,8 @@ pub struct BasicState<P> {
 }
 
 impl<P> BasicState<P> {
+    /// Build a state at the given starting point. Cost and gradient
+    /// are filled in by [`Solver::init`](crate::core::solver::Solver::init).
     pub fn new(param: P) -> Self {
         Self {
             param,
@@ -249,6 +254,8 @@ impl<V> BasicSimplexState<V> {
 /// backends. The default step is 5% on non-zero coordinates and an
 /// absolute `0.00025` on zero coordinates.
 pub trait IntoInitialSimplex<V> {
+    /// Build a simplex of `n + 1` vertices around `self`, perturbing each
+    /// coordinate by `relative_step`.
     fn into_initial_simplex(self, relative_step: f64) -> Vec<V>;
 }
 
@@ -406,6 +413,8 @@ pub struct QuasiNewtonState<V, M> {
 
 #[cfg(feature = "nalgebra")]
 impl QuasiNewtonState<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>> {
+    /// Build a state at the given starting point with the inverse-Hessian
+    /// approximation initialised to the identity.
     pub fn new(param: nalgebra::DVector<f64>) -> Self {
         let n = param.len();
         Self {

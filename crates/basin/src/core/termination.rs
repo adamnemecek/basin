@@ -1,17 +1,33 @@
+//! Termination layer: the [`TerminationCriterion`] trait and the
+//! framework-level criteria solvers can be terminated by. Each criterion
+//! bounds on the minimum state shape it needs (tenet 3 in `AGENTS.md`),
+//! so mismatches are compile errors rather than runtime no-ops.
+
 use web_time::{Duration, Instant};
 
 use crate::core::math::{NormInfinity, NormSquared, ScaledAdd};
 use crate::core::state::{GradientState, SimplexState, State};
 
+/// Why the executor stopped. Returned on
+/// [`OptimizationResult::reason`](crate::core::executor::OptimizationResult::reason)
+/// and the various step / run hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TerminationReason {
+    /// `state.iter() >= max_iter`.
     MaxIter,
+    /// Cost-evaluation budget exhausted.
     MaxCostEvals,
+    /// Gradient-evaluation budget exhausted.
     MaxGradientEvals,
+    /// `‖∇f(x)‖ ≤ tol`.
     GradientTolerance,
+    /// `‖x_k − x_{k−1}‖ ≤ tol`.
     ParamTolerance,
+    /// `|f_k − f_{k−1}| ≤ tol`.
     CostTolerance,
+    /// Simplex collapsed below the configured tolerance.
     SimplexTolerance,
+    /// Wall-clock time limit reached.
     MaxTime,
     /// Solver determined it has converged (e.g. fixed point reached).
     SolverConverged,
@@ -124,6 +140,7 @@ pub struct ParamTolerance<P> {
 }
 
 impl<P> ParamTolerance<P> {
+    /// New tolerance with the given absolute step bound.
     pub fn new(tol: f64) -> Self {
         Self {
             tol_squared: tol * tol,
@@ -159,6 +176,7 @@ pub struct CostTolerance {
 }
 
 impl CostTolerance {
+    /// New tolerance with the given absolute cost-change bound.
     pub fn new(tol: f64) -> Self {
         Self { tol, last: None }
     }
@@ -193,6 +211,7 @@ pub struct SimplexTolerance {
 }
 
 impl SimplexTolerance {
+    /// New tolerance with separate vertex and cost bounds.
     pub fn new(tol_x: f64, tol_f: f64) -> Self {
         Self { tol_x, tol_f }
     }
@@ -235,6 +254,7 @@ pub struct MaxTime {
 }
 
 impl MaxTime {
+    /// New wall-clock limit. The clock starts on the first `check`.
     pub fn new(limit: Duration) -> Self {
         Self { limit, start: None }
     }

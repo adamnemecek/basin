@@ -27,6 +27,7 @@ use core::marker::PhantomData;
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 use crate::{CostFunction, Residual};
 
+/// Catalogue entry for Powell's singular function.
 pub static POWELL_SINGULAR_SPEC: ProblemSpec = ProblemSpec {
     name: "Powell singular",
     dim: Dimensionality::Fixed(4),
@@ -137,6 +138,9 @@ pub fn powell_singular_jacobian(x: &[f64], out: &mut [f64]) {
 pub struct PowellSingular<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> PowellSingular<P> {
+    /// Build a freshly typed Powell-singular instance. Pair with one of
+    /// the backend-specific impl blocks; only the LA-heavy backends
+    /// (nalgebra, faer) supply the `Jacobian` matrix type.
     pub const fn new() -> Self {
         Self(PhantomData)
     }

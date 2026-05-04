@@ -18,10 +18,16 @@ use crate::line_search::{LineSearch, LineSearchResult};
 /// zoom phase uses bisection (always-progress, no interpolation pitfalls);
 /// cubic-interpolation in zoom is a possible future perf improvement.
 pub struct Wolfe {
+    /// Armijo slope coefficient in `(0, 1)`. Default `1e-4` (N&W §3.5).
     pub c1: f64,
+    /// Strong-curvature coefficient in `(c1, 1)`. Default `0.9`.
     pub c2: f64,
+    /// Initial trial step. Default `1.0` so quasi-Newton solvers get the
+    /// unit step they expect asymptotically.
     pub alpha_init: f64,
+    /// Upper bound on the bracketing trial step. Default `10.0`.
     pub alpha_max: f64,
+    /// Maximum bracketing/zoom iterations before bailing. Default `25`.
     pub max_iter: u32,
 }
 
@@ -38,34 +44,42 @@ impl Default for Wolfe {
 }
 
 impl Wolfe {
+    /// Strong-Wolfe line search with the Nocedal & Wright defaults
+    /// (`c1 = 1e-4`, `c2 = 0.9`, `α_init = 1.0`, `α_max = 10.0`,
+    /// `max_iter = 25`).
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Override the Armijo slope coefficient. Panics if not in `(0, 1)`.
     pub fn c1(mut self, c1: f64) -> Self {
         assert!(0.0 < c1 && c1 < 1.0, "c1 must be in (0, 1)");
         self.c1 = c1;
         self
     }
 
+    /// Override the strong-curvature coefficient. Panics if not in `(0, 1)`.
     pub fn c2(mut self, c2: f64) -> Self {
         assert!(0.0 < c2 && c2 < 1.0, "c2 must be in (0, 1)");
         self.c2 = c2;
         self
     }
 
+    /// Override the initial trial step. Panics if not strictly positive.
     pub fn alpha_init(mut self, alpha_init: f64) -> Self {
         assert!(alpha_init > 0.0, "alpha_init must be > 0");
         self.alpha_init = alpha_init;
         self
     }
 
+    /// Override the maximum trial step. Panics if not strictly positive.
     pub fn alpha_max(mut self, alpha_max: f64) -> Self {
         assert!(alpha_max > 0.0, "alpha_max must be > 0");
         self.alpha_max = alpha_max;
         self
     }
 
+    /// Override the bracketing/zoom iteration cap.
     pub fn max_iter(mut self, max_iter: u32) -> Self {
         self.max_iter = max_iter;
         self

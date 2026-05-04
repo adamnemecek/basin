@@ -29,7 +29,10 @@ pub enum Dimensionality {
     /// Fixed at `n` dimensions (e.g. 2 for Beale).
     Fixed(usize),
     /// Defined for any `n >= min`.
-    NDimensional { min: usize },
+    NDimensional {
+        /// Minimum admissible problem dimension.
+        min: usize,
+    },
 }
 
 /// Boolean tags describing mathematical character. Each problem sets only the
@@ -60,7 +63,9 @@ pub struct Properties {
 pub struct ProblemSpec {
     /// Canonical name as used in the literature, e.g. `"Rosenbrock"`.
     pub name: &'static str,
+    /// Whether the problem dimension is fixed or scales over `n`.
     pub dim: Dimensionality,
+    /// Mathematical character tags used by the catalog UI for filtering.
     pub properties: Properties,
     /// One or more sources. The first is the primary citation; later entries
     /// are useful surveys / popularizations / variants.
@@ -73,5 +78,6 @@ pub struct ProblemSpec {
 /// Implemented blanket-style for the corpus types, e.g.
 /// `impl<P> HasSpec for Rosenbrock<P>`.
 pub trait HasSpec {
+    /// The catalogue entry for this problem type.
     const SPEC: &'static ProblemSpec;
 }

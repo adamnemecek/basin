@@ -42,27 +42,34 @@ use crate::core::termination::{TerminationCriterion, TerminationReason};
 /// Delegates `param()` / `cost()` / `iter()` to the underlying state so
 /// callers don't need to import `State` for the common reads.
 pub struct OptimizationResult<S> {
+    /// Final solver state at termination.
     pub state: S,
+    /// Why the executor stopped.
     pub reason: TerminationReason,
 }
 
 impl<S: State> OptimizationResult<S> {
+    /// Final iterate.
     pub fn param(&self) -> &S::Param {
         self.state.param()
     }
 
+    /// Cost at the final iterate.
     pub fn cost(&self) -> S::Float {
         self.state.cost()
     }
 
+    /// Number of fully completed iterations.
     pub fn iter(&self) -> u64 {
         self.state.iter()
     }
 
+    /// Cumulative cost-function evaluations across the run.
     pub fn cost_evals(&self) -> u64 {
         self.state.cost_evals()
     }
 
+    /// Consume the result and return the final state.
     pub fn into_state(self) -> S {
         self.state
     }
@@ -76,7 +83,10 @@ impl<S: State> OptimizationResult<S> {
 /// have to track whether they're done.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StepOutcome {
+    /// The step completed without triggering termination.
     Continue,
+    /// Termination fired with the given reason. Subsequent
+    /// [`Stepper::step`] calls keep returning this same outcome.
     Stopped(TerminationReason),
 }
 
@@ -267,6 +277,11 @@ where
     }
 }
 
+/// User-facing driver. Owns the problem, solver, initial state, and the
+/// list of termination criteria; [`run`](Self::run) drives the iteration
+/// loop to completion. See the [module docs](self) for the canonical
+/// ordering and [`into_stepper`](Self::into_stepper) for one-step-at-a-
+/// time control.
 pub struct Executor<P, S, So> {
     problem: P,
     state: S,
@@ -280,6 +295,9 @@ where
     S: State,
     So: Solver<P, S>,
 {
+    /// Build an executor from a problem, solver, and initial state. The
+    /// default `MaxIter` budget is 1000 — override with
+    /// [`max_iter`](Self::max_iter).
     pub fn new(problem: P, solver: So, state: S) -> Self {
         Self {
             problem,
@@ -332,6 +350,8 @@ where
         }
     }
 
+    /// Drive the iteration loop to completion and return the
+    /// [`OptimizationResult`].
     pub fn run(self) -> OptimizationResult<S> {
         self.into_stepper().run_to_end()
     }

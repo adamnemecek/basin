@@ -48,6 +48,8 @@ pub fn mccormick_gradient(x: &[f64], out: &mut [f64]) {
 pub struct McCormick<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> McCormick<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -59,6 +61,7 @@ impl<P> Default for McCormick<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static MCCORMICK_SPEC: ProblemSpec = ProblemSpec {
     name: "McCormick",
     dim: Dimensionality::Fixed(2),

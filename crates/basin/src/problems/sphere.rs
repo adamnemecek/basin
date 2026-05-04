@@ -31,6 +31,8 @@ pub fn sphere_gradient(x: &[f64], out: &mut [f64]) {
 pub struct Sphere<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> Sphere<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -42,6 +44,7 @@ impl<P> Default for Sphere<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static SPHERE_SPEC: ProblemSpec = ProblemSpec {
     name: "Sphere",
     dim: Dimensionality::NDimensional { min: 1 },

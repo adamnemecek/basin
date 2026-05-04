@@ -27,6 +27,8 @@ pub struct GradientDescent<S> {
 }
 
 impl GradientDescent<Constant> {
+    /// Gradient descent with a fixed step size `alpha`. Equivalent to
+    /// `with_line_search(Constant(alpha))`.
     pub fn new(alpha: f64) -> Self {
         Self {
             line_search: Constant(alpha),
@@ -35,6 +37,9 @@ impl GradientDescent<Constant> {
 }
 
 impl<S> GradientDescent<S> {
+    /// Gradient descent with an explicit line-search strategy
+    /// (e.g. [`Backtracking`](crate::line_search::Backtracking),
+    /// [`Wolfe`](crate::line_search::Wolfe)).
     pub fn with_line_search(line_search: S) -> Self {
         Self { line_search }
     }

@@ -40,6 +40,8 @@ pub fn matyas_gradient(x: &[f64], out: &mut [f64]) {
 pub struct Matyas<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> Matyas<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -51,6 +53,7 @@ impl<P> Default for Matyas<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static MATYAS_SPEC: ProblemSpec = ProblemSpec {
     name: "Matyas",
     dim: Dimensionality::Fixed(2),

@@ -41,6 +41,8 @@ impl Default for BFGS<Wolfe> {
 }
 
 impl BFGS<Wolfe> {
+    /// BFGS with the strong-Wolfe line search (Nocedal & Wright defaults)
+    /// and `ε = 1e-10` for the curvature-condition guard.
     pub fn new() -> Self {
         Self {
             line_search: Wolfe::new(),
@@ -50,6 +52,7 @@ impl BFGS<Wolfe> {
 }
 
 impl<S> BFGS<S> {
+    /// BFGS with an explicit line-search strategy.
     pub fn with_line_search(line_search: S) -> Self {
         Self {
             line_search,

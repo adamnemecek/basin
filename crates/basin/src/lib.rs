@@ -18,8 +18,10 @@
 
 pub mod core;
 pub mod line_search;
+/// Catalogue of test problems used by the example tests and benchmarks.
 #[cfg(feature = "problems")]
 pub mod problems;
+/// Concrete solver implementations.
 pub mod solver;
 
 pub use crate::core::constraint::BoxConstrained;

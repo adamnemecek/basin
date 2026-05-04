@@ -45,6 +45,8 @@ impl Default for Brent {
 }
 
 impl Brent {
+    /// Brent solver with the standard tolerances: `tol_rel = √ε_f64`,
+    /// `tol_abs = 1e-12`.
     pub fn new() -> Self {
         Self {
             tol_rel: f64::EPSILON.sqrt(),
@@ -53,6 +55,8 @@ impl Brent {
         }
     }
 
+    /// Brent solver with explicit relative and absolute tolerances. Both
+    /// must be strictly positive.
     pub fn with_tol(tol_rel: f64, tol_abs: f64) -> Self {
         assert!(tol_rel > 0.0, "tol_rel must be > 0");
         assert!(tol_abs > 0.0, "tol_abs must be > 0");

@@ -2,10 +2,17 @@ use crate::core::math::{Dot, ScaledAdd};
 use crate::core::problem::CostFunction;
 use crate::line_search::{LineSearch, LineSearchResult};
 
+/// Backtracking line search satisfying the Armijo condition only
+/// (Nocedal & Wright §3.1). Halves the trial step until
+/// `f(x + α d) ≤ f(x) + c · α · ∇f(x)ᵀd`.
 pub struct Backtracking {
+    /// Initial trial step. Default `1.0`.
     pub alpha_init: f64,
+    /// Backtracking factor in `(0, 1)`. Default `0.5`.
     pub rho: f64,
+    /// Armijo slope coefficient in `(0, 1)`. Default `1e-4`.
     pub c: f64,
+    /// Maximum number of backtracks before giving up. Default `50`.
     pub max_iter: u32,
 }
 
@@ -21,25 +28,31 @@ impl Default for Backtracking {
 }
 
 impl Backtracking {
+    /// Backtracking line search with default parameters
+    /// (`α_init = 1.0`, `ρ = 0.5`, `c = 1e-4`, `max_iter = 50`).
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Override the initial trial step.
     pub fn alpha_init(mut self, alpha_init: f64) -> Self {
         self.alpha_init = alpha_init;
         self
     }
 
+    /// Override the backtracking factor.
     pub fn rho(mut self, rho: f64) -> Self {
         self.rho = rho;
         self
     }
 
+    /// Override the Armijo slope coefficient.
     pub fn c(mut self, c: f64) -> Self {
         self.c = c;
         self
     }
 
+    /// Override the maximum number of backtracks.
     pub fn max_iter(mut self, max_iter: u32) -> Self {
         self.max_iter = max_iter;
         self

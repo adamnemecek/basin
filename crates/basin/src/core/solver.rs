@@ -1,3 +1,9 @@
+//! The [`Solver`] trait every concrete solver implements. See the trait
+//! contract for the lifecycle (`init` once, then repeated `next_iter`,
+//! with an optional `terminate` hook) and the
+//! [`executor`](crate::core::executor) module for the canonical iteration
+//! ordering.
+
 use crate::core::state::State;
 use crate::core::termination::TerminationReason;
 

@@ -72,6 +72,8 @@ pub fn goldstein_price_gradient(x: &[f64], out: &mut [f64]) {
 pub struct GoldsteinPrice<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> GoldsteinPrice<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -83,6 +85,7 @@ impl<P> Default for GoldsteinPrice<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static GOLDSTEIN_PRICE_SPEC: ProblemSpec = ProblemSpec {
     name: "Goldstein-Price",
     dim: Dimensionality::Fixed(2),

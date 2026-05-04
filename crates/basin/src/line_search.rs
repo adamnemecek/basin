@@ -1,4 +1,9 @@
+//! Line searches: produce a step size `α` along a caller-supplied descent
+//! direction. Used by first-order solvers (gradient descent, BFGS).
+
+/// Backtracking line search (Armijo-only).
 pub mod backtracking;
+/// Strong-Wolfe line search (Nocedal & Wright algorithms 3.5/3.6).
 pub mod wolfe;
 
 pub use backtracking::Backtracking;
@@ -22,16 +27,24 @@ pub trait LineSearch<P, V> {
     ) -> LineSearchResult;
 }
 
+/// Outcome of a [`LineSearch::next`] call: the chosen step plus how much
+/// of the executor's evaluation budget was spent finding it.
 #[derive(Debug, Clone, Copy)]
 pub struct LineSearchResult {
+    /// The chosen step size.
     pub alpha: f64,
+    /// Cost evaluations the line search consumed.
     pub cost_evals: u64,
+    /// Gradient evaluations the line search consumed.
     pub gradient_evals: u64,
 }
 
+/// Constant step size — returns the wrapped `α` regardless of input.
+/// Useful when the caller already knows a good fixed step.
 pub struct Constant(pub f64);
 
 impl Constant {
+    /// Constant step of size `alpha`.
     pub fn new(alpha: f64) -> Self {
         Self(alpha)
     }

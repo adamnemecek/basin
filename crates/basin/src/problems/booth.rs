@@ -43,6 +43,8 @@ pub fn booth_gradient(x: &[f64], out: &mut [f64]) {
 pub struct Booth<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> Booth<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -54,6 +56,7 @@ impl<P> Default for Booth<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static BOOTH_SPEC: ProblemSpec = ProblemSpec {
     name: "Booth",
     dim: Dimensionality::Fixed(2),

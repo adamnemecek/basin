@@ -1,8 +1,13 @@
+/// Brent's method (1D root / minimum bracketing).
 pub mod brent;
+/// Pure Gauss-Newton solver for nonlinear least squares.
 pub mod gauss_newton;
+/// Steepest-descent solver with a pluggable line search.
 pub mod gradient_descent;
+/// Nelder-Mead derivative-free simplex solver.
 pub mod nelder_mead;
 
+/// BFGS quasi-Newton solver (nalgebra-only).
 #[cfg(feature = "nalgebra")]
 pub mod bfgs;
 

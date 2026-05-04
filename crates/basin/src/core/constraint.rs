@@ -1,3 +1,6 @@
+//! Constraint markers carried on the problem (tenet 4 in `AGENTS.md`).
+//! Currently just [`BoxConstrained`].
+
 use crate::core::problem::CostFunction;
 
 /// Box (interval) bounds on the parameter.
@@ -16,6 +19,8 @@ use crate::core::problem::CostFunction;
 /// constraints `Param` is a vector and bounds are vectors of the same
 /// length.
 pub trait BoxConstrained: CostFunction {
+    /// Element-wise lower bound on `Param`. Same shape as `Param`.
     fn lower(&self) -> &Self::Param;
+    /// Element-wise upper bound on `Param`. Same shape as `Param`.
     fn upper(&self) -> &Self::Param;
 }

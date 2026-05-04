@@ -46,6 +46,8 @@ pub fn beale_gradient(x: &[f64], out: &mut [f64]) {
 pub struct Beale<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> Beale<P> {
+    /// Build a freshly typed problem instance. Pair with one of the
+    /// backend-specific impl blocks (Vec, nalgebra, ndarray, faer).
     pub const fn new() -> Self {
         Self(PhantomData)
     }
@@ -57,6 +59,7 @@ impl<P> Default for Beale<P> {
     }
 }
 
+/// Catalogue entry for this problem.
 pub static BEALE_SPEC: ProblemSpec = ProblemSpec {
     name: "Beale",
     dim: Dimensionality::Fixed(2),
