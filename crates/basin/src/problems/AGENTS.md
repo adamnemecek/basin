@@ -125,6 +125,27 @@ In a single pass:
 All four must pass. The wasm builds ensure the new problem doesn't pull in
 anything that breaks the WASM hard constraint (see crate-root `AGENTS.md`).
 
+### Web visualizer (when 2D-friendly)
+
+The `web/` solver demo (consumed via `crates/basin-wasm`) is restricted
+to 2D problems on the `Vec<f64>` backend. If the new problem fits
+(`dim` is `Fixed(2)`, or `NDimensional { min }` with `min <= 2`), wire
+it in:
+
+- Add a variant to `ProblemKind` in `crates/basin-wasm/src/lib.rs` and
+  extend `Problem2D`'s `CostFunction` + `Gradient` match arms to call
+  the raw `<name>` / `<name>_gradient` functions.
+- Add a `ProblemMeta` entry to the `PROBLEMS` array in
+  `web/src/lib/problems.ts` with `kind`, `label`, the documented
+  search `domain`, `minimum`, an `intensity` choice (`'sqrt'` for mild
+  quadratic surfaces, `'log1p'` for high-dynamic-range surfaces like
+  Rosenbrock and Beale), and a `gdAlphaDefault` that converges from a
+  typical start within a few hundred iterations.
+- Verify with `cd web && npm run build` (rebuilds the wasm too).
+
+Skip the web wiring if the problem is intrinsically high-dimensional
+(e.g. a function whose minimum geometry only emerges for `n >> 2`).
+
 ## Anti-patterns
 
 - **Don't add a `Foo<P>` impl that calls `cost`/`gradient` on a generic
