@@ -178,7 +178,9 @@
     <title>basin — solver visualizer</title>
 </svelte:head>
 
-<main class="min-h-screen p-4 md:p-8 flex flex-col gap-6">
+<main
+    class="min-h-screen lg:h-screen lg:overflow-hidden max-w-screen-2xl w-full mx-auto p-4 md:p-8 flex flex-col gap-6"
+>
     <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
             <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">
