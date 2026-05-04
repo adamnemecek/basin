@@ -39,8 +39,8 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 - [x] **Beale** — 2D, smooth, flat region near optimum at `(3, 0.5)`. Good
       second smooth test for BFGS distinct from Rosenbrock. *(done)*
 - [x] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test. *(done)*
-- [ ] **Matyas** — 2D, smooth, plate-like. Very easy; mostly a sanity check.
-- [ ] **McCormick** — 2D, smooth, single minimum.
+- [x] **Matyas** — 2D, smooth, plate-like. Very easy; mostly a sanity check. *(done)*
+- [x] **McCormick** — 2D, smooth, single minimum. *(done)*
 - [ ] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
       dynamic range. Stresses step-size control.
 - [ ] **Three-hump camel** — 2D, smooth, three local minima. Local-solver

@@ -18,6 +18,7 @@
 //! `dyn`-incompatible plumbing on the `Solver` trait.
 
 use basin::problems::{beale, beale_gradient, booth, booth_gradient};
+use basin::problems::{matyas, matyas_gradient, mccormick, mccormick_gradient};
 use basin::problems::{rosenbrock, rosenbrock_gradient, sphere, sphere_gradient};
 use basin::{
     Backtracking, BasicSimplexState, BasicState, Constant, CostFunction, Executor, Gradient,
@@ -44,6 +45,8 @@ pub enum ProblemKind {
     Rosenbrock = 1,
     Beale = 2,
     Booth = 3,
+    Matyas = 4,
+    McCormick = 5,
 }
 
 #[wasm_bindgen]
@@ -71,6 +74,8 @@ impl CostFunction for Problem2D {
             ProblemKind::Rosenbrock => rosenbrock(x),
             ProblemKind::Beale => beale(x),
             ProblemKind::Booth => booth(x),
+            ProblemKind::Matyas => matyas(x),
+            ProblemKind::McCormick => mccormick(x),
         }
     }
 }
@@ -86,6 +91,8 @@ impl Gradient for Problem2D {
             ProblemKind::Rosenbrock => rosenbrock_gradient(x, &mut out),
             ProblemKind::Beale => beale_gradient(x, &mut out),
             ProblemKind::Booth => booth_gradient(x, &mut out),
+            ProblemKind::Matyas => matyas_gradient(x, &mut out),
+            ProblemKind::McCormick => mccormick_gradient(x, &mut out),
         }
         out
     }

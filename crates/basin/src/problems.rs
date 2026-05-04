@@ -21,16 +21,27 @@
 
 pub mod beale;
 pub mod booth;
+pub mod matyas;
+pub mod mccormick;
 pub mod rosenbrock;
 pub mod spec;
 pub mod sphere;
 
 pub use beale::{beale, beale_gradient, Beale, BEALE_SPEC};
 pub use booth::{booth, booth_gradient, Booth, BOOTH_SPEC};
+pub use matyas::{matyas, matyas_gradient, Matyas, MATYAS_SPEC};
+pub use mccormick::{mccormick, mccormick_gradient, McCormick, MCCORMICK_SPEC};
 pub use rosenbrock::{rosenbrock, rosenbrock_gradient, Rosenbrock, ROSENBROCK_SPEC};
 pub use spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 pub use sphere::{sphere, sphere_gradient, Sphere, SPHERE_SPEC};
 
 /// All catalogued problem specs, for browsing and filtering. Append new
 /// problems here as they're added.
-pub static ALL_SPECS: &[&ProblemSpec] = &[&ROSENBROCK_SPEC, &SPHERE_SPEC, &BEALE_SPEC, &BOOTH_SPEC];
+pub static ALL_SPECS: &[&ProblemSpec] = &[
+    &ROSENBROCK_SPEC,
+    &SPHERE_SPEC,
+    &BEALE_SPEC,
+    &BOOTH_SPEC,
+    &MATYAS_SPEC,
+    &MCCORMICK_SPEC,
+];

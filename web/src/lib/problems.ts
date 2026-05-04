@@ -65,6 +65,22 @@ export const PROBLEMS: ProblemMeta[] = [
         intensity: 'sqrt',
         gdAlphaDefault: 0.02,
     },
+    {
+        kind: ProblemKind.Matyas,
+        label: 'Matyas',
+        domain: { xmin: -10, xmax: 10, ymin: -10, ymax: 10 },
+        minimum: { x: 0, y: 0 },
+        intensity: 'sqrt',
+        gdAlphaDefault: 1.0,
+    },
+    {
+        kind: ProblemKind.McCormick,
+        label: 'McCormick',
+        domain: { xmin: -1.5, xmax: 4, ymin: -3, ymax: 4 },
+        minimum: { x: -0.54719, y: -1.54719 },
+        intensity: 'sqrt',
+        gdAlphaDefault: 0.1,
+    },
 ];
 
 export function problemByKind(kind: ProblemKind): ProblemMeta {
