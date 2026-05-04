@@ -21,6 +21,7 @@
 
 pub mod beale;
 pub mod booth;
+pub mod goldstein_price;
 pub mod matyas;
 pub mod mccormick;
 pub mod rosenbrock;
@@ -29,6 +30,9 @@ pub mod sphere;
 
 pub use beale::{beale, beale_gradient, Beale, BEALE_SPEC};
 pub use booth::{booth, booth_gradient, Booth, BOOTH_SPEC};
+pub use goldstein_price::{
+    goldstein_price, goldstein_price_gradient, GoldsteinPrice, GOLDSTEIN_PRICE_SPEC,
+};
 pub use matyas::{matyas, matyas_gradient, Matyas, MATYAS_SPEC};
 pub use mccormick::{mccormick, mccormick_gradient, McCormick, MCCORMICK_SPEC};
 pub use rosenbrock::{rosenbrock, rosenbrock_gradient, Rosenbrock, ROSENBROCK_SPEC};
@@ -44,4 +48,5 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &BOOTH_SPEC,
     &MATYAS_SPEC,
     &MCCORMICK_SPEC,
+    &GOLDSTEIN_PRICE_SPEC,
 ];

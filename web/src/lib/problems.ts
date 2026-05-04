@@ -81,6 +81,14 @@ export const PROBLEMS: ProblemMeta[] = [
         intensity: 'sqrt',
         gdAlphaDefault: 0.1,
     },
+    {
+        kind: ProblemKind.GoldsteinPrice,
+        label: 'Goldstein-Price',
+        domain: { xmin: -2, xmax: 2, ymin: -2, ymax: 2 },
+        minimum: { x: 0, y: -1 },
+        intensity: 'log1p',
+        gdAlphaDefault: 1e-5,
+    },
 ];
 
 export function problemByKind(kind: ProblemKind): ProblemMeta {

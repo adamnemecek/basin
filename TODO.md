@@ -41,8 +41,8 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 - [x] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test. *(done)*
 - [x] **Matyas** — 2D, smooth, plate-like. Very easy; mostly a sanity check. *(done)*
 - [x] **McCormick** — 2D, smooth, single minimum. *(done)*
-- [ ] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
-      dynamic range. Stresses step-size control.
+- [x] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
+      dynamic range. Stresses step-size control. *(done)*
 - [ ] **Three-hump camel** — 2D, smooth, three local minima. Local-solver
       basin-of-attraction test.
 - [ ] **Picheny** — 2D, log-rescaled Rosenbrock variant. Same shape, different
