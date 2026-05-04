@@ -81,25 +81,76 @@ Test-problem stubs:
 functions ship now with row-major layout documented, so S2a's per-
 backend impls can plug them in verbatim.
 
-### S2a. Math::linalg trait design + dual-backend dense prototype
+### S2a. Math::linalg trait design + dual-backend dense prototype — **done**
 
-The load-bearing session. Get this right and S3–S6 are mechanical.
+`basin::math::linalg` lands with four traits, exactly the GN inner-step
+op set:
 
-- Define the minimum set of LA-ops a Gauss-Newton / LM solver bounds
-  on: probably `Transpose`, `MatVec`, `MatTMatVec`, `LinearSolve<M>`.
-- Prototype against **both** nalgebra dense (`DMatrix<f64>`) and faer
-  dense (`Mat<f64>`). The trait must abstract over both without baking
-  in either's idiom (nalgebra's method-call style vs faer's
-  factorization-object style).
-- **[ingest]** faer paper (Sarah Oudjedi, 2024) for design philosophy.
-- **[ingest]** nalgebra-sparse user guide / examples.
-- Output: `basin::math::linalg` module + `LinearSolve` impls for both
-  dense backends.
+- `MatVec<V>`: `y = A x`.
+- `MatTransposeVec<V>`: `y = Aᵀ x` (forms `Jᵀ r` without
+  materializing `Jᵀ`).
+- `GramMatrix`: `G = Aᵀ A` (returns `Self` for both supported dense
+  backends — promote to an associated `type Gram` if/when sparse
+  needs a different shape in S2b).
+- `LinearSolveSpd<V>`: SPD solve via Cholesky, returning
+  `Result<V, LinearSolveError>`.
 
-**Escape hatch.** If the prototype shows the two backends genuinely
-can't share a clean `LinearSolve` trait, split into
-`LinearSolveNalgebra<M>` / `LinearSolveFaer<M>` and let solvers pick.
-Default is unified; split only if forced.
+Impls for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`) and
+`faer::Mat<f64>` (with `V = faer::Col<f64>`). Six tests per backend
+covering matvec / transpose-matvec / gram identities, an SPD happy
+path, and rank-deficient → `NotPositiveDefinite` failure. The escape
+hatch (`LinearSolveNalgebra` / `LinearSolveFaer`) stays unused — both
+backends fit the unified owned-return shape cleanly.
+
+**Decisions made (deltas from the original brief).**
+
+- `MatTMatVec` (composed `(AᵀA) x`) is *not* in the surface. It only
+  matters for matrix-free CG-on-normal-equations, which is post-S6
+  per the locked anchor decisions. Adding it now would have been
+  speculative.
+- A standalone `Transpose` trait was dropped. nalgebra's `.transpose()`
+  allocates and faer's returns a view — the asymmetry is real, and
+  `MatTransposeVec` covers every spot a GN solver actually wants
+  `Aᵀ`. Promote when a third user appears.
+- `LinearSolveSpd` returns owned rather than in-place. Faer prefers
+  in-place idioms but the unified owned-return shape is honest on
+  both backends, and an `O(n²)` allocation per Cholesky factorization
+  is negligible. An `*Into` variant can land later if a hot loop
+  actually wants it.
+- LU / QR variants are deferred to S3, where the QR-on-`J` vs
+  Cholesky-on-`JᵀJ` tradeoff for Gauss-Newton lives.
+- Trait names match the existing `math/` style (`ScaledAdd`, `Dot`):
+  short imperative verbs, with the SPD assumption baked into the
+  trait name so future `LinearSolveLstsq` / `LinearSolveLu` can sit
+  alongside.
+
+**S1 deferred work, now wired.**
+
+- `Jacobian for PowellSingular<DVector<f64>>` → `DMatrix<f64>`.
+- `Jacobian for PowellSingular<Col<f64>>` → `Mat<f64>`.
+- `Jacobian for RosenbrockResiduals<DVector<f64>>` → `DMatrix<f64>`.
+- `Jacobian for RosenbrockResiduals<Col<f64>>` → `Mat<f64>`.
+
+All four route through the existing row-major `_jacobian` raw fns —
+single source of truth, no per-backend reimplementation. Tests
+include a real GN-step computation on Rosenbrock at the classical
+start `(-1.2, 1.0)` (verifies `MatTransposeVec` + `GramMatrix` +
+`LinearSolveSpd` end-to-end against an independently solved 2×2
+system: `δ ≈ [-2.2, 4.84]`) and a `Jᵀ J` rank-deficiency check on
+Powell singular at the origin via Cholesky failure.
+
+**Backend tiering, made explicit.** The `Jacobian` trait's
+`# Backends` rustdoc now spells out: nalgebra and faer wired; ndarray
+deliberately not (no honest `LinearSolveSpd` for `Array2<f64>` —
+`ndarray-linalg` requires system BLAS/LAPACK and breaks the wasm-
+default tenet); `Vec<f64>` excluded as before. Per tenet 5, missing
+coverage is a compile-time error, not a runtime surprise.
+
+**Paper ingestion.** Skipped for S2a — the API survey of pinned
+faer 0.24 + nalgebra 0.33 sources gave enough signal to make the
+trait-shape decision. The faer paper (Sarah Oudjedi, 2024) and the
+nalgebra-sparse user guide are still queued for S2b/S3 where their
+sparse-factorization details become load-bearing.
 
 ### S3. Gauss-Newton solver
 

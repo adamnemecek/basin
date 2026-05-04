@@ -15,11 +15,12 @@
 //! `x = (0, 0, 0, 0)` with `f = 0`. Standard initial point for LM
 //! benchmarks is `x₀ = (3, −1, 0, 1)`.
 //!
-//! S1 ships the raw math + a `Residual` / `CostFunction` impl on each
-//! enabled backend. The `Jacobian` trait impl is deferred to S2a, when
-//! the matrix `Output` type is decided. The raw `_jacobian` function
-//! below is independent of that decision and can be plugged into the
-//! eventual impls verbatim.
+//! S2a wires `Jacobian` impls for the LA-heavy backends (nalgebra and
+//! faer dense). `Vec<f64>` and `ndarray` deliberately don't implement
+//! `Jacobian` — see the trait's `# Backends` note. The raw
+//! `powell_singular_jacobian` function below stays backend-agnostic and
+//! is the single source of truth that the per-backend impls reshape
+//! into their matrix types.
 
 use core::marker::PhantomData;
 
@@ -130,8 +131,9 @@ pub fn powell_singular_jacobian(x: &[f64], out: &mut [f64]) {
 /// (`nalgebra::DVector<f64>`, `ndarray::Array1<f64>`, `faer::Col<f64>`)
 /// are gated behind their respective features.
 ///
-/// `Jacobian` is *not* yet implemented — the matrix `Output` type
-/// lands with the linalg trait set in S2a.
+/// `Jacobian` is implemented for the LA-heavy backends (nalgebra
+/// `DMatrix<f64>` and faer `Mat<f64>`) only; see the trait's
+/// `# Backends` note for why `Vec` and `ndarray` are excluded.
 pub struct PowellSingular<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> PowellSingular<P> {
@@ -166,9 +168,11 @@ impl Residual for PowellSingular<Vec<f64>> {
 
 #[cfg(feature = "nalgebra")]
 mod nalgebra_impl {
-    use super::{powell_singular, powell_singular_residuals, PowellSingular};
-    use crate::{CostFunction, Residual};
-    use nalgebra::DVector;
+    use super::{
+        powell_singular, powell_singular_jacobian, powell_singular_residuals, PowellSingular,
+    };
+    use crate::{CostFunction, Jacobian, Residual};
+    use nalgebra::{DMatrix, DVector};
 
     impl CostFunction for PowellSingular<DVector<f64>> {
         type Param = DVector<f64>;
@@ -185,6 +189,18 @@ mod nalgebra_impl {
             let mut out = DVector::zeros(4);
             powell_singular_residuals(x.as_slice(), out.as_mut_slice());
             out
+        }
+    }
+
+    impl Jacobian for PowellSingular<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DMatrix<f64>;
+        fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+            let mut buf = [0.0_f64; 16];
+            powell_singular_jacobian(x.as_slice(), &mut buf);
+            // `from_row_slice` interprets `buf` in row-major order, matching
+            // the layout `powell_singular_jacobian` produces.
+            DMatrix::from_row_slice(4, 4, &buf)
         }
     }
 }
@@ -220,9 +236,9 @@ mod ndarray_impl {
 
 #[cfg(feature = "faer")]
 mod faer_impl {
-    use super::{PowellSingular, SQRT_10, SQRT_5};
-    use crate::{CostFunction, Residual};
-    use faer::Col;
+    use super::{powell_singular_jacobian, PowellSingular, SQRT_10, SQRT_5};
+    use crate::{CostFunction, Jacobian, Residual};
+    use faer::{Col, Mat};
 
     // faer's `Col` doesn't expose a `&[f64]` directly across all 0.24 APIs we
     // care about, so we evaluate elementwise here rather than routing through
@@ -253,6 +269,19 @@ mod faer_impl {
             let d03 = x[0] - x[3];
             out[3] = SQRT_10 * d03 * d03;
             out
+        }
+    }
+
+    impl Jacobian for PowellSingular<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Mat<f64>;
+        fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+            // Route through the row-major raw fn for a single source of
+            // truth. The Col → slice copy is 4 entries.
+            let xs = [x[0], x[1], x[2], x[3]];
+            let mut buf = [0.0_f64; 16];
+            powell_singular_jacobian(&xs, &mut buf);
+            Mat::from_fn(4, 4, |i, j| buf[i * 4 + j])
         }
     }
 }
@@ -365,6 +394,87 @@ mod tests {
         assert_eq!(r.len(), 4);
         for v in r {
             assert!(v.abs() < 1e-12);
+        }
+    }
+
+    #[cfg(feature = "nalgebra")]
+    mod nalgebra_jacobian_tests {
+        use super::super::PowellSingular;
+        use crate::{GramMatrix, Jacobian, LinearSolveError, LinearSolveSpd};
+        use nalgebra::{DMatrix, DVector};
+
+        #[test]
+        fn jacobian_at_classical_start_matches_documented_layout() {
+            let p: PowellSingular<DVector<f64>> = PowellSingular::new();
+            let x = DVector::from_vec(vec![3.0, -1.0, 0.0, 1.0]);
+            let j: DMatrix<f64> = p.jacobian(&x);
+            assert_eq!(j.shape(), (4, 4));
+            // d12 = x₁ − 2·x₂ = -1; d03 = x₀ − x₃ = 2.
+            // Row 0: [1, 10, 0, 0]
+            assert!((j[(0, 0)] - 1.0).abs() < 1e-12);
+            assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
+            // Row 1: [0, 0, √5, −√5]
+            assert!((j[(1, 2)] - super::SQRT_5).abs() < 1e-12);
+            assert!((j[(1, 3)] + super::SQRT_5).abs() < 1e-12);
+            // Row 2: [0, 2·d12, −4·d12, 0] = [0, -2, 4, 0]
+            assert!((j[(2, 1)] + 2.0).abs() < 1e-12);
+            assert!((j[(2, 2)] - 4.0).abs() < 1e-12);
+            // Row 3: [2√10·d03, 0, 0, −2√10·d03] = [4√10, 0, 0, −4√10]
+            assert!((j[(3, 0)] - 4.0 * super::SQRT_10).abs() < 1e-12);
+            assert!((j[(3, 3)] + 4.0 * super::SQRT_10).abs() < 1e-12);
+        }
+
+        #[test]
+        fn gram_at_origin_is_singular() {
+            // Powell's "singular": Jᵀ J at the optimum drops rank, so
+            // Cholesky must fail. This is what makes plain Gauss-Newton
+            // stall here — the LM track will use the same property to
+            // exercise the damping.
+            let p: PowellSingular<DVector<f64>> = PowellSingular::new();
+            let x = DVector::zeros(4);
+            let j = p.jacobian(&x);
+            let g = j.gram();
+            let b = DVector::from_vec(vec![1.0, 1.0, 1.0, 1.0]);
+            let err = g
+                .solve_spd(&b)
+                .expect_err("Jᵀ J at origin must be singular");
+            assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+        }
+    }
+
+    #[cfg(feature = "faer")]
+    mod faer_jacobian_tests {
+        use super::super::PowellSingular;
+        use crate::{GramMatrix, Jacobian, LinearSolveError, LinearSolveSpd};
+        use faer::{Col, Mat};
+
+        #[test]
+        fn jacobian_at_classical_start_matches_documented_layout() {
+            let p: PowellSingular<Col<f64>> = PowellSingular::new();
+            let x = Col::<f64>::from_fn(4, |i| [3.0, -1.0, 0.0, 1.0][i]);
+            let j: Mat<f64> = p.jacobian(&x);
+            assert_eq!((j.nrows(), j.ncols()), (4, 4));
+            assert!((j[(0, 0)] - 1.0).abs() < 1e-12);
+            assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
+            assert!((j[(1, 2)] - super::SQRT_5).abs() < 1e-12);
+            assert!((j[(1, 3)] + super::SQRT_5).abs() < 1e-12);
+            assert!((j[(2, 1)] + 2.0).abs() < 1e-12);
+            assert!((j[(2, 2)] - 4.0).abs() < 1e-12);
+            assert!((j[(3, 0)] - 4.0 * super::SQRT_10).abs() < 1e-12);
+            assert!((j[(3, 3)] + 4.0 * super::SQRT_10).abs() < 1e-12);
+        }
+
+        #[test]
+        fn gram_at_origin_is_singular() {
+            let p: PowellSingular<Col<f64>> = PowellSingular::new();
+            let x = Col::<f64>::zeros(4);
+            let j = p.jacobian(&x);
+            let g = j.gram();
+            let b = Col::<f64>::from_fn(4, |_| 1.0);
+            let err = g
+                .solve_spd(&b)
+                .expect_err("Jᵀ J at origin must be singular");
+            assert_eq!(err, LinearSolveError::NotPositiveDefinite);
         }
     }
 }

@@ -1,5 +1,8 @@
-use faer::Col;
+use faer::linalg::matmul::matmul;
+use faer::linalg::solvers::{Llt, Solve};
+use faer::{Accum, Col, Mat, Par, Side};
 
+use super::linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
 use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl ScaledAdd<f64> for Col<f64> {
@@ -31,5 +34,169 @@ impl Dot for Col<f64> {
 impl NegInPlace for Col<f64> {
     fn neg_in_place(&mut self) {
         faer::zip!(self.as_mut()).for_each(|faer::unzip!(x)| *x = -*x);
+    }
+}
+
+// ----------------------------------------------------------------------
+// linalg tier — dense ops on Mat<f64> with V = Col<f64>.
+// faer 0.24 has no `*` operator on Mat/Col — go through `matmul` directly.
+// ----------------------------------------------------------------------
+
+impl MatVec<Col<f64>> for Mat<f64> {
+    fn matvec(&self, x: &Col<f64>) -> Col<f64> {
+        assert_eq!(
+            self.ncols(),
+            x.nrows(),
+            "matvec: A.ncols ({}) != x.nrows ({})",
+            self.ncols(),
+            x.nrows()
+        );
+        let mut y = Col::<f64>::zeros(self.nrows());
+        matmul(
+            y.as_mut(),
+            Accum::Replace,
+            self.as_ref(),
+            x.as_ref(),
+            1.0,
+            Par::Seq,
+        );
+        y
+    }
+}
+
+impl MatTransposeVec<Col<f64>> for Mat<f64> {
+    fn mat_transpose_vec(&self, x: &Col<f64>) -> Col<f64> {
+        assert_eq!(
+            self.nrows(),
+            x.nrows(),
+            "mat_transpose_vec: A.nrows ({}) != x.nrows ({})",
+            self.nrows(),
+            x.nrows()
+        );
+        let mut y = Col::<f64>::zeros(self.ncols());
+        matmul(
+            y.as_mut(),
+            Accum::Replace,
+            self.transpose(),
+            x.as_ref(),
+            1.0,
+            Par::Seq,
+        );
+        y
+    }
+}
+
+impl GramMatrix for Mat<f64> {
+    fn gram(&self) -> Self {
+        let n = self.ncols();
+        let mut g = Mat::<f64>::zeros(n, n);
+        matmul(
+            g.as_mut(),
+            Accum::Replace,
+            self.transpose(),
+            self.as_ref(),
+            1.0,
+            Par::Seq,
+        );
+        g
+    }
+}
+
+impl LinearSolveSpd<Col<f64>> for Mat<f64> {
+    fn solve_spd(&self, b: &Col<f64>) -> Result<Col<f64>, LinearSolveError> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "solve_spd: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            b.nrows(),
+            "solve_spd: A.nrows ({}) != b.nrows ({})",
+            self.nrows(),
+            b.nrows()
+        );
+        let llt = Llt::new(self.as_ref(), Side::Lower)
+            .map_err(|_| LinearSolveError::NotPositiveDefinite)?;
+        let mut x = b.clone();
+        llt.solve_in_place(&mut x);
+        Ok(x)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() < tol
+    }
+
+    fn mat2(row0: [f64; 2], row1: [f64; 2]) -> Mat<f64> {
+        let rows = [row0, row1];
+        Mat::from_fn(2, 2, |i, j| rows[i][j])
+    }
+
+    #[test]
+    fn matvec_known_values() {
+        let a = mat2([1.0, 2.0], [3.0, 4.0]);
+        let x = Col::<f64>::from_fn(2, |i| [5.0, 6.0][i]);
+        let y = a.matvec(&x);
+        assert_eq!(y.nrows(), 2);
+        assert!(approx_eq(y[0], 17.0, 1e-12));
+        assert!(approx_eq(y[1], 39.0, 1e-12));
+    }
+
+    #[test]
+    fn mat_transpose_vec_known_values() {
+        let a = mat2([1.0, 2.0], [3.0, 4.0]);
+        let x = Col::<f64>::from_fn(2, |i| [5.0, 6.0][i]);
+        let y = a.mat_transpose_vec(&x);
+        assert_eq!(y.nrows(), 2);
+        // Aᵀ x = [1·5 + 3·6, 2·5 + 4·6] = [23, 34]
+        assert!(approx_eq(y[0], 23.0, 1e-12));
+        assert!(approx_eq(y[1], 34.0, 1e-12));
+    }
+
+    #[test]
+    fn gram_known_values() {
+        let a = mat2([1.0, 2.0], [3.0, 4.0]);
+        let g = a.gram();
+        // AᵀA = [[10, 14], [14, 20]]
+        assert_eq!(g.nrows(), 2);
+        assert_eq!(g.ncols(), 2);
+        assert!(approx_eq(g[(0, 0)], 10.0, 1e-12));
+        assert!(approx_eq(g[(0, 1)], 14.0, 1e-12));
+        assert!(approx_eq(g[(1, 0)], 14.0, 1e-12));
+        assert!(approx_eq(g[(1, 1)], 20.0, 1e-12));
+    }
+
+    #[test]
+    fn solve_spd_happy_path() {
+        let a = mat2([4.0, 1.0], [1.0, 3.0]);
+        let b = Col::<f64>::from_fn(2, |i| [1.0, 2.0][i]);
+        let x = a.solve_spd(&b).expect("SPD system must solve");
+        // Same hand-computed answer as the nalgebra test: x = [1/11, 7/11].
+        assert!(approx_eq(x[0], 1.0 / 11.0, 1e-12));
+        assert!(approx_eq(x[1], 7.0 / 11.0, 1e-12));
+    }
+
+    #[test]
+    fn solve_spd_indefinite_returns_error() {
+        let a = mat2([1.0, 2.0], [2.0, 1.0]);
+        let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
+        let err = a.solve_spd(&b).expect_err("indefinite must fail");
+        assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn gram_of_rank_deficient_is_singular() {
+        let a = mat2([1.0, 2.0], [2.0, 4.0]);
+        let g = a.gram();
+        let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
+        let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
+        assert_eq!(err, LinearSolveError::NotPositiveDefinite);
     }
 }

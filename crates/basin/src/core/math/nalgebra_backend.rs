@@ -1,5 +1,6 @@
-use nalgebra::{Dim, Matrix, Storage, StorageMut};
+use nalgebra::{DMatrix, DVector, Dim, Matrix, Storage, StorageMut};
 
+use super::linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
 use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
@@ -56,5 +57,140 @@ where
 {
     fn neg_in_place(&mut self) {
         self.apply(|x| *x = -*x);
+    }
+}
+
+// ----------------------------------------------------------------------
+// linalg tier — dense ops on DMatrix<f64> with V = DVector<f64>.
+// Per tenet 5, this is dense-only; sparse comes in S2b.
+// ----------------------------------------------------------------------
+
+impl MatVec<DVector<f64>> for DMatrix<f64> {
+    fn matvec(&self, x: &DVector<f64>) -> DVector<f64> {
+        assert_eq!(
+            self.ncols(),
+            x.len(),
+            "matvec: A.ncols ({}) != x.len ({})",
+            self.ncols(),
+            x.len()
+        );
+        self * x
+    }
+}
+
+impl MatTransposeVec<DVector<f64>> for DMatrix<f64> {
+    fn mat_transpose_vec(&self, x: &DVector<f64>) -> DVector<f64> {
+        assert_eq!(
+            self.nrows(),
+            x.len(),
+            "mat_transpose_vec: A.nrows ({}) != x.len ({})",
+            self.nrows(),
+            x.len()
+        );
+        self.tr_mul(x)
+    }
+}
+
+impl GramMatrix for DMatrix<f64> {
+    fn gram(&self) -> Self {
+        // tr_mul(self) computes Aᵀ A in one pass without an explicit transpose.
+        self.tr_mul(self)
+    }
+}
+
+impl LinearSolveSpd<DVector<f64>> for DMatrix<f64> {
+    fn solve_spd(&self, b: &DVector<f64>) -> Result<DVector<f64>, LinearSolveError> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "solve_spd: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            b.len(),
+            "solve_spd: A.nrows ({}) != b.len ({})",
+            self.nrows(),
+            b.len()
+        );
+        // nalgebra's `cholesky` consumes the matrix — clone is unavoidable
+        // without a separate factorize/solve split.
+        self.clone()
+            .cholesky()
+            .ok_or(LinearSolveError::NotPositiveDefinite)
+            .map(|chol| chol.solve(b))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(a: f64, b: f64, tol: f64) -> bool {
+        (a - b).abs() < tol
+    }
+
+    #[test]
+    fn matvec_known_values() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let x = DVector::from_vec(vec![5.0, 6.0]);
+        let y = a.matvec(&x);
+        assert_eq!(y.len(), 2);
+        assert!(approx_eq(y[0], 17.0, 1e-12));
+        assert!(approx_eq(y[1], 39.0, 1e-12));
+    }
+
+    #[test]
+    fn mat_transpose_vec_known_values() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let x = DVector::from_vec(vec![5.0, 6.0]);
+        let y = a.mat_transpose_vec(&x);
+        assert_eq!(y.len(), 2);
+        // Aᵀ x = [1·5 + 3·6, 2·5 + 4·6] = [23, 34]
+        assert!(approx_eq(y[0], 23.0, 1e-12));
+        assert!(approx_eq(y[1], 34.0, 1e-12));
+    }
+
+    #[test]
+    fn gram_known_values() {
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 3.0, 4.0]);
+        let g = a.gram();
+        // AᵀA = [[1·1+3·3, 1·2+3·4], [2·1+4·3, 2·2+4·4]] = [[10, 14], [14, 20]]
+        assert_eq!(g.shape(), (2, 2));
+        assert!(approx_eq(g[(0, 0)], 10.0, 1e-12));
+        assert!(approx_eq(g[(0, 1)], 14.0, 1e-12));
+        assert!(approx_eq(g[(1, 0)], 14.0, 1e-12));
+        assert!(approx_eq(g[(1, 1)], 20.0, 1e-12));
+    }
+
+    #[test]
+    fn solve_spd_happy_path() {
+        // A = [[4, 1], [1, 3]], b = [1, 2].
+        // det = 11, x = (1/11) [3·1 − 1·2, −1·1 + 4·2] = [1/11, 7/11].
+        let a = DMatrix::from_row_slice(2, 2, &[4.0, 1.0, 1.0, 3.0]);
+        let b = DVector::from_vec(vec![1.0, 2.0]);
+        let x = a.solve_spd(&b).expect("SPD system must solve");
+        assert!(approx_eq(x[0], 1.0 / 11.0, 1e-12));
+        assert!(approx_eq(x[1], 7.0 / 11.0, 1e-12));
+    }
+
+    #[test]
+    fn solve_spd_indefinite_returns_error() {
+        // A = [[1, 2], [2, 1]] is symmetric but indefinite (det = −3).
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 1.0]);
+        let b = DVector::from_vec(vec![1.0, 1.0]);
+        let err = a.solve_spd(&b).expect_err("indefinite must fail");
+        assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn gram_of_rank_deficient_is_singular() {
+        // Rank-1 matrix → AᵀA is rank-1, singular, fails Cholesky.
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 4.0]);
+        let g = a.gram();
+        let b = DVector::from_vec(vec![1.0, 1.0]);
+        let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
+        assert_eq!(err, LinearSolveError::NotPositiveDefinite);
     }
 }

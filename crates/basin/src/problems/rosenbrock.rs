@@ -241,8 +241,9 @@ pub fn rosenbrock_residuals_jacobian(x: &[f64], out: &mut [f64]) {
 /// the same function. Restricted to `param.len() == 2`; passing any
 /// other length will trip a debug assertion in the raw functions.
 ///
-/// `Jacobian` is *not* yet implemented — the matrix `Output` type
-/// lands with the linalg trait set in S2a.
+/// `Jacobian` is implemented for the LA-heavy backends (nalgebra
+/// `DMatrix<f64>` and faer `Mat<f64>`); see the trait's `# Backends`
+/// note for why `Vec` and `ndarray` are excluded.
 pub struct RosenbrockResiduals<P = Vec<f64>>(PhantomData<fn() -> P>);
 
 impl<P> RosenbrockResiduals<P> {
@@ -281,9 +282,11 @@ impl Residual for RosenbrockResiduals<Vec<f64>> {
 
 #[cfg(feature = "nalgebra")]
 mod nalgebra_residuals_impl {
-    use super::{rosenbrock, rosenbrock_residuals, RosenbrockResiduals};
-    use crate::{CostFunction, Residual};
-    use nalgebra::DVector;
+    use super::{
+        rosenbrock, rosenbrock_residuals, rosenbrock_residuals_jacobian, RosenbrockResiduals,
+    };
+    use crate::{CostFunction, Jacobian, Residual};
+    use nalgebra::{DMatrix, DVector};
 
     impl CostFunction for RosenbrockResiduals<DVector<f64>> {
         type Param = DVector<f64>;
@@ -300,6 +303,16 @@ mod nalgebra_residuals_impl {
             let mut out = DVector::zeros(2);
             rosenbrock_residuals(x.as_slice(), out.as_mut_slice());
             out
+        }
+    }
+
+    impl Jacobian for RosenbrockResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DMatrix<f64>;
+        fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+            let mut buf = [0.0_f64; 4];
+            rosenbrock_residuals_jacobian(x.as_slice(), &mut buf);
+            DMatrix::from_row_slice(2, 2, &buf)
         }
     }
 }
@@ -334,9 +347,9 @@ mod ndarray_residuals_impl {
 
 #[cfg(feature = "faer")]
 mod faer_residuals_impl {
-    use super::RosenbrockResiduals;
-    use crate::{CostFunction, Residual};
-    use faer::Col;
+    use super::{rosenbrock_residuals_jacobian, RosenbrockResiduals};
+    use crate::{CostFunction, Jacobian, Residual};
+    use faer::{Col, Mat};
 
     // faer's `Col` doesn't expose `&[f64]` across all 0.24 APIs we care
     // about; evaluate elementwise to mirror the cost-form impl above.
@@ -358,6 +371,17 @@ mod faer_residuals_impl {
             out[0] = 10.0 * (x[1] - x[0] * x[0]);
             out[1] = 1.0 - x[0];
             out
+        }
+    }
+
+    impl Jacobian for RosenbrockResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Mat<f64>;
+        fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+            let xs = [x[0], x[1]];
+            let mut buf = [0.0_f64; 4];
+            rosenbrock_residuals_jacobian(&xs, &mut buf);
+            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
         }
     }
 }
@@ -480,6 +504,96 @@ mod tests {
         assert_eq!(r.len(), 2);
         for v in r {
             assert!(v.abs() < 1e-12);
+        }
+    }
+
+    #[cfg(feature = "nalgebra")]
+    mod nalgebra_jacobian_tests {
+        use super::super::RosenbrockResiduals;
+        use crate::{GramMatrix, Jacobian, LinearSolveSpd, MatTransposeVec, Residual};
+        use nalgebra::{DMatrix, DVector};
+
+        #[test]
+        fn jacobian_at_minimum_matches_documented_layout() {
+            let p: RosenbrockResiduals<DVector<f64>> = RosenbrockResiduals::new();
+            let x = DVector::from_vec(vec![1.0, 1.0]);
+            let j: DMatrix<f64> = p.jacobian(&x);
+            assert_eq!(j.shape(), (2, 2));
+            // Layout at x = (1, 1): [[−20·1, 10], [−1, 0]]
+            assert!((j[(0, 0)] + 20.0).abs() < 1e-12);
+            assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
+            assert!((j[(1, 0)] + 1.0).abs() < 1e-12);
+            assert!(j[(1, 1)].abs() < 1e-12);
+        }
+
+        #[test]
+        fn gauss_newton_step_at_classical_start_is_well_defined() {
+            // At the classical start (-1.2, 1.0), J has full column rank,
+            // so JᵀJ is SPD and the GN step δ = (JᵀJ)⁻¹ Jᵀ r is well
+            // defined. Smallest credible end-to-end exercise of the
+            // linalg layer through a real Jacobian.
+            let p: RosenbrockResiduals<DVector<f64>> = RosenbrockResiduals::new();
+            let x = DVector::from_vec(vec![-1.2, 1.0]);
+            let j = p.jacobian(&x);
+            let r = p.residual(&x);
+            let g = j.gram();
+            let rhs = j.mat_transpose_vec(&r);
+            let delta = g.solve_spd(&rhs).expect("JᵀJ at (-1.2, 1.0) is SPD");
+            assert_eq!(delta.len(), 2);
+            // Hand-computed: J = [[24, 10], [-1, 0]], r = [-4.4, 2.2].
+            // JᵀJ = [[577, 240], [240, 100]]  (det 100).
+            // Jᵀr = [-107.8, -44].
+            // δ = (JᵀJ)⁻¹·(Jᵀr) = (1/100)·[[100,-240],[-240,577]]·[-107.8,-44]
+            //                   = (1/100)·[-220, 484] = [-2.2, 4.84].
+            // The Gauss-Newton update is x ← x − δ, so this δ is the
+            // un-negated normal-equation solution.
+            assert!((delta[0] + 2.2).abs() < 1e-9, "delta[0] = {}", delta[0]);
+            assert!((delta[1] - 4.84).abs() < 1e-9, "delta[1] = {}", delta[1]);
+        }
+    }
+
+    #[cfg(feature = "faer")]
+    mod faer_jacobian_tests {
+        use super::super::RosenbrockResiduals;
+        use crate::{Jacobian, Residual};
+        use faer::{Col, Mat};
+
+        #[test]
+        fn jacobian_at_minimum_matches_documented_layout() {
+            let p: RosenbrockResiduals<Col<f64>> = RosenbrockResiduals::new();
+            let x = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
+            let j: Mat<f64> = p.jacobian(&x);
+            assert_eq!((j.nrows(), j.ncols()), (2, 2));
+            assert!((j[(0, 0)] + 20.0).abs() < 1e-12);
+            assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
+            assert!((j[(1, 0)] + 1.0).abs() < 1e-12);
+            assert!(j[(1, 1)].abs() < 1e-12);
+        }
+
+        #[test]
+        fn jacobian_agrees_with_residual_via_finite_difference() {
+            // End-to-end sanity: the per-backend Jacobian must match a
+            // central-difference estimate of the residual it pairs with.
+            let p: RosenbrockResiduals<Col<f64>> = RosenbrockResiduals::new();
+            let x = Col::<f64>::from_fn(2, |i| [-1.2, 1.0][i]);
+            let j = p.jacobian(&x);
+            let h = 1e-6;
+            for k in 0..2 {
+                let mut xp = x.clone();
+                let mut xm = x.clone();
+                xp[k] += h;
+                xm[k] -= h;
+                let rp = p.residual(&xp);
+                let rm = p.residual(&xm);
+                for i in 0..2 {
+                    let fd = (rp[i] - rm[i]) / (2.0 * h);
+                    assert!(
+                        (j[(i, k)] - fd).abs() < 1e-5,
+                        "i={i} k={k} j={} fd={fd}",
+                        j[(i, k)]
+                    );
+                }
+            }
         }
     }
 }

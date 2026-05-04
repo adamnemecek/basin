@@ -23,6 +23,7 @@ pub trait NegInPlace {
     fn neg_in_place(&mut self);
 }
 
+mod linalg;
 mod scalar;
 mod vec;
 
@@ -34,3 +35,5 @@ mod ndarray_backend;
 
 #[cfg(feature = "faer")]
 mod faer_backend;
+
+pub use linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};

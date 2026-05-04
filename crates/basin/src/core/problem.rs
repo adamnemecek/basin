@@ -87,8 +87,9 @@ pub trait Residual {
 /// Analytic Jacobian `J(x) = ∂r/∂x: Param → Output` for least-squares
 /// solvers (Gauss-Newton, LM, TRF). The associated [`Output`] matrix
 /// type is what lets solvers bound on the linear-algebra ops they need
-/// (`MatVec`, `LinearSolve<M>`, …) without baking in a specific backend
-/// or assuming density.
+/// ([`MatVec`](crate::core::math::MatVec),
+/// [`LinearSolveSpd`](crate::core::math::LinearSolveSpd), …) without
+/// baking in a specific backend or assuming density.
 ///
 /// # Contract
 ///
@@ -103,12 +104,20 @@ pub trait Residual {
 ///
 /// # Backends
 ///
-/// `Vec<f64>` does *not* implement `Jacobian` — there is no honest
-/// matrix type to associate with it. Reach for a backend (nalgebra,
-/// faer, ndarray) when adding least-squares problems. Sparse `Output`
-/// types (`CscMatrix`, `SparseColMat`) are added when the Track-A
-/// sparse session lands; until then `Output` is a dense matrix per
-/// backend.
+/// Wired up for the LA-heavy backends only:
+///
+/// - `Param = nalgebra::DVector<f64>` → `Output = nalgebra::DMatrix<f64>`.
+/// - `Param = faer::Col<f64>` → `Output = faer::Mat<f64>`.
+///
+/// `Vec<f64>` deliberately does not implement `Jacobian` — there is no
+/// honest matrix type to pair with it. `ndarray::Array1<f64>` likewise
+/// has no `Jacobian` impl: `ndarray-linalg` requires system BLAS/LAPACK
+/// and breaks the wasm-default tenet, so there's no honest
+/// [`LinearSolveSpd`](crate::core::math::LinearSolveSpd) to back it.
+/// Per tenet 5 in `AGENTS.md`, missing backend coverage is a
+/// compile-time error rather than a runtime surprise.
+///
+/// Sparse `Output` types (`CscMatrix`, `SparseColMat`) land in S2b.
 pub trait Jacobian {
     /// The parameter type the Jacobian is defined over (matches
     /// [`Residual::Param`]).
