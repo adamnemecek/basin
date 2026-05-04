@@ -1,3 +1,21 @@
+//! basin — a numerical optimization library.
+//!
+//! The framework lives in [`core`]: problem traits the user implements
+//! ([`CostFunction`], [`Gradient`], [`BoxConstrained`]), state shapes
+//! solvers iterate over ([`State`], [`GradientState`], [`SimplexState`]),
+//! the [`Solver`] trait, and a pluggable termination layer
+//! ([`TerminationCriterion`]). Concrete solvers are in [`solver`];
+//! line searches in [`line_search`].
+//!
+//! Start at [`Executor`] for the user-facing driver, or [`core`] for the
+//! trait taxonomy and the iteration-loop contract.
+//!
+//! See `AGENTS.md` at the repo root for the design tenets that shape
+//! these APIs (notably tenet 3 on framework-level termination, tenet 4
+//! on first-class constraints, and tenet 5 on backend tiering).
+#![warn(missing_docs)]
+#![warn(rustdoc::broken_intra_doc_links)]
+
 pub mod core;
 pub mod line_search;
 #[cfg(feature = "problems")]

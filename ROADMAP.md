@@ -35,15 +35,23 @@ re-discussion.
 
 ## Phase 0 — Prep
 
-### S0. Pin termination + solver contracts in rustdoc
+### S0. Pin termination + solver contracts in rustdoc — **done**
 
-Already in `TODO.md` cleanup. Do this first — every following session
-adds new traits, and the load-bearing invariants get harder to articulate
-later. Things like:
+All eleven load-bearing invariants from the contract map are now
+rustdoc-anchored. Conventions established (and inherited by S1+):
 
-- `Solver::init` must populate cost/gradient before `next_iter`.
-- Criteria are checked before iter 0; first criterion to fire wins.
-- `gradient()` must match `param()` at end of `next_iter`.
+- `# Contract` heading with `**Caller must:** ...` /
+  `**Implementor must:** ...` sub-bullets — single heading, two voices.
+- Reserved heading vocabulary: `# Contract`, `# Panics`, `# Backends`,
+  `# Examples`. No others.
+- `#![warn(missing_docs)]` and
+  `#![warn(rustdoc::broken_intra_doc_links)]` at crate root. `warn`
+  not `deny`; promote in a later cleanup session once the missing-doc
+  surface (struct fields, trivial constructors) is filled in.
+- Canonical iteration ordering lives on the `executor` module; every
+  other contract cross-links there.
+- `# Backends` notes added to `GradientDescent` and `NelderMead` so
+  S3+ has prior art per tenet 5.
 
 ## Phase 1 — Track A: toward LM with box constraints
 

@@ -1,3 +1,37 @@
+//! Iteration driver. The high-level entry point is [`Executor`];
+//! [`Stepper`] exposes one-iteration-at-a-time control, and [`run_loop`]
+//! is the borrowed-problem variant used by composed solvers.
+//!
+//! # Canonical iteration ordering
+//!
+//! [`Executor::run`] (and the equivalent [`Stepper`] / [`run_loop`]
+//! paths) drive the solver through this exact sequence — every
+//! contract elsewhere in the framework cross-links here:
+//!
+//! 1. [`Solver::init`] is called **once**, on the initial state. The
+//!    returned state is what iter-0 sees.
+//! 2. Then, repeatedly, before each [`Solver::next_iter`] call
+//!    (including the first):
+//!    1. The built-in [`MaxIter`](crate::core::termination::MaxIter)
+//!       limit is checked against [`State::iter`]. If
+//!       `state.iter() >= max_iter`, the run stops with
+//!       [`TerminationReason::MaxIter`].
+//!    2. Each registered [`TerminationCriterion`] is checked **in
+//!       insertion order**. The **first to return `Some(reason)` halts
+//!       the run** — later criteria do not run that iteration.
+//!    3. The solver's own [`Solver::terminate`] hook is checked.
+//!       `Some(_)` halts the run.
+//! 3. If nothing fired, [`Solver::next_iter`] is called. It may itself
+//!    report a mid-iter termination via its return tuple; in that case
+//!    the iteration counter is **not** incremented, so the final
+//!    [`State::iter`] reflects the last *fully completed* iteration.
+//! 4. Otherwise the iteration counter is incremented and we go back to
+//!    step 2.
+//!
+//! Because checks happen *before* iter 0, an already-optimal initial
+//! point exits immediately with the corresponding reason rather than
+//! taking one redundant step.
+
 use crate::core::solver::Solver;
 use crate::core::state::State;
 use crate::core::termination::{TerminationCriterion, TerminationReason};
@@ -266,7 +300,8 @@ where
 
     /// Add a termination criterion. Criteria are checked in insertion
     /// order before each iteration (and before iter 0); the first to
-    /// return `Some(_)` stops the run.
+    /// return `Some(_)` stops the run. See the [module docs](self) for
+    /// the full per-iteration ordering.
     pub fn terminate_on<C>(mut self, criterion: C) -> Self
     where
         C: TerminationCriterion<S> + 'static,

@@ -1,43 +1,134 @@
+//! Solver state shapes.
+//!
+//! Every [`Solver`](crate::core::solver::Solver) carries its iterate as a
+//! [`State`]. The base [`State`] trait is the minimum the executor and
+//! generic termination criteria need to read; richer state shapes extend
+//! it ([`GradientState`] for first-order solvers, [`SimplexState`] for
+//! simplex-based solvers like Nelder-Mead) so termination criteria can
+//! bound on the minimum capability they need (tenet 3 in `AGENTS.md`).
+//!
+//! `State::Float` is technically generic but every concrete state ships
+//! with `Float = f64`, and every shipped termination criterion that reads
+//! costs assumes `f64`. See the *Provisional choices* section of
+//! `AGENTS.md` — switching to `F: num_traits::Float` is planned but
+//! deferred until the first stochastic solver lands.
+
+/// Minimum information the executor and generic termination criteria
+/// need to read from a solver's iterate.
+///
+/// # Contract
+///
+/// - **Caller must:** construct via the appropriate concrete state
+///   constructor (e.g. [`BasicState::new`]) before handing the state to
+///   [`Executor`](crate::core::executor::Executor). The executor's `init`
+///   call populates derived fields (cost, gradient) before any termination
+///   check sees the state.
+/// - **Implementor must:** keep [`param`](Self::param) stable between
+///   iterations — the returned reference is valid until the next
+///   [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+///   returns. [`cost_evals`](Self::cost_evals) counts every call to the
+///   problem's cost function, not iterations: a single
+///   [`Solver::next_iter`](crate::core::solver::Solver::next_iter) may
+///   evaluate the cost many times (line searches, Nelder-Mead shrinks),
+///   and users budget against this counter rather than
+///   [`iter`](Self::iter).
 pub trait State {
+    /// The parameter type the solver iterates over (e.g. `Vec<f64>`,
+    /// `nalgebra::DVector<f64>`).
     type Param;
+    /// The scalar type of the objective. In practice always `f64` (see
+    /// the module docs).
     type Float;
 
+    /// Number of fully completed iterations. A
+    /// [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+    /// that bails mid-iteration with `Some(reason)` does not increment
+    /// this counter — see the
+    /// [`executor`](crate::core::executor) module for the exact ordering.
     fn iter(&self) -> u64;
+    /// Increment [`iter`](Self::iter) by one. Called by the executor
+    /// after a successful [`Solver::next_iter`](crate::core::solver::Solver::next_iter).
     fn increment_iter(&mut self);
     /// Cumulative count of cost-function evaluations performed so far.
     /// Diverges from `iter()` whenever a single iteration evaluates the
     /// cost more than once (line searches, Nelder-Mead shrinks, etc.) —
     /// this is what users actually budget against.
     fn cost_evals(&self) -> u64;
+    /// Increase the cost-eval counter by `by`. Solvers call this whenever
+    /// they invoke the problem's cost function.
     fn increment_cost_evals(&mut self, by: u64);
+    /// Current iterate. Stable between
+    /// [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+    /// calls; safe to read at any iteration including iter 0.
     fn param(&self) -> &Self::Param;
+    /// Cost at the current [`param`](Self::param).
+    ///
+    /// # Panics
+    ///
+    /// Concrete states ([`BasicState`], [`BasicSimplexState`], and
+    /// `QuasiNewtonState` under the `nalgebra` feature) panic if
+    /// `cost()` is read before
+    /// [`Solver::init`](crate::core::solver::Solver::init) has populated
+    /// the cached cost. By contract the executor calls `init` before any
+    /// termination criterion check, so reads from criteria and from
+    /// [`OptimizationResult`](crate::core::executor::OptimizationResult)
+    /// are safe.
     fn cost(&self) -> Self::Float;
 }
 
-/// States that carry a gradient at the current `param`.
+/// States that carry a gradient at the current [`param`](State::param).
 ///
-/// Solvers that compute a gradient should populate `gradient()` so that
-/// gradient-based termination criteria can read it without re-evaluating
-/// the problem. `None` means "no gradient available at this iterate yet"
-/// (e.g. before `Solver::init` has run).
+/// # Contract
+///
+/// - **Implementor must:** at the end of every successful
+///   [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+///   (and at the end of [`Solver::init`](crate::core::solver::Solver::init)
+///   for first-order solvers), populate
+///   [`gradient`](Self::gradient) so it corresponds to the *current*
+///   [`param`](State::param). Termination criteria read it; if it lags
+///   behind the param they will fire on stale data.
+/// - `None` means "no gradient available at this iterate yet" — the
+///   only legitimate case is before
+///   [`Solver::init`](crate::core::solver::Solver::init) has run, used
+///   by criteria like [`GradientTolerance`](crate::core::termination::GradientTolerance)
+///   to silently skip the check.
 pub trait GradientState: State {
+    /// Gradient at the current [`param`](State::param), if populated.
     fn gradient(&self) -> Option<&Self::Param>;
     /// Cumulative count of gradient evaluations performed so far. Lives
     /// on `GradientState` rather than `State` so derivative-free states
     /// don't carry a counter they can never increment.
     fn gradient_evals(&self) -> u64;
+    /// Increase the gradient-eval counter by `by`. Solvers call this
+    /// whenever they invoke the problem's gradient function.
     fn increment_gradient_evals(&mut self, by: u64);
 }
 
 /// States built around a simplex of `n + 1` vertices and parallel costs.
 ///
-/// Mirrors `GradientState`: the trait exists so termination criteria
-/// (e.g. simplex-collapse tests à la Lagarias et al. 1998 (T1)) can bound
-/// on a richer view than `State::param()` / `cost()`, which only see the
-/// best vertex. The vertex/cost arrays are sorted by ascending cost at the
-/// start and end of every `Solver::next_iter`.
+/// Mirrors [`GradientState`]: the trait exists so termination criteria
+/// (e.g. the simplex-collapse test of Lagarias et al. 1998, eq. T1, in
+/// [`SimplexTolerance`](crate::core::termination::SimplexTolerance)) can
+/// bound on a richer view than [`State::param`] / [`State::cost`], which
+/// only see the best vertex.
+///
+/// # Contract
+///
+/// - **Implementor must:** keep [`vertices`](Self::vertices) and
+///   [`costs`](Self::costs) sorted by **ascending cost** at the start and
+///   end of every [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+///   call (and at the end of [`Solver::init`](crate::core::solver::Solver::init)).
+///   So [`State::param`] / [`State::cost`] always return the current best
+///   vertex (`vertices[0]` / `costs[0]`).
+/// - **Implementor must:** sort `NaN` costs *last*, so a single bad
+///   evaluation can't drag itself to the front and become the
+///   "best" vertex.
+/// - **Implementor must:** keep the two slices the same length and in
+///   parallel order — `costs[i]` is the cost at `vertices[i]`.
 pub trait SimplexState: State {
+    /// All `n + 1` vertices, sorted by ascending cost.
     fn vertices(&self) -> &[Self::Param];
+    /// Costs in parallel with [`vertices`](Self::vertices), sorted ascending.
     fn costs(&self) -> &[Self::Float];
 }
 
@@ -87,9 +178,19 @@ impl<P> State for BasicState<P> {
         &self.param
     }
 
-    /// Reads the cost cached at the current `param`. Panics if accessed
-    /// before `Solver::init` has run — by contract, `Executor::run` calls
-    /// `init` before any criterion check, so this is safe in practice.
+    /// Reads the cost cached at the current `param`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if accessed before
+    /// [`Solver::init`](crate::core::solver::Solver::init) has populated
+    /// the cached cost. By contract,
+    /// [`Executor`](crate::core::executor::Executor) calls `init` before
+    /// any termination-criterion check (see the
+    /// [`executor`](crate::core::executor) module docs for the full
+    /// ordering), so reads from inside criteria and from
+    /// [`OptimizationResult`](crate::core::executor::OptimizationResult)
+    /// are safe.
     fn cost(&self) -> f64 {
         self.cost
             .expect("BasicState::cost read before Solver::init populated it")
@@ -345,6 +446,14 @@ impl<V, M> State for QuasiNewtonState<V, M> {
         &self.param
     }
 
+    /// Reads the cost cached at the current `param`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if accessed before
+    /// [`Solver::init`](crate::core::solver::Solver::init) has populated
+    /// the cached cost. See [`BasicState::cost`] for the full safety
+    /// argument — same contract.
     fn cost(&self) -> f64 {
         self.cost
             .expect("QuasiNewtonState::cost read before Solver::init populated it")

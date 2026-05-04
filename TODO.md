@@ -8,10 +8,12 @@ the previous lands.
 See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
 This section tracks the immediate next session's discrete items.
 
-- [ ] **S0: Pin termination + solver contracts in rustdoc.** See the
-      "Cleanup / design debt" item below for the specific invariants —
-      promoted to next-up because every following roadmap session adds
-      new traits, and these get harder to articulate later.
+- [ ] **S1: `Residual` + `Jacobian` problem traits.** First session of
+      the LM track. Pure type design (no backend impls yet) — define
+      the trait shape with an associated `Output` matrix type so
+      sparsity is in scope from day one. Add Powell singular and
+      Rosenbrock-as-residuals as test problems (stubs only — Jacobian
+      impls land in S2a/S3). See `ROADMAP.md` Phase 1 for context.
 
 ## Deferred (not now)
 
@@ -76,13 +78,14 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 Surfaced while implementing the termination layer. Not blocking, but each
 gets harder to fix as more code piles on.
 
-- [ ] **Rustdoc the load-bearing invariants on public traits.** Things like
-      "`Solver::init` must populate cost/gradient before `next_iter`",
-      "criteria are checked before iter 0", "first criterion to fire wins",
-      "`gradient()` must match `param()` at end of `next_iter`". These are
-      contract, not narrative — easy to forget and not derivable from the
-      type signatures. Do this *before* the larger rustdoc pass since these
-      pin down current decisions.
+- [x] **Rustdoc the load-bearing invariants on public traits.** Done in
+      S0 — see `ROADMAP.md`. `# Contract` heading + `**Caller must:**` /
+      `**Implementor must:**` bullets are the established convention;
+      `#![warn(missing_docs)]` and `#![warn(rustdoc::broken_intra_doc_links)]`
+      are on at the crate root. Filling in docs on items that hold no
+      contract (struct fields, trivial constructors) is the open
+      follow-up — those are the ~100 `missing_docs` warnings still
+      surfaced by the lint.
 - [ ] **`ParamVec<F>` marker for solvers doing linear algebra on params.**
       Nelder-Mead needs `V: Clone + ScaledAdd<f64>`; gradient descent needs
       `V: ScaledAdd<f64>`; future solvers will repeat the bound pair. Add a

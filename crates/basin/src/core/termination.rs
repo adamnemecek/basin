@@ -21,12 +21,32 @@ pub enum TerminationReason {
 
 /// A pluggable termination check evaluated by the executor.
 ///
-/// Criteria are checked *before* each iteration (including iter 0) so an
-/// already-optimal initial point exits immediately. Each criterion's bound
-/// on `S` decides whether it can be applied to a given state — e.g.
-/// `GradientTolerance` requires `S: GradientState`, so derivative-free
-/// states cannot be paired with it (compile error, not runtime "N/A").
+/// # Contract
+///
+/// - **Caller must:** register criteria with
+///   [`Executor::terminate_on`](crate::core::executor::Executor::terminate_on)
+///   before calling [`Executor::run`](crate::core::executor::Executor::run).
+///   Insertion order matters: criteria are checked in the order they
+///   were registered, and the **first to return `Some(_)` halts the run**.
+///   The built-in [`MaxIter`] limit (settable via
+///   [`Executor::max_iter`](crate::core::executor::Executor::max_iter))
+///   is checked *before* user criteria each iteration.
+/// - **Caller must:** rely on the bound on `S` to encode capability:
+///   e.g. [`GradientTolerance`] requires `S: GradientState`, so handing
+///   it to a derivative-free solver is a compile error, not a runtime
+///   "N/A" (tenet 3 in `AGENTS.md`).
+/// - **Implementor must:** treat [`check`](Self::check) as side-effect
+///   free *with respect to the optimization*. Internal state for criteria
+///   that need history (e.g. [`ParamTolerance`], [`CostTolerance`])
+///   lives inside the criterion itself.
+/// - Criteria are checked *before* each iteration including iter 0 so
+///   an already-optimal initial point exits immediately. See the
+///   [`executor`](crate::core::executor) module docs for the full
+///   per-iteration ordering.
 pub trait TerminationCriterion<S> {
+    /// Inspect the current state and return `Some(reason)` to halt the
+    /// run, or `None` to continue. Called once per iteration before the
+    /// solver's `next_iter`.
     fn check(&mut self, state: &S) -> Option<TerminationReason>;
 }
 
@@ -76,6 +96,9 @@ impl<S: GradientState> TerminationCriterion<S> for MaxGradientEvals {
 
 /// Stop when `‖∇f(x)‖ ≤ tol`. Skipped silently when the state has no
 /// gradient populated yet (e.g. iter 0 before `init` has run).
+///
+/// Requires `S: GradientState` — pairing with a derivative-free solver
+/// is a compile error.
 pub struct GradientTolerance(pub f64);
 
 impl<S> TerminationCriterion<S> for GradientTolerance
@@ -162,8 +185,8 @@ where
 /// `max_i |f_i − f_1| ≤ tol_f`, where `x_1` / `f_1` are the best vertex
 /// and its cost.
 ///
-/// Bound on `S: SimplexState` so derivative-free solvers that don't carry
-/// a simplex can't be paired with it.
+/// Requires `S: SimplexState` — single-iterate solvers (gradient
+/// descent, BFGS) cannot be paired with it (compile error).
 pub struct SimplexTolerance {
     tol_x: f64,
     tol_f: f64,

@@ -1,3 +1,36 @@
+//! Framework: traits, state shapes, the iteration driver, and the
+//! termination layer. The slot taxonomy is:
+//!
+//! - [`problem`] — what the *user* implements about their objective:
+//!   [`CostFunction`](problem::CostFunction),
+//!   [`Gradient`](problem::Gradient).
+//!   Future: residual/Jacobian, Hessian, operators (matrix-free).
+//! - [`constraint`] — constraint markers carried on the problem (tenet 4
+//!   in `AGENTS.md`). Currently
+//!   [`BoxConstrained`](constraint::BoxConstrained).
+//! - [`state`] — what a solver carries between iterations:
+//!   [`State`](state::State) for the minimum,
+//!   [`GradientState`](state::GradientState) /
+//!   [`SimplexState`](state::SimplexState) when a solver carries
+//!   richer info that termination criteria can read.
+//! - [`solver`] — the [`Solver`](solver::Solver) trait every concrete
+//!   solver implements. Lifecycle is `init` once, then repeated
+//!   `next_iter`, with an optional `terminate` hook.
+//! - [`termination`] — the framework-level
+//!   [`TerminationCriterion`](termination::TerminationCriterion)
+//!   trait plus shipped criteria. Each criterion bounds on the minimum
+//!   state shape it needs (tenet 3), so mismatches are compile errors
+//!   rather than runtime no-ops.
+//! - [`executor`] — the driver: [`Executor`](executor::Executor) /
+//!   [`Stepper`](executor::Stepper) / [`run_loop`](executor::run_loop).
+//!   The canonical iteration ordering is documented on the
+//!   [`executor`] module.
+//! - [`math`] — the small shared math layer
+//!   ([`ScaledAdd`](math::ScaledAdd), [`NormSquared`](math::NormSquared),
+//!   …) that backend-generic solvers depend on. Per tenet 5, this stays
+//!   honest: only ops every backend can implement well live here. LA-heavy
+//!   ops will live in a separate tier when the first solver wants them.
+
 pub mod constraint;
 pub mod executor;
 pub mod math;

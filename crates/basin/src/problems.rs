@@ -1,7 +1,7 @@
 //! Standard optimization test problems.
 //!
 //! Each problem is exposed three ways:
-//! - Raw functions on `&[f64]` slices (e.g. [`rosenbrock`]) for callers that
+//! - Raw functions on `&[f64]` slices (e.g. [`rosenbrock()`]) for callers that
 //!   want to plug the math into their own wrappers, benchmarks, or visualizations.
 //! - A pre-wrapped struct (e.g. [`Rosenbrock`]) implementing
 //!   [`CostFunction`](crate::CostFunction) and [`Gradient`](crate::Gradient)

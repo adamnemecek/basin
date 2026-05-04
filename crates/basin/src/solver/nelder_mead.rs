@@ -10,6 +10,15 @@ use crate::core::termination::TerminationReason;
 /// adaptive parameter option of Gao & Han (2012). The four parameters are:
 /// `α` (reflection), `β` (expansion), `γ` (contraction), `δ` (shrink), with
 /// the constraints `α > 0`, `β > 1`, `0 < γ < 1`, `0 < δ < 1`.
+///
+/// # Backends
+///
+/// Backend-generic — works with any `V` implementing
+/// [`ScaledAdd<f64>`](crate::core::math::ScaledAdd) + `Clone`, paired
+/// with a [`BasicSimplexState<V>`]. That covers `Vec<f64>`,
+/// `nalgebra::DVector<f64>` (feature `nalgebra`),
+/// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
+/// (feature `faer`).
 pub struct NelderMead {
     config: ParamConfig,
     /// Resolved parameters; populated by `init` once the dimension is known.

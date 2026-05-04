@@ -5,6 +5,23 @@ use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
 use crate::line_search::{Constant, LineSearch};
 
+/// Steepest-descent solver: step in the direction of `−∇f(x)` with a
+/// pluggable line search.
+///
+/// The line search type parameter `S` is the strategy
+/// (e.g. [`Constant`], [`Backtracking`](crate::line_search::Backtracking),
+/// [`Wolfe`](crate::line_search::Wolfe)). Use [`GradientDescent::new`]
+/// for a fixed step or
+/// [`GradientDescent::with_line_search`] to pick a strategy explicitly.
+///
+/// # Backends
+///
+/// Backend-generic — works with any `V` implementing
+/// [`ScaledAdd<f64>`](crate::core::math::ScaledAdd) +
+/// [`NegInPlace`] + `Clone`. That covers
+/// `Vec<f64>`, `nalgebra::DVector<f64>` (feature `nalgebra`),
+/// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
+/// (feature `faer`).
 pub struct GradientDescent<S> {
     line_search: S,
 }
