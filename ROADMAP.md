@@ -55,16 +55,31 @@ rustdoc-anchored. Conventions established (and inherited by S1+):
 
 ## Phase 1 — Track A: toward LM with box constraints
 
-### S1. `Residual` + `Jacobian` problem traits
+### S1. `Residual` + `Jacobian` problem traits — **done**
 
-- Define `Residual` (returns `R`, the residual vector type) and
-  `Jacobian` with associated `Output` matrix type.
-- No backend impls yet — just the trait shape, plus a couple of
-  least-squares test problems on paper:
-  - **Powell's singular function** (4D, classic LM benchmark).
-  - **Rosenbrock-as-residuals** (`r = [10(x₂−x₁²), 1−x₁]`).
-- Output: trait module + test problem stubs that compile but have no
-  Jacobian impls until S2a.
+`Residual` and `Jacobian` traits landed in `core::problem` with the
+established `# Contract` rustdoc style. Both use `type Output` for the
+produced value (matches `CostFunction::Output`); `Jacobian::Output` is
+the first associated *matrix* type in the codebase. The `# Backends`
+note on `Jacobian` calls out that `Vec<f64>` deliberately doesn't
+implement it — no honest matrix type, compile-time error is correct.
+
+Test-problem stubs:
+- **Powell singular** in `problems/powell_singular.rs`. Raw fns + spec
+  + `PowellSingular<P>` wrapper + per-backend `Residual` /
+  `CostFunction` impls (Vec, nalgebra, ndarray, faer). Cost uses the
+  LM ½‖r‖² convention. Tests cover the rank-deficient-at-origin
+  property explicitly so it stays load-bearing for S4.
+- **Rosenbrock-as-residuals** appended to `problems/rosenbrock.rs` as
+  `RosenbrockResiduals<P>`, sharing `ROSENBROCK_SPEC` (one Rosenbrock
+  entry in the catalog). 2D-only; `Σ rᵢ² == rosenbrock(x)` exactly,
+  matching the published unscaled form rather than the LM ½ form —
+  documented on the `Residual` trait contract.
+
+`Jacobian` trait impls (per backend) deferred to S2a where the matrix
+`Output` type and `linalg` ops are pinned down. Raw `_jacobian`
+functions ship now with row-major layout documented, so S2a's per-
+backend impls can plug them in verbatim.
 
 ### S2a. Math::linalg trait design + dual-backend dense prototype
 

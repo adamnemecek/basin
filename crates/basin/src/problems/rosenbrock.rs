@@ -8,7 +8,7 @@
 use core::marker::PhantomData;
 
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
-use crate::{CostFunction, Gradient};
+use crate::{CostFunction, Gradient, Residual};
 
 pub static ROSENBROCK_SPEC: ProblemSpec = ProblemSpec {
     name: "Rosenbrock",
@@ -193,6 +193,175 @@ mod faer_impl {
     }
 }
 
+// ----------------------------------------------------------------------
+// Residual-form Rosenbrock (n = 2 only)
+// ----------------------------------------------------------------------
+// The 2D Rosenbrock factors as a 2-residual least-squares problem:
+//   r₀ = 10·(x₁ − x₀²)
+//   r₁ = 1 − x₀
+// with `Σ rᵢ² = rosenbrock(x)` exactly (note: unscaled sum, matching the
+// published Rosenbrock cost rather than the LM ½‖r‖² convention; see
+// the `Residual` trait contract). Used as a fixture for the LM track —
+// same minimum (1, 1), same shape, but exposed in the form Gauss-Newton
+// and Levenberg-Marquardt expect. n > 2 is not supported here; the
+// existing `Rosenbrock` wrapper covers the cost form for general n.
+
+/// Writes the 2D Rosenbrock residual at `x` into `out`. Both must have
+/// length 2.
+///
+/// `r = [10·(x₁ − x₀²), 1 − x₀]`. Zero at `(1, 1)`.
+pub fn rosenbrock_residuals(x: &[f64], out: &mut [f64]) {
+    debug_assert_eq!(x.len(), 2);
+    debug_assert_eq!(out.len(), 2);
+    out[0] = 10.0 * (x[1] - x[0] * x[0]);
+    out[1] = 1.0 - x[0];
+}
+
+/// Writes the 2×2 Jacobian `∂rᵢ/∂xⱼ` at `x` into `out` in row-major
+/// order: `out[i*2 + j] = ∂rᵢ/∂xⱼ`. `x.len()` must be 2 and
+/// `out.len()` must be 4.
+///
+/// ```text
+///        ∂x₀      ∂x₁
+/// r₀:    −20·x₀   10
+/// r₁:    −1       0
+/// ```
+pub fn rosenbrock_residuals_jacobian(x: &[f64], out: &mut [f64]) {
+    debug_assert_eq!(x.len(), 2);
+    debug_assert_eq!(out.len(), 4);
+    out[0] = -20.0 * x[0];
+    out[1] = 10.0;
+    out[2] = -1.0;
+    out[3] = 0.0;
+}
+
+/// 2D Rosenbrock exposed as a least-squares problem (2 residuals, 2
+/// parameters). Shares [`ROSENBROCK_SPEC`] with the cost-form
+/// [`Rosenbrock`] wrapper — this is just a different *interface* over
+/// the same function. Restricted to `param.len() == 2`; passing any
+/// other length will trip a debug assertion in the raw functions.
+///
+/// `Jacobian` is *not* yet implemented — the matrix `Output` type
+/// lands with the linalg trait set in S2a.
+pub struct RosenbrockResiduals<P = Vec<f64>>(PhantomData<fn() -> P>);
+
+impl<P> RosenbrockResiduals<P> {
+    pub const fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<P> Default for RosenbrockResiduals<P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<P> HasSpec for RosenbrockResiduals<P> {
+    const SPEC: &'static ProblemSpec = &ROSENBROCK_SPEC;
+}
+
+impl CostFunction for RosenbrockResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = f64;
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        rosenbrock(x)
+    }
+}
+
+impl Residual for RosenbrockResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = Vec<f64>;
+    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+        let mut out = vec![0.0; 2];
+        rosenbrock_residuals(x, &mut out);
+        out
+    }
+}
+
+#[cfg(feature = "nalgebra")]
+mod nalgebra_residuals_impl {
+    use super::{rosenbrock, rosenbrock_residuals, RosenbrockResiduals};
+    use crate::{CostFunction, Residual};
+    use nalgebra::DVector;
+
+    impl CostFunction for RosenbrockResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            rosenbrock(x.as_slice())
+        }
+    }
+
+    impl Residual for RosenbrockResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DVector<f64>;
+        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+            let mut out = DVector::zeros(2);
+            rosenbrock_residuals(x.as_slice(), out.as_mut_slice());
+            out
+        }
+    }
+}
+
+#[cfg(feature = "ndarray")]
+mod ndarray_residuals_impl {
+    use super::{rosenbrock, rosenbrock_residuals, RosenbrockResiduals};
+    use crate::{CostFunction, Residual};
+    use ndarray::Array1;
+
+    impl CostFunction for RosenbrockResiduals<Array1<f64>> {
+        type Param = Array1<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Array1<f64>) -> f64 {
+            rosenbrock(x.as_slice().expect("Array1 is contiguous"))
+        }
+    }
+
+    impl Residual for RosenbrockResiduals<Array1<f64>> {
+        type Param = Array1<f64>;
+        type Output = Array1<f64>;
+        fn residual(&self, x: &Array1<f64>) -> Array1<f64> {
+            let mut out = Array1::zeros(2);
+            rosenbrock_residuals(
+                x.as_slice().expect("Array1 is contiguous"),
+                out.as_slice_mut().expect("Array1 is contiguous"),
+            );
+            out
+        }
+    }
+}
+
+#[cfg(feature = "faer")]
+mod faer_residuals_impl {
+    use super::RosenbrockResiduals;
+    use crate::{CostFunction, Residual};
+    use faer::Col;
+
+    // faer's `Col` doesn't expose `&[f64]` across all 0.24 APIs we care
+    // about; evaluate elementwise to mirror the cost-form impl above.
+    impl CostFunction for RosenbrockResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Col<f64>) -> f64 {
+            let a = x[1] - x[0] * x[0];
+            let b = 1.0 - x[0];
+            100.0 * a * a + b * b
+        }
+    }
+
+    impl Residual for RosenbrockResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Col<f64>;
+        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+            let mut out = Col::<f64>::zeros(2);
+            out[0] = 10.0 * (x[1] - x[0] * x[0]);
+            out[1] = 1.0 - x[0];
+            out
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,6 +411,75 @@ mod tests {
             xm[i] -= h;
             let fd = (rosenbrock(&xp) - rosenbrock(&xm)) / (2.0 * h);
             assert!((g[i] - fd).abs() < 1e-5, "i={i}, g={}, fd={fd}", g[i]);
+        }
+    }
+
+    // -- residual-form tests --
+
+    #[test]
+    fn residuals_are_zero_at_optimum() {
+        let mut r = vec![0.0; 2];
+        rosenbrock_residuals(&[1.0, 1.0], &mut r);
+        assert!(r[0].abs() < 1e-12);
+        assert!(r[1].abs() < 1e-12);
+    }
+
+    #[test]
+    fn residuals_match_cost_at_n2() {
+        // For n = 2: rosenbrock(x) = 100·(x₁−x₀²)² + (1−x₀)² = Σ rᵢ².
+        for x in [[-1.2, 1.0], [0.5, 0.25], [2.0, 4.0], [0.0, 0.0]] {
+            let mut r = vec![0.0; 2];
+            rosenbrock_residuals(&x, &mut r);
+            let sum_sq = r[0] * r[0] + r[1] * r[1];
+            let c = rosenbrock(&x);
+            assert!(
+                (c - sum_sq).abs() < 1e-12,
+                "x={x:?}, c={c}, sum_sq={sum_sq}"
+            );
+        }
+    }
+
+    #[test]
+    fn residual_jacobian_matches_finite_difference() {
+        let x = [-1.2, 1.0];
+        let mut j = vec![0.0; 4];
+        rosenbrock_residuals_jacobian(&x, &mut j);
+
+        let h = 1e-6;
+        for i in 0..2 {
+            for k in 0..2 {
+                let mut xp = x;
+                let mut xm = x;
+                xp[k] += h;
+                xm[k] -= h;
+                let mut rp = vec![0.0; 2];
+                let mut rm = vec![0.0; 2];
+                rosenbrock_residuals(&xp, &mut rp);
+                rosenbrock_residuals(&xm, &mut rm);
+                let fd = (rp[i] - rm[i]) / (2.0 * h);
+                assert!(
+                    (j[i * 2 + k] - fd).abs() < 1e-5,
+                    "i={i}, k={k}, j={}, fd={fd}",
+                    j[i * 2 + k]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn residual_wrapper_reuses_rosenbrock_spec() {
+        let spec = <RosenbrockResiduals<Vec<f64>> as HasSpec>::SPEC;
+        // Same static — both wrappers point at the one Rosenbrock entry.
+        assert!(core::ptr::eq(spec, &ROSENBROCK_SPEC));
+    }
+
+    #[test]
+    fn residual_trait_returns_expected_vector() {
+        let p: RosenbrockResiduals = RosenbrockResiduals::default();
+        let r = p.residual(&vec![1.0, 1.0]);
+        assert_eq!(r.len(), 2);
+        for v in r {
+            assert!(v.abs() < 1e-12);
         }
     }
 }

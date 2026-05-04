@@ -24,6 +24,7 @@ pub mod booth;
 pub mod goldstein_price;
 pub mod matyas;
 pub mod mccormick;
+pub mod powell_singular;
 pub mod rosenbrock;
 pub mod spec;
 pub mod sphere;
@@ -35,7 +36,14 @@ pub use goldstein_price::{
 };
 pub use matyas::{matyas, matyas_gradient, Matyas, MATYAS_SPEC};
 pub use mccormick::{mccormick, mccormick_gradient, McCormick, MCCORMICK_SPEC};
-pub use rosenbrock::{rosenbrock, rosenbrock_gradient, Rosenbrock, ROSENBROCK_SPEC};
+pub use powell_singular::{
+    powell_singular, powell_singular_jacobian, powell_singular_residuals, PowellSingular,
+    POWELL_SINGULAR_SPEC,
+};
+pub use rosenbrock::{
+    rosenbrock, rosenbrock_gradient, rosenbrock_residuals, rosenbrock_residuals_jacobian,
+    Rosenbrock, RosenbrockResiduals, ROSENBROCK_SPEC,
+};
 pub use spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 pub use sphere::{sphere, sphere_gradient, Sphere, SPHERE_SPEC};
 
@@ -49,4 +57,5 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &MATYAS_SPEC,
     &MCCORMICK_SPEC,
     &GOLDSTEIN_PRICE_SPEC,
+    &POWELL_SINGULAR_SPEC,
 ];

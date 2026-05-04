@@ -8,12 +8,13 @@ the previous lands.
 See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
 This section tracks the immediate next session's discrete items.
 
-- [ ] **S1: `Residual` + `Jacobian` problem traits.** First session of
-      the LM track. Pure type design (no backend impls yet) — define
-      the trait shape with an associated `Output` matrix type so
-      sparsity is in scope from day one. Add Powell singular and
-      Rosenbrock-as-residuals as test problems (stubs only — Jacobian
-      impls land in S2a/S3). See `ROADMAP.md` Phase 1 for context.
+- [ ] **S2a: `Math::linalg` trait design + dual-backend dense prototype.**
+      Load-bearing session of the LM track — pin down the minimum LA
+      ops a Gauss-Newton/LM solver bounds on (`Transpose`, `MatVec`,
+      `MatTMatVec`, `LinearSolve<M>`) and prototype against both
+      nalgebra dense (`DMatrix<f64>`) and faer dense (`Mat<f64>`).
+      Land the first `Jacobian::Output` impls. Read the faer paper +
+      nalgebra-sparse user guide first. See `ROADMAP.md` Phase 1.
 
 ## Deferred (not now)
 
@@ -51,6 +52,11 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 - [x] **McCormick** — 2D, smooth, single minimum. *(done)*
 - [x] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
       dynamic range. Stresses step-size control. *(done)*
+- [x] **Powell singular** — 4D, smooth, sum-of-squares with rank-deficient
+      Jacobian at the optimum. Classic LM benchmark. *(done in S1)*
+- [x] **Rosenbrock-as-residuals** — 2D residual factoring of the existing
+      Rosenbrock cost; `Σ rᵢ² = rosenbrock(x)`. Fixture for the LM
+      track. *(done in S1; lives in `rosenbrock.rs`)*
 - [ ] **Three-hump camel** — 2D, smooth, three local minima. Local-solver
       basin-of-attraction test.
 - [ ] **Picheny** — 2D, log-rescaled Rosenbrock variant. Same shape, different
