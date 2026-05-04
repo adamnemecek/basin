@@ -36,9 +36,9 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
       for first/second-order methods. *(done)*
 - [x] **Sphere** — N-D, `Σ xᵢ²`, convex. Trivial canary; dedups the inline
       `Sphere` in `tests/nelder_mead.rs`. *(done)*
-- [ ] **Beale** — 2D, smooth, flat region near optimum at `(3, 0.5)`. Good
-      second smooth test for BFGS distinct from Rosenbrock.
-- [ ] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test.
+- [x] **Beale** — 2D, smooth, flat region near optimum at `(3, 0.5)`. Good
+      second smooth test for BFGS distinct from Rosenbrock. *(done)*
+- [x] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test. *(done)*
 - [ ] **Matyas** — 2D, smooth, plate-like. Very easy; mostly a sanity check.
 - [ ] **McCormick** — 2D, smooth, single minimum.
 - [ ] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
