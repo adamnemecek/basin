@@ -23,6 +23,48 @@ the previous lands.
       Hand-rolled bench works for now; revisit when CRAN's Rust pin moves past
       1.85.
 
+## Test problem corpus
+
+Mirrored from `argmin-testfunctions`
+(<https://github.com/argmin-rs/argmin/tree/main/crates/argmin-testfunctions/src>).
+Each adds raw `fn` + a `Problem<P>` wrapper under `basin::problems`. Annotated
+with dimensionality and character so we can pick what's worth adding next.
+"Local-only solvers" (GD, BFGS, Nelder-Mead) get little value from highly
+multimodal functions until SA / CMA-ES / a global solver lands — defer those.
+
+- [x] **Rosenbrock** — N-D, smooth, narrow curved valley. Standard hard test
+      for first/second-order methods. *(done)*
+- [ ] **Sphere** — N-D, `Σ xᵢ²`, convex. Trivial canary; dedups the inline
+      `Sphere` in `tests/nelder_mead.rs`.
+- [ ] **Beale** — 2D, smooth, flat region near optimum at `(3, 0.5)`. Good
+      second smooth test for BFGS distinct from Rosenbrock.
+- [ ] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test.
+- [ ] **Matyas** — 2D, smooth, plate-like. Very easy; mostly a sanity check.
+- [ ] **McCormick** — 2D, smooth, single minimum.
+- [ ] **Goldstein-Price** — 2D, smooth polynomial, single minimum, large
+      dynamic range. Stresses step-size control.
+- [ ] **Three-hump camel** — 2D, smooth, three local minima. Local-solver
+      basin-of-attraction test.
+- [ ] **Picheny** — 2D, log-rescaled Rosenbrock variant. Same shape, different
+      conditioning — useful for line-search behavior.
+- [ ] **Zero** — `f(x) = 0` everywhere. Sanity / termination edge case
+      (gradient is identically zero).
+- [ ] **Himmelblau** — 2D, four equal minima. Defer until a global solver
+      makes "which minimum?" interesting.
+- [ ] **Ackley** — N-D, multimodal (exp + cos). Defer (global).
+- [ ] **Rastrigin** — N-D, highly multimodal (cosine ripple). Defer (global).
+- [ ] **Levy** — N-D, multimodal. Defer (global).
+- [ ] **Styblinski-Tang** — N-D, multimodal. Defer (global).
+- [ ] **Schaffer (N.2 / N.4)** — 2D, multimodal. Defer (global).
+- [ ] **Bukin N.6** — 2D, sharp non-differentiable ridge. Defer (needs
+      derivative-free + global; pathological for first-order).
+- [ ] **Cross-in-tray** — 2D, multimodal. Defer (global).
+- [ ] **Easom** — 2D, single sharp minimum, mostly flat. Defer (needs global
+      / good initialization to be meaningful).
+- [ ] **Eggholder** — 2D, highly multimodal. Defer (global).
+- [ ] **Holder table** — 2D, multimodal with four equal minima. Defer
+      (global).
+
 ## Cleanup / design debt (review notes)
 
 Surfaced while implementing the termination layer. Not blocking, but each

@@ -7,7 +7,37 @@
 
 use core::marker::PhantomData;
 
+use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 use crate::{CostFunction, Gradient};
+
+pub static ROSENBROCK_SPEC: ProblemSpec = ProblemSpec {
+    name: "Rosenbrock",
+    dim: Dimensionality::NDimensional { min: 2 },
+    properties: Properties {
+        smooth: true,
+        differentiable: true,
+        convex: false,
+        // Unimodal in 2D and 3D, but for n ≥ 4 a second local minimum
+        // appears near (-1, 1, …, 1). False is the safe N-agnostic claim.
+        unimodal: false,
+        separable: false,
+        scalable: true,
+    },
+    references: &[Reference {
+        citation: "Rosenbrock (1960)",
+        title: "An automatic method for finding the greatest or least value of a function",
+        source: "The Computer Journal, 3(3), 175–184",
+        doi: Some("10.1093/comjnl/3.3.175"),
+        url: None,
+    }],
+    description: "Banana-shaped curved valley with global minimum at \
+                  x = (1, …, 1), value 0. Standard hard test for first- and \
+                  second-order methods due to the narrow, ill-conditioned valley.",
+};
+
+impl<P> HasSpec for Rosenbrock<P> {
+    const SPEC: &'static ProblemSpec = &ROSENBROCK_SPEC;
+}
 
 /// Evaluates Rosenbrock's function at `x`.
 pub fn rosenbrock(x: &[f64]) -> f64 {
@@ -186,6 +216,16 @@ mod tests {
         for v in g {
             assert!(v.abs() < 1e-12);
         }
+    }
+
+    #[test]
+    fn spec_is_wired_up_via_has_spec_trait() {
+        let spec = <Rosenbrock<Vec<f64>> as HasSpec>::SPEC;
+        assert_eq!(spec.name, "Rosenbrock");
+        assert!(spec.properties.smooth);
+        assert!(spec.properties.scalable);
+        assert!(matches!(spec.dim, Dimensionality::NDimensional { min: 2 }));
+        assert!(!spec.references.is_empty());
     }
 
     #[test]
