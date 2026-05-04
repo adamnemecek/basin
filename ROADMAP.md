@@ -152,17 +152,79 @@ trait-shape decision. The faer paper (Sarah Oudjedi, 2024) and the
 nalgebra-sparse user guide are still queued for S2b/S3 where their
 sparse-factorization details become load-bearing.
 
-### S3. Gauss-Newton solver
+### S3. Gauss-Newton solver — **done**
 
-- Solves `(JᵀJ) δ = −Jᵀr`. Cholesky on `JᵀJ` is the simple path; QR on
-  `J` has better conditioning — note the tradeoff in the doc, pick one.
-- First LA-heavy solver: compile-time backend bound per tenet 5.
-- Generic over `M: LinearSolve + ...` so sparse comes for free in S2b.
-- **[ingest]** Madsen, Nielsen, Tingleff, *Methods for Non-Linear
-  Least Squares Problems* (2004, IMM-DTU). Short, free, exactly the
-  scope we need.
-- Wire `Jacobian` impls for the test problems from S1 against both
-  backends.
+`GaussNewton` lands in `solver/gauss_newton.rs` as the first solver to
+exercise the S2a linalg surface end-to-end. Generic over `V` and
+`M: GramMatrix + MatTransposeVec<V> + LinearSolveSpd<V>` — sparse
+backends in S2b will satisfy the same bound set with no solver-side
+change. The bound on `V` is `ScaledAdd<f64> + NormSquared +
+NormInfinity + NegInPlace + Clone`; that's the third user of the
+ScaledAdd/Clone bound pair, so the `ParamVec<F>` cleanup (TODO) is now
+unblocked but stayed deferred this session.
+
+**Cholesky-on-`JᵀJ` vs QR-on-`J`.** Picked Cholesky — the only path
+S2a's `LinearSolveSpd` exposes today. Documented the tradeoff in the
+solver's rustdoc: Cholesky squares the condition number and fails
+noisily on rank-deficient `J`; QR is more robust but adds a second
+factorization to the linalg surface. The pure-GN trust regime is
+already weak enough that when QR matters, you wanted LM (S4) anyway.
+
+**Failure path is correct.** Cholesky breakdown returns
+`TerminationReason::SolverFailed` rather than a panic or a silently
+ill-conditioned step. Tested directly via Powell singular at
+`(1, 2, 1, 1)` — both quadratic-residual rows of `J` vanish there
+(`x₁ − 2x₂ = 0` and `x₀ − x₃ = 0` simultaneously), so `J` has rank 2,
+`JᵀJ` is exactly singular, and pure GN cannot recover. This is the
+load-bearing "why LM" test for S4.
+
+**Convergence test on Rosenbrock-as-residuals from `(-1.2, 1.0)`** —
+GN converges in two iterations (the residual is linear in `y` at
+fixed `x`, so the linear model is exact along that axis). The single-
+step test asserts the post-step iterate matches the hand-computed
+normal-equation solution from S2a's own end-to-end check —
+`x_new = (1.0, −3.84)` — guarding against transpose / sign mistakes
+that the convergence test alone would mask. Powell singular from the
+classical start `(3, −1, 0, 1)` *also* converges (in 12 iterations to
+cost ≈ 3·10⁻¹³), contrary to a common assumption — the rank
+deficiency only bites at the optimum, by which point the iterate is
+already nearly converged. The truly load-bearing failure is the
+rank-deficient *non-optimal* point above.
+
+**Solver-internal termination.** Emits
+`TerminationReason::SolverConverged` when `‖Jᵀr‖_∞ ≤ tol_grad`
+(Madsen/Nielsen/Tingleff eq. 3.3a, default `1e-8`). This is the
+canonical NLLS first-order optimality measure; a generic
+`OptimalityTolerance` criterion stayed deferred because it would need
+problem access in the criterion hook (a termination-layer redesign).
+The framework's `MaxIter`, `CostTolerance`, `ParamTolerance`, and
+`MaxTime` work on `BasicState<V>` for free.
+
+**State.** `BasicState<V>` reused unchanged — GN recomputes `r` and
+`J` every iteration anyway (both depend on `x`), and caching the Gram
+or factorization in state buys nothing without trust-region
+machinery. `state.cost = ½‖r‖²` (LM convention) is derived inside the
+solver from the residual it already evaluates; the bound on `P` is
+`Residual + Jacobian` only, no `CostFunction`. Problems whose user-
+facing `cost()` uses an unscaled `Σ rᵢ²` form (e.g. Rosenbrock-as-
+residuals) will see `state.cost()` differ from
+`problem.cost(state.param())` by a factor of two — both go to zero at
+the optimum, so cost-based termination criteria are unaffected.
+
+**Backends.** Wired and tested for both nalgebra
+(`DVector<f64>` / `DMatrix<f64>`) and faer (`Col<f64>` / `Mat<f64>`).
+`Vec<f64>` and `ndarray::Array1<f64>` produce a compile-time error
+per tenet 5. Two integration test files under
+`crates/basin/tests/gauss_newton_{nalgebra,faer}.rs`, four cases each
+(convergence, single-step correctness, SolverConverged, rank-
+deficient failure).
+
+**Paper ingestion.** Skipped this session — the algorithm is short
+enough (eq. 3.7 in Madsen/Nielsen/Tingleff is a five-line pseudocode
+loop) that the relevant equations were carried directly from the
+existing `linalg` module and `Jacobian` rustdoc. Madsen/Nielsen/
+Tingleff stays queued for S4 where the LM λ-update needs the full
+algorithmic context.
 
 ### S2b. Sparse `Jacobian::Output` + sparse `LinearSolve`
 
@@ -271,8 +333,11 @@ sparse for free).
 ## Ingestion order (read papers just-in-time)
 
 1. Before **S2a**: faer paper + nalgebra-sparse user guide.
-2. Before **S3**: Madsen/Nielsen/Tingleff (2004).
-3. Before **S4**: Nielsen 1999 + skim MINPACK `lmder`.
+2. Before **S2b**: faer paper + nalgebra-sparse user guide (the
+   sparse-factorization details get load-bearing here).
+3. Before **S4**: Madsen/Nielsen/Tingleff (2004) + Nielsen 1999 +
+   skim MINPACK `lmder`. (S3 deferred MNT — the GN pseudocode was
+   short enough to derive without it; LM needs the full context.)
 4. Before **S6**: Branch/Coleman/Li 1999 (TRF).
 5. Before **S8**: Hansen CMA-ES tutorial.
 6. Before **S9**: pycma bound-handling reference.

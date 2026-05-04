@@ -8,13 +8,13 @@ the previous lands.
 See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
 This section tracks the immediate next session's discrete items.
 
-- [ ] **S2a: `Math::linalg` trait design + dual-backend dense prototype.**
-      Load-bearing session of the LM track — pin down the minimum LA
-      ops a Gauss-Newton/LM solver bounds on (`Transpose`, `MatVec`,
-      `MatTMatVec`, `LinearSolve<M>`) and prototype against both
-      nalgebra dense (`DMatrix<f64>`) and faer dense (`Mat<f64>`).
-      Land the first `Jacobian::Output` impls. Read the faer paper +
-      nalgebra-sparse user guide first. See `ROADMAP.md` Phase 1.
+- [ ] **S2b: sparse `Jacobian::Output` + sparse `LinearSolve`.**
+      Slotted between S3 (done) and S4 so LM gets sparse for free.
+      Add `nalgebra_sparse::CscMatrix<f64>` and
+      `faer::sparse::SparseColMat<usize, f64>` as valid
+      `Jacobian::Output`; implement sparse Cholesky/QR; add a sparse
+      least-squares fixture. Read the faer paper + nalgebra-sparse
+      user guide first. See `ROADMAP.md` Phase 1.
 
 ## Deferred (not now)
 
