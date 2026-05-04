@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 
-/* Plain SPA — no FOUC tricks needed beyond Tailwind's preflight. */
+/* Tailwind v4 defaults to media-query dark mode. We override to
+ * class-based so a manual toggle (Light / Auto / Dark) can win. The
+ * `theme` store toggles `.dark` on `<html>` based on preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 html,
 body {
     height: 100%;

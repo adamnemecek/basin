@@ -31,11 +31,11 @@
 
 <div class="flex flex-col gap-4 text-sm">
     <label class="flex flex-col gap-1">
-        <span class="text-slate-300 uppercase text-xs tracking-wide"
+        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
             >Problem</span
         >
         <select
-            class="bg-slate-800 border border-slate-700 rounded px-2 py-1"
+            class="bg-white text-slate-900 border border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 rounded px-2 py-1"
             value={problemKind}
             onchange={(e) =>
                 onChange({
@@ -51,11 +51,11 @@
     </label>
 
     <label class="flex flex-col gap-1">
-        <span class="text-slate-300 uppercase text-xs tracking-wide"
+        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
             >Solver</span
         >
         <select
-            class="bg-slate-800 border border-slate-700 rounded px-2 py-1"
+            class="bg-white text-slate-900 border border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 rounded px-2 py-1"
             value={solverKind}
             onchange={(e) =>
                 onChange({
@@ -72,8 +72,8 @@
 
     {#if usesAlpha}
         <label class="flex flex-col gap-1">
-            <span class="text-slate-300 uppercase text-xs tracking-wide"
-                >Step size α: <span class="font-mono text-slate-100"
+            <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
+                >Step size α: <span class="font-mono text-slate-900 dark:text-slate-100"
                     >{gdAlpha.toExponential(2)}</span
                 ></span
             >
@@ -95,8 +95,8 @@
     {/if}
 
     <label class="flex flex-col gap-1">
-        <span class="text-slate-300 uppercase text-xs tracking-wide"
-            >Max iterations: <span class="font-mono text-slate-100"
+        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
+            >Max iterations: <span class="font-mono text-slate-900 dark:text-slate-100"
                 >{maxIter}</span
             ></span
         >
@@ -115,10 +115,10 @@
         />
     </label>
 
-    <p class="text-slate-400 text-xs leading-relaxed">
+    <p class="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">
         Click anywhere on the contour plot to reset the starting point. The
         solver re-runs immediately. Current start: <span
-            class="font-mono text-slate-200"
+            class="font-mono text-slate-800 dark:text-slate-200"
             >({startPoint.x.toFixed(2)}, {startPoint.y.toFixed(2)})</span
         >
     </p>

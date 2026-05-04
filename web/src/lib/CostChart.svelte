@@ -1,13 +1,17 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
+    import { paletteFor, type Theme } from './palette';
+
     type Props = {
         costs: Float64Array;
         /** Termination reason string when the run ends, else empty. */
         reason: string;
+        theme: Theme;
     };
 
-    let { costs, reason }: Props = $props();
+    let { costs, reason, theme }: Props = $props();
+    let palette = $derived(paletteFor(theme));
 
     let canvas: HTMLCanvasElement | undefined = $state();
     let containerWidth = $state(320);
@@ -15,7 +19,7 @@
 
     $effect(() => {
         if (!canvas) return;
-        render(canvas, costs);
+        render(canvas, costs, palette);
     });
 
     onMount(() => {
@@ -32,7 +36,11 @@
         return () => ro.disconnect();
     });
 
-    function render(cv: HTMLCanvasElement, c: Float64Array) {
+    function render(
+        cv: HTMLCanvasElement,
+        c: Float64Array,
+        pal: ReturnType<typeof paletteFor>,
+    ) {
         const dpr = window.devicePixelRatio || 1;
         const w = containerWidth;
         const h = containerHeight;
@@ -45,7 +53,7 @@
         ctx.scale(dpr, dpr);
         ctx.clearRect(0, 0, w, h);
 
-        ctx.fillStyle = 'rgb(15, 23, 42)';
+        ctx.fillStyle = pal.surface;
         ctx.fillRect(0, 0, w, h);
 
         if (c.length < 2) return;
@@ -77,7 +85,7 @@
         const innerH = Math.max(1, h - padT - padB);
 
         // Axes.
-        ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+        ctx.strokeStyle = pal.axis;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(padL, padT);
@@ -85,7 +93,7 @@
         ctx.lineTo(padL + innerW, padT + innerH);
         ctx.stroke();
 
-        ctx.fillStyle = 'rgba(203, 213, 225, 0.8)';
+        ctx.fillStyle = pal.text;
         ctx.font = '11px sans-serif';
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
@@ -96,7 +104,7 @@
         ctx.fillText(`iter ${c.length - 1}`, padL + 4, padT - 2);
         if (reason) {
             ctx.textAlign = 'right';
-            ctx.fillStyle = 'rgba(250, 204, 21, 0.9)';
+            ctx.fillStyle = pal.reason;
             ctx.fillText(reason, w - padR, padT - 2);
         }
 
@@ -109,7 +117,7 @@
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
-        ctx.strokeStyle = 'rgb(56, 189, 248)';
+        ctx.strokeStyle = pal.cost;
         ctx.lineWidth = 1.5;
         ctx.stroke();
     }

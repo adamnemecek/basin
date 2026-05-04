@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { viridis } from './colormap';
     import { chooseLevels, isoContour } from './contours';
+    import { paletteFor, type Theme } from './palette';
     import type { Domain, ProblemMeta } from './problems';
 
     type Props = {
@@ -11,6 +11,7 @@
         ny: number;
         trajectory: Float64Array; // flat (x, y) pairs
         startPoint: { x: number; y: number };
+        theme: Theme;
         onPick: (p: { x: number; y: number }) => void;
     };
 
@@ -21,8 +22,11 @@
         ny,
         trajectory,
         startPoint,
+        theme,
         onPick,
     }: Props = $props();
+
+    let palette = $derived(paletteFor(theme));
 
     let canvas: HTMLCanvasElement | undefined = $state();
     let overlay: HTMLCanvasElement | undefined = $state();
@@ -45,14 +49,15 @@
         }));
     });
 
-    // Render contours when contours, sizing, or domain change.
+    // Render contours when contours, sizing, theme, or domain change.
     $effect(() => {
         if (!canvas) return;
-        renderContours(canvas, problem.domain, isoLines);
+        renderContours(canvas, problem.domain, isoLines, palette);
     });
 
     // Trajectory + markers go on a separate overlay so they redraw cheaply
-    // every time the trajectory grows.
+    // every time the trajectory grows. Re-runs on theme too so marker
+    // colors flip immediately.
     $effect(() => {
         if (!overlay) return;
         renderOverlay(
@@ -61,6 +66,7 @@
             trajectory,
             startPoint,
             problem.minimum,
+            palette,
         );
     });
 
@@ -107,6 +113,7 @@
         cv: HTMLCanvasElement,
         d: Domain,
         lines: { level: number; segments: Float64Array }[],
+        pal: ReturnType<typeof paletteFor>,
     ) {
         const dpr = window.devicePixelRatio || 1;
         const w = containerWidth;
@@ -119,21 +126,19 @@
         if (!ctx) return;
         ctx.scale(dpr, dpr);
 
-        // Background — slightly lighter than the page so contours pop.
-        ctx.fillStyle = 'rgb(15, 23, 42)';
+        ctx.fillStyle = pal.surface;
         ctx.fillRect(0, 0, w, h);
 
         if (lines.length === 0) return;
 
-        // Color contours along viridis from inner (low cost, bright) to
-        // outer (high cost, dark). Drawing inner-to-outer keeps the
-        // brightest stroke on top.
+        // Draw outermost-first so the brightest (innermost) strokes win
+        // when contours crowd. `t = 0` is the outermost, `t = 1` the
+        // innermost — palette decides what those map to per theme.
         for (let li = lines.length - 1; li >= 0; li--) {
             const seg = lines[li].segments;
             if (seg.length === 0) continue;
             const t = li / Math.max(lines.length - 1, 1);
-            const [r, g, b] = viridis(1 - t);
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.85)`;
+            ctx.strokeStyle = pal.contour(1 - t);
             // Inner contours a hair thicker so the basin reads.
             ctx.lineWidth = 1 + (1 - t) * 0.6;
             ctx.beginPath();
@@ -153,6 +158,7 @@
         traj: Float64Array,
         start: { x: number; y: number },
         minimum: { x: number; y: number },
+        pal: ReturnType<typeof paletteFor>,
     ) {
         const dpr = window.devicePixelRatio || 1;
         const w = containerWidth;
@@ -175,14 +181,14 @@
                 else ctx.lineTo(px, py);
             }
             ctx.lineWidth = 2;
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.strokeStyle = pal.trajectory;
             ctx.stroke();
         }
         for (let i = 2; i < traj.length; i += 2) {
             const [px, py] = dataToPixel(traj[i], traj[i + 1], d, w, h);
             ctx.beginPath();
             ctx.arc(px, py, 2, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fillStyle = pal.trajectory;
             ctx.fill();
         }
 
@@ -191,13 +197,13 @@
         ctx.beginPath();
         ctx.arc(sx, sy, 6, 0, Math.PI * 2);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgb(255, 255, 255)';
+        ctx.strokeStyle = pal.startMarker;
         ctx.stroke();
 
         // Known minimum (cross).
         const [mx, my] = dataToPixel(minimum.x, minimum.y, d, w, h);
         ctx.lineWidth = 2;
-        ctx.strokeStyle = 'rgb(248, 113, 113)';
+        ctx.strokeStyle = pal.minimum;
         ctx.beginPath();
         ctx.moveTo(mx - 6, my);
         ctx.lineTo(mx + 6, my);

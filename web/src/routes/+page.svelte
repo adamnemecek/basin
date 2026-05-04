@@ -11,6 +11,8 @@
     import ContourPlot from '$lib/ContourPlot.svelte';
     import CostChart from '$lib/CostChart.svelte';
     import Controls from '$lib/Controls.svelte';
+    import ThemeToggle from '$lib/ThemeToggle.svelte';
+    import { theme } from '$lib/theme.svelte';
 
     // Wasm boot. The viz waits on this once; everything downstream assumes
     // the module is already loaded.
@@ -120,6 +122,24 @@
         };
     });
 
+    // Reflect the resolved (light/dark) theme onto `<html>` so Tailwind
+    // dark: variants apply. Set on `documentElement` so the body and
+    // every descendant pick it up; the inverse class is removed so the
+    // two states are mutually exclusive.
+    $effect(() => {
+        if (typeof document === 'undefined') return;
+        const root = document.documentElement;
+        if (theme.effective === 'dark') {
+            root.classList.add('dark');
+            root.classList.remove('light');
+            root.style.colorScheme = 'dark';
+        } else {
+            root.classList.add('light');
+            root.classList.remove('dark');
+            root.style.colorScheme = 'light';
+        }
+    });
+
     onMount(async () => {
         await init();
         wasmReady = true;
@@ -159,30 +179,37 @@
 </svelte:head>
 
 <main class="min-h-screen p-4 md:p-8 flex flex-col gap-6">
-    <header class="flex flex-wrap items-baseline justify-between gap-2">
+    <header class="flex flex-wrap items-start justify-between gap-4">
         <div>
             <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">
                 basin · solver visualizer
             </h1>
-            <p class="text-slate-400 text-sm mt-1">
+            <p class="text-slate-600 dark:text-slate-400 text-sm mt-1">
                 Live wasm-driven 2D trajectories from
                 <a
-                    class="underline decoration-dotted hover:text-slate-200"
+                    class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-200"
                     href="https://github.com/jolars/basin">basin</a
                 >. Click on the contour to reset the start.
             </p>
         </div>
-        <p class="text-xs text-slate-500 font-mono">{solverMeta.blurb}</p>
+        <div class="flex items-center gap-3">
+            <p
+                class="text-xs text-slate-500 dark:text-slate-500 font-mono hidden md:block"
+            >
+                {solverMeta.blurb}
+            </p>
+            <ThemeToggle />
+        </div>
     </header>
 
     {#if !wasmReady}
-        <p class="text-slate-400">Loading wasm…</p>
+        <p class="text-slate-500 dark:text-slate-400">Loading wasm…</p>
     {:else}
         <section
             class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 flex-1 min-h-0"
         >
             <div
-                class="relative bg-slate-900 rounded-lg overflow-hidden aspect-square lg:aspect-auto lg:min-h-[360px]"
+                class="relative bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden aspect-square lg:aspect-auto lg:min-h-[360px]"
             >
                 <ContourPlot
                     problem={problemMeta}
@@ -191,11 +218,12 @@
                     ny={GRID_N}
                     {trajectory}
                     {startPoint}
+                    theme={theme.effective}
                     onPick={handlePick}
                 />
             </div>
             <aside class="flex flex-col gap-6 min-w-0">
-                <div class="bg-slate-900 rounded-lg p-4">
+                <div class="bg-slate-100 dark:bg-slate-900 rounded-lg p-4">
                     <Controls
                         {problemKind}
                         {solverKind}
@@ -206,8 +234,10 @@
                         onChange={handleControlChange}
                     />
                 </div>
-                <div class="bg-slate-900 rounded-lg p-3 h-56 lg:flex-1">
-                    <CostChart {costs} {reason} />
+                <div
+                    class="bg-slate-100 dark:bg-slate-900 rounded-lg p-3 h-56 lg:flex-1"
+                >
+                    <CostChart {costs} {reason} theme={theme.effective} />
                 </div>
             </aside>
         </section>
