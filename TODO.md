@@ -5,7 +5,13 @@ the previous lands.
 
 ## Next up
 
-(empty)
+See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
+This section tracks the immediate next session's discrete items.
+
+- [ ] **S0: Pin termination + solver contracts in rustdoc.** See the
+      "Cleanup / design debt" item below for the specific invariants —
+      promoted to next-up because every following roadmap session adds
+      new traits, and these get harder to articulate later.
 
 ## Deferred (not now)
 
