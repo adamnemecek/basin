@@ -1,5 +1,7 @@
 pub mod core;
 pub mod line_search;
+#[cfg(feature = "problems")]
+pub mod problems;
 pub mod solver;
 
 pub use crate::core::constraint::BoxConstrained;

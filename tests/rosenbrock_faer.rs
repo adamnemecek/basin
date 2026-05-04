@@ -1,38 +1,15 @@
 #![cfg(feature = "faer")]
 
+use basin::problems::Rosenbrock;
 use basin::{
-    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
+    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, GradientDescent,
     NelderMead,
 };
 use faer::Col;
 
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Col<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &Col<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = Col<f64>;
-    type Gradient = Col<f64>;
-
-    fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-        Col::from_fn(2, |i| match i {
-            0 => -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            1 => 200.0 * (x[1] - x[0].powi(2)),
-            _ => unreachable!(),
-        })
-    }
-}
-
 #[test]
 fn gradient_descent_with_faer_col() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Col<f64>>::default();
     let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
     let initial_cost = problem.cost(&initial);
 
@@ -54,7 +31,7 @@ fn gradient_descent_with_faer_col() {
 
 #[test]
 fn gradient_descent_with_faer_col_and_backtracking() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Col<f64>>::default();
     let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
     let initial_cost = problem.cost(&initial);
 
@@ -76,7 +53,7 @@ fn gradient_descent_with_faer_col_and_backtracking() {
 
 #[test]
 fn nelder_mead_with_faer_col() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Col<f64>>::default();
     let initial = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
 
     let result = Executor::new(

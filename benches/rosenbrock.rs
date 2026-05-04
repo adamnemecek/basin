@@ -1,29 +1,7 @@
-use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, Solver};
+use basin::problems::Rosenbrock;
+use basin::{BasicState, Executor, GradientDescent, Solver};
 use std::hint::black_box;
 use std::time::{Duration, Instant};
-
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Vec<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = Vec<f64>;
-    type Gradient = Vec<f64>;
-
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ]
-    }
-}
 
 fn bench<S, R>(name: &str, iters: u32, mut setup: impl FnMut() -> S, mut run: impl FnMut(S) -> R) {
     for _ in 0..3 {
@@ -49,10 +27,13 @@ fn main() {
             // `Solver::init` populates cost + gradient at the initial param,
             // matching the contract `next_iter` expects (gradient cached
             // from the previous iter or from init).
-            let state = solver.init(&Rosenbrock, BasicState::new(vec![-1.2, 1.0]));
+            let state = solver.init(
+                &Rosenbrock::<Vec<f64>>::default(),
+                BasicState::new(vec![-1.2, 1.0]),
+            );
             (solver, state)
         },
-        |(mut solver, state)| solver.next_iter(&Rosenbrock, state),
+        |(mut solver, state)| solver.next_iter(&Rosenbrock::<Vec<f64>>::default(), state),
     );
 
     bench(
@@ -61,7 +42,7 @@ fn main() {
         || (),
         |_| {
             Executor::new(
-                Rosenbrock,
+                Rosenbrock::<Vec<f64>>::default(),
                 GradientDescent::new(0.001),
                 BasicState::new(vec![-1.2, 1.0]),
             )

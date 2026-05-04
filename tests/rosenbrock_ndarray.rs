@@ -1,37 +1,15 @@
 #![cfg(feature = "ndarray")]
 
+use basin::problems::Rosenbrock;
 use basin::{
-    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
+    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, GradientDescent,
     NelderMead,
 };
 use ndarray::{array, Array1};
 
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Array1<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &Array1<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = Array1<f64>;
-    type Gradient = Array1<f64>;
-
-    fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
-        array![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ]
-    }
-}
-
 #[test]
 fn gradient_descent_with_ndarray_array1() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Array1<f64>>::default();
     let initial = array![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 
@@ -53,7 +31,7 @@ fn gradient_descent_with_ndarray_array1() {
 
 #[test]
 fn gradient_descent_with_ndarray_array1_and_backtracking() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Array1<f64>>::default();
     let initial = array![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 
@@ -75,7 +53,7 @@ fn gradient_descent_with_ndarray_array1_and_backtracking() {
 
 #[test]
 fn nelder_mead_with_ndarray_array1() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Array1<f64>>::default();
     let initial = array![-1.2, 1.0];
 
     let result = Executor::new(

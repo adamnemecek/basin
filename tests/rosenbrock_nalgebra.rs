@@ -1,37 +1,15 @@
 #![cfg(feature = "nalgebra")]
 
+use basin::problems::Rosenbrock;
 use basin::{
-    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, Gradient, GradientDescent,
+    Backtracking, BasicSimplexState, BasicState, CostFunction, Executor, GradientDescent,
     NelderMead,
 };
 use nalgebra::DVector;
 
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = DVector<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &DVector<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = DVector<f64>;
-    type Gradient = DVector<f64>;
-
-    fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-        DVector::from_vec(vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ])
-    }
-}
-
 #[test]
 fn gradient_descent_with_nalgebra_dvector() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<DVector<f64>>::default();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
     let initial_cost = problem.cost(&initial);
 
@@ -53,7 +31,7 @@ fn gradient_descent_with_nalgebra_dvector() {
 
 #[test]
 fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<DVector<f64>>::default();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
     let initial_cost = problem.cost(&initial);
 
@@ -75,7 +53,7 @@ fn gradient_descent_with_nalgebra_dvector_and_backtracking() {
 
 #[test]
 fn nelder_mead_with_nalgebra_dvector() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<DVector<f64>>::default();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
 
     let result = Executor::new(

@@ -1,33 +1,9 @@
-use basin::{
-    Backtracking, BasicState, CostFunction, Executor, Gradient, GradientDescent, TerminationReason,
-};
-
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Vec<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = Vec<f64>;
-    type Gradient = Vec<f64>;
-
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ]
-    }
-}
+use basin::problems::Rosenbrock;
+use basin::{Backtracking, BasicState, CostFunction, Executor, GradientDescent, TerminationReason};
 
 #[test]
 fn gradient_descent_decreases_rosenbrock_cost() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 
@@ -51,7 +27,7 @@ fn gradient_descent_decreases_rosenbrock_cost() {
 
 #[test]
 fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
     let initial_cost = problem.cost(&initial);
 

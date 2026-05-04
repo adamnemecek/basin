@@ -35,11 +35,6 @@ gets harder to fix as more code piles on.
       contract, not narrative — easy to forget and not derivable from the
       type signatures. Do this *before* the larger rustdoc pass since these
       pin down current decisions.
-- [ ] **Share the Rosenbrock test problem across backends.** `tests/
-      rosenbrock.rs`, `tests/rosenbrock_nalgebra.rs`, `tests/
-      rosenbrock_ndarray.rs`, and `tests/rosenbrock_faer.rs` are 90%
-      duplicate. Extract a `tests/common/rosenbrock.rs` module or a generic
-      helper. Cheap now, gets worse linearly.
 - [ ] **`ParamVec<F>` marker for solvers doing linear algebra on params.**
       Nelder-Mead needs `V: Clone + ScaledAdd<f64>`; gradient descent needs
       `V: ScaledAdd<f64>`; future solvers will repeat the bound pair. Add a

@@ -1,35 +1,15 @@
 #![cfg(feature = "nalgebra")]
 
+use basin::problems::Rosenbrock;
 use basin::{
     Backtracking, BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance,
     QuasiNewtonState, TerminationReason, BFGS,
 };
 use nalgebra::DVector;
 
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = DVector<f64>;
-    type Output = f64;
-    fn cost(&self, x: &DVector<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = DVector<f64>;
-    type Gradient = DVector<f64>;
-    fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-        DVector::from_vec(vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ])
-    }
-}
-
 #[test]
 fn bfgs_converges_on_rosenbrock() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<DVector<f64>>::default();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
 
     let result = Executor::new(problem, BFGS::new(), QuasiNewtonState::new(initial))
@@ -55,7 +35,7 @@ fn bfgs_converges_on_rosenbrock() {
 
 #[test]
 fn bfgs_terminates_on_gradient_tolerance() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<DVector<f64>>::default();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
 
     let result = Executor::new(problem, BFGS::new(), QuasiNewtonState::new(initial))
@@ -72,7 +52,7 @@ fn bfgs_converges_faster_than_gd_with_backtracking() {
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
 
     let bfgs_result = Executor::new(
-        Rosenbrock,
+        Rosenbrock::<DVector<f64>>::default(),
         BFGS::new(),
         QuasiNewtonState::new(initial.clone()),
     )
@@ -81,7 +61,7 @@ fn bfgs_converges_faster_than_gd_with_backtracking() {
     .run();
 
     let gd_result = Executor::new(
-        Rosenbrock,
+        Rosenbrock::<DVector<f64>>::default(),
         GradientDescent::with_line_search(Backtracking::new()),
         BasicState::new(initial),
     )

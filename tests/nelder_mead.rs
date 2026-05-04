@@ -1,22 +1,12 @@
+use basin::problems::Rosenbrock;
 use basin::{
     BasicSimplexState, CostFunction, Executor, NelderMead, SimplexState, SimplexTolerance,
     TerminationReason,
 };
 
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Vec<f64>;
-    type Output = f64;
-
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
 #[test]
 fn nelder_mead_standard_minimises_rosenbrock() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
     let initial_cost = problem.cost(&vec![-1.2, 1.0]);
 
     let result = Executor::new(
@@ -40,7 +30,7 @@ fn nelder_mead_standard_minimises_rosenbrock() {
 
 #[test]
 fn nelder_mead_adaptive_minimises_rosenbrock() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
 
     let result = Executor::new(
         problem,
@@ -56,7 +46,7 @@ fn nelder_mead_adaptive_minimises_rosenbrock() {
 
 #[test]
 fn nelder_mead_hits_max_iter_when_too_few() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
 
     let result = Executor::new(
         problem,
@@ -73,7 +63,7 @@ fn nelder_mead_hits_max_iter_when_too_few() {
 #[test]
 fn nelder_mead_keeps_best_first_after_each_iter() {
     // Quick invariant: after run completion, costs[] is ascending.
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
     let result = Executor::new(
         problem,
         NelderMead::standard(),
@@ -118,7 +108,7 @@ fn nelder_mead_adaptive_sphere_5d() {
 
 #[test]
 fn simplex_tolerance_fires_when_simplex_collapses() {
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
 
     let result = Executor::new(
         problem,
@@ -152,7 +142,7 @@ fn simplex_tolerance_fires_when_simplex_collapses() {
 fn nelder_mead_from_simplex_accepts_custom_geometry() {
     // Verifies the escape hatch still works for users who want a custom
     // initial simplex (regular simplex with edge length 1, not FMINSEARCH-style).
-    let problem = Rosenbrock;
+    let problem = Rosenbrock::<Vec<f64>>::default();
     let simplex = vec![vec![-1.2, 1.0], vec![-0.2, 1.0], vec![-1.2, 2.0]];
 
     let result = Executor::new(

@@ -30,7 +30,7 @@ name = "basin"
 path = "src/lib.rs"
 
 [features]
-default = []
+default = ["problems"]
 # Pin one version per backend (tenet 2 in AGENTS.md). A backend major bump
 # becomes a basin major bump — do not introduce per-version features.
 nalgebra = ["dep:nalgebra"]
@@ -39,6 +39,11 @@ ndarray = ["dep:ndarray"]
 # line because 1.2.1 requires edition2024 (Rust 1.85+), above basin's MSRV.
 # Listed here so it only enters the dep graph when `faer` is enabled.
 faer = ["dep:faer", "dep:generativity"]
+# Standard test-problem corpus (Rosenbrock, ...). Pure-Rust, no extra deps;
+# default-on so plain `cargo test` keeps working without `--features problems`
+# (integration tests can't see `cfg(test)` lib gating). Downstream can drop
+# it via `default-features = false` to shrink the WASM bundle.
+problems = []
 
 [dependencies]
 # Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
