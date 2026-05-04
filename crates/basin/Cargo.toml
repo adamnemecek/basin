@@ -1,0 +1,72 @@
+[package]
+name = "basin"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "An optimization library for Rust"
+readme = "README.md"
+keywords = ["optimization", "math", "numerics", "solver"]
+categories = ["mathematics", "science"]
+# Internal sub-agent docs that live alongside source for in-repo workflows
+# but aren't useful to crates.io consumers.
+exclude = ["src/problems/AGENTS.md"]
+
+[lib]
+name = "basin"
+path = "src/lib.rs"
+
+[features]
+default = ["problems"]
+# Pin one version per backend (tenet 2 in AGENTS.md). A backend major bump
+# becomes a basin major bump — do not introduce per-version features.
+nalgebra = ["dep:nalgebra"]
+ndarray = ["dep:ndarray"]
+# `generativity` is pulled in transitively by faer; we force the older 1.1
+# line because 1.2.1 requires edition2024 (Rust 1.85+), above basin's MSRV.
+# Listed here so it only enters the dep graph when `faer` is enabled.
+faer = ["dep:faer", "dep:generativity"]
+# Standard test-problem corpus (Rosenbrock, ...). Pure-Rust, no extra deps;
+# default-on so plain `cargo test` keeps working without `--features problems`
+# (integration tests can't see `cfg(test)` lib gating). Downstream can drop
+# it via `default-features = false` to shrink the WASM bundle.
+problems = []
+
+[dependencies]
+# Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
+# MSRV of 1.84.1 (CRAN constraint — see AGENTS.md). Revisit when CRAN's pin moves.
+nalgebra = { version = "0.33", optional = true }
+# Pure-Rust (no BLAS feature) so it stays wasm-compatible per the WASM hard
+# constraint in AGENTS.md. 0.16's MSRV is well below basin's 1.84.1.
+ndarray = { version = "0.16", optional = true, default-features = false }
+# default-features off because faer's defaults pull in rayon (breaks wasm,
+# tenet: no parallelism in default features) and npy (file I/O). We enable
+# only `std` + `linalg` so the core dense types work on native and wasm.
+# faer 0.24 has rust-version = 1.84.0, exactly at basin's MSRV.
+faer = { version = "0.24", optional = true, default-features = false, features = ["std", "linalg"] }
+# Transitive dep of faer. Pinned to the 1.1.x line because 1.2.0+ requires
+# edition2024 (Rust 1.85+), above basin's MSRV 1.84.1 (CRAN constraint — see
+# AGENTS.md). `~1.1` (= >=1.1.0, <1.2.0) is required; bare `"1.1"` is `^1.1`
+# and lets Cargo resolve to 1.2.x when the lockfile is regenerated (e.g. in
+# the release job). basin doesn't use this crate directly. Drop the pin once
+# CRAN's pin moves.
+generativity = { version = "~1.1", optional = true }
+# Re-exports `std::time::Instant` on native and a wasm-compatible shim on
+# `wasm32-unknown-unknown`, so `MaxTime` works on both without feature gating.
+# Tiny crate, MSRV 1.60, no transitive deps on native.
+web-time = "1"
+
+[dev-dependencies]
+# Benches are hand-rolled (no criterion/divan) because their transitive
+# clap dep tree requires edition2024 (Rust 1.85+), above basin's MSRV 1.84.1
+# (CRAN constraint — see AGENTS.md). Revisit when CRAN's Rust pin moves.
+
+[[bench]]
+name = "rosenbrock"
+harness = false
+
+# Per-backend integration tests (`tests/rosenbrock_<backend>.rs`) gate
+# themselves with `#![cfg(feature = "<backend>")]` rather than declaring
+# `required-features` here — keeps the manifest free of one stanza per
+# backend.

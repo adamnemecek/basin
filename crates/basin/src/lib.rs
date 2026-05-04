@@ -5,7 +5,7 @@ pub mod problems;
 pub mod solver;
 
 pub use crate::core::constraint::BoxConstrained;
-pub use crate::core::executor::{run_loop, Executor, OptimizationResult};
+pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::math::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 pub use crate::core::problem::{CostFunction, Gradient};
 pub use crate::core::solver::Solver;

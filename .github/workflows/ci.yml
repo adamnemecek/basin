@@ -50,8 +50,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.features }}
-      - run: cargo build ${{ matrix.flags }}
-      - run: cargo test ${{ matrix.flags }}
+      - run: cargo build -p basin ${{ matrix.flags }}
+      - run: cargo test -p basin ${{ matrix.flags }}
 
   wasm:
     name: wasm build (${{ matrix.features }})
@@ -75,7 +75,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: wasm-${{ matrix.features }}
-      - run: cargo build --target wasm32-unknown-unknown ${{ matrix.flags }}
+      - run: cargo build -p basin --target wasm32-unknown-unknown ${{ matrix.flags }}
 
   versionary:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

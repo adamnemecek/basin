@@ -192,10 +192,18 @@ These are working decisions to revisit, not permanent design.
     `f64`. Either commit to scalar-genericity properly (per-scalar algorithm
     constants, validated f32 paths) or stay f64-only honestly.
 
-## Repo structure: single crate, not a workspace
+## Repo structure: workspace (basin + basin-wasm)
 
-basin is intentionally one crate, not an argmin-style multi-crate workspace.
-argmin's splits exist for reasons that mostly don't apply here:
+basin lives at `crates/basin/`. A second member, `crates/basin-wasm/`,
+provides `wasm-bindgen` JS bindings consumed by the Svelte/Tailwind
+visualizer in `web/` (deployed to GitHub Pages). The workspace manifest
+lives at the repo root; the lockfile is shared. `web/` is its own
+node project and is **not** a Cargo workspace member.
+
+The workspace conversion happened once a real trigger landed (web
+visualizer needing wasm bindings). Until then basin was a single
+crate. The historical reasoning is preserved below — argmin's splits
+mostly don't apply, and we still avoid speculative crate proliferation.
 
 - `argmin-math` isolates its per-backend-version feature explosion. **Tenet 2
   deletes this reason**---math abstractions live in `basin` behind one feature
@@ -206,14 +214,16 @@ argmin's splits exist for reasons that mostly don't apply here:
   separate from a Rust library regardless.
 
 Use Cargo features (e.g. `nalgebra`, `ndarray`, `serde`) for optional
-integrations. Split into a workspace only when there's a concrete trigger:
+integrations on `basin` itself. Add new workspace members only when there's
+a concrete trigger:
 
+- Web/wasm bindings → `basin-wasm` (already added; consumed by `web/`).
 - An observer with heavy deps → `basin-observer-foo`.
 - Test problems that other crates want to depend on independently →
   `basin-testfunctions`.
 - Python bindings → `basin-py`.
-- A viz/CLI tool → separate binary crate.
 - Core stabilizes while extras churn and need independent versioning.
 
-Converting single-crate → workspace later is cheap (`git mv` the crate into
-`crates/basin/`, add a workspace `Cargo.toml`). Don't pre-pay the complexity.
+A new member should pull in heavy or platform-specific deps (`wasm-bindgen`,
+`pyo3`, an observer's TUI deps) that have no business in the core crate.
+If the only reason is "feels tidy", keep it in `basin` behind a feature.

@@ -1,0 +1,29 @@
+[package]
+name = "basin-wasm"
+version = "0.0.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly bindings for the basin optimization library"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+basin = { path = "../basin", default-features = false, features = ["problems"] }
+# `wasm-bindgen` 0.2.x is MSRV-friendly (>=1.57). We pin to ^0.2 and let
+# Cargo resolve to a current point release. Tightening to a sub-minor would
+# fight the JS ecosystem, which assumes 0.2.x compat.
+wasm-bindgen = "0.2"
+# Lets us return structured records (e.g. `StepResult { done, reason, ... }`)
+# as plain JS objects instead of stringly-typed JsValue plumbing.
+serde-wasm-bindgen = "0.6"
+serde = { version = "1", features = ["derive"] }
+# Better panic messages in dev. Cheap when unused; gated behind a feature
+# so release builds don't carry it.
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[features]
+default = ["console_error_panic_hook"]
