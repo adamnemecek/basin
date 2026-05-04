@@ -165,6 +165,128 @@ export function chooseLevels(
     return out;
 }
 
+/**
+ * Stitch the flat segment list returned by `isoContour` into connected
+ * polylines. Adjacent marching-squares cells share edge-crossing points
+ * exactly (same value of `level`, same corner values, same linear
+ * interpolation), so we can hash on the endpoint coordinates and walk
+ * the segment graph without tolerance fudging.
+ *
+ * Each returned chain is a flat `[x0, y0, x1, y1, ...]` array. Closed
+ * loops repeat the starting point at the end.
+ */
+export function chainSegments(segs: Float64Array | ArrayLike<number>): number[][] {
+    const n = segs.length >> 2;
+    if (n === 0) return [];
+    const key = (x: number, y: number) => `${x},${y}`;
+    const endpoints = new Map<string, number[]>();
+    for (let i = 0; i < n; i++) {
+        const k0 = key(segs[4 * i], segs[4 * i + 1]);
+        const k1 = key(segs[4 * i + 2], segs[4 * i + 3]);
+        (endpoints.get(k0) ?? endpoints.set(k0, []).get(k0)!).push(i);
+        (endpoints.get(k1) ?? endpoints.set(k1, []).get(k1)!).push(i);
+    }
+    const visited = new Uint8Array(n);
+    const chains: number[][] = [];
+    const findUnvisited = (k: string): number => {
+        const list = endpoints.get(k);
+        if (!list) return -1;
+        for (const idx of list) if (!visited[idx]) return idx;
+        return -1;
+    };
+    for (let i = 0; i < n; i++) {
+        if (visited[i]) continue;
+        visited[i] = 1;
+        const chain = [
+            segs[4 * i],
+            segs[4 * i + 1],
+            segs[4 * i + 2],
+            segs[4 * i + 3],
+        ];
+        // Extend forward.
+        let ex = segs[4 * i + 2];
+        let ey = segs[4 * i + 3];
+        while (true) {
+            const next = findUnvisited(key(ex, ey));
+            if (next < 0) break;
+            visited[next] = 1;
+            const ax = segs[4 * next];
+            const ay = segs[4 * next + 1];
+            const bx = segs[4 * next + 2];
+            const by = segs[4 * next + 3];
+            if (ax === ex && ay === ey) {
+                chain.push(bx, by);
+                ex = bx;
+                ey = by;
+            } else {
+                chain.push(ax, ay);
+                ex = ax;
+                ey = ay;
+            }
+        }
+        // Extend backward.
+        let sx = segs[4 * i];
+        let sy = segs[4 * i + 1];
+        while (true) {
+            const next = findUnvisited(key(sx, sy));
+            if (next < 0) break;
+            visited[next] = 1;
+            const ax = segs[4 * next];
+            const ay = segs[4 * next + 1];
+            const bx = segs[4 * next + 2];
+            const by = segs[4 * next + 3];
+            if (ax === sx && ay === sy) {
+                chain.unshift(bx, by);
+                sx = bx;
+                sy = by;
+            } else {
+                chain.unshift(ax, ay);
+                sx = ax;
+                sy = ay;
+            }
+        }
+        chains.push(chain);
+    }
+    return chains;
+}
+
+/**
+ * Chaikin corner-cutting: replace each pair of adjacent vertices with
+ * two new vertices at 1/4 and 3/4 along the edge. Two iterations is
+ * the sweet spot for iso-contours — enough to kill the stair-step from
+ * marching-squares without flattening real curvature.
+ *
+ * Closed chains (first point repeated as last) are handled by treating
+ * the polyline cyclically; open chains keep their endpoints fixed.
+ */
+export function smoothChaikin(chain: number[], iterations: number): number[] {
+    if (chain.length < 4) return chain;
+    let pts = chain;
+    for (let it = 0; it < iterations; it++) {
+        const m = pts.length >> 1;
+        if (m < 2) break;
+        const closed = pts[0] === pts[2 * m - 2] && pts[1] === pts[2 * m - 1];
+        const out: number[] = [];
+        if (!closed) out.push(pts[0], pts[1]);
+        const limit = closed ? m - 1 : m - 1;
+        for (let i = 0; i < limit; i++) {
+            const x0 = pts[2 * i];
+            const y0 = pts[2 * i + 1];
+            const x1 = pts[2 * (i + 1)];
+            const y1 = pts[2 * (i + 1) + 1];
+            out.push(0.75 * x0 + 0.25 * x1, 0.75 * y0 + 0.25 * y1);
+            out.push(0.25 * x0 + 0.75 * x1, 0.25 * y0 + 0.75 * y1);
+        }
+        if (closed) {
+            out.push(out[0], out[1]);
+        } else {
+            out.push(pts[2 * m - 2], pts[2 * m - 1]);
+        }
+        pts = out;
+    }
+    return pts;
+}
+
 function transform(c: number, intensity: 'linear' | 'sqrt' | 'log1p'): number {
     if (!Number.isFinite(c) || c < 0) return 0;
     switch (intensity) {

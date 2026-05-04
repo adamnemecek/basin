@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { chooseLevels, isoContour } from './contours';
+    import { chainSegments, chooseLevels, isoContour, smoothChaikin } from './contours';
     import { paletteFor, type Theme } from './palette';
     import type { Domain, ProblemMeta } from './problems';
 
@@ -43,10 +43,23 @@
     let isoLines = $derived.by(() => {
         const levels = chooseLevels(grid, problem.intensity, N_LEVELS);
         const d = problem.domain;
-        return levels.map((level) => ({
-            level,
-            segments: isoContour(grid, nx, ny, d.xmin, d.xmax, d.ymin, d.ymax, level),
-        }));
+        return levels.map((level) => {
+            const segs = isoContour(
+                grid,
+                nx,
+                ny,
+                d.xmin,
+                d.xmax,
+                d.ymin,
+                d.ymax,
+                level,
+            );
+            // Stitch into polylines so we can stroke each as one path,
+            // then Chaikin-smooth to kill the marching-squares
+            // stair-step. Two iterations is the sweet spot.
+            const chains = chainSegments(segs).map((c) => smoothChaikin(c, 2));
+            return { level, chains };
+        });
     });
 
     // Render contours when contours, sizing, theme, or domain change.
@@ -112,7 +125,7 @@
     function renderContours(
         cv: HTMLCanvasElement,
         d: Domain,
-        lines: { level: number; segments: Float64Array }[],
+        lines: { level: number; chains: number[][] }[],
         pal: ReturnType<typeof paletteFor>,
     ) {
         const dpr = window.devicePixelRatio || 1;
@@ -131,22 +144,34 @@
 
         if (lines.length === 0) return;
 
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+
         // Draw outermost-first so the brightest (innermost) strokes win
         // when contours crowd. `t = 0` is the outermost, `t = 1` the
         // innermost — palette decides what those map to per theme.
         for (let li = lines.length - 1; li >= 0; li--) {
-            const seg = lines[li].segments;
-            if (seg.length === 0) continue;
+            const chains = lines[li].chains;
+            if (chains.length === 0) continue;
             const t = li / Math.max(lines.length - 1, 1);
             ctx.strokeStyle = pal.contour(1 - t);
             // Inner contours a hair thicker so the basin reads.
             ctx.lineWidth = 1 + (1 - t) * 0.6;
             ctx.beginPath();
-            for (let k = 0; k < seg.length; k += 4) {
-                const [px0, py0] = dataToPixel(seg[k], seg[k + 1], d, w, h);
-                const [px1, py1] = dataToPixel(seg[k + 2], seg[k + 3], d, w, h);
+            for (const chain of chains) {
+                if (chain.length < 4) continue;
+                const [px0, py0] = dataToPixel(chain[0], chain[1], d, w, h);
                 ctx.moveTo(px0, py0);
-                ctx.lineTo(px1, py1);
+                for (let k = 2; k < chain.length; k += 2) {
+                    const [px, py] = dataToPixel(
+                        chain[k],
+                        chain[k + 1],
+                        d,
+                        w,
+                        h,
+                    );
+                    ctx.lineTo(px, py);
+                }
             }
             ctx.stroke();
         }
