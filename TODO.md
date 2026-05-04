@@ -34,8 +34,8 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 
 - [x] **Rosenbrock** — N-D, smooth, narrow curved valley. Standard hard test
       for first/second-order methods. *(done)*
-- [ ] **Sphere** — N-D, `Σ xᵢ²`, convex. Trivial canary; dedups the inline
-      `Sphere` in `tests/nelder_mead.rs`.
+- [x] **Sphere** — N-D, `Σ xᵢ²`, convex. Trivial canary; dedups the inline
+      `Sphere` in `tests/nelder_mead.rs`. *(done)*
 - [ ] **Beale** — 2D, smooth, flat region near optimum at `(3, 0.5)`. Good
       second smooth test for BFGS distinct from Rosenbrock.
 - [ ] **Booth** — 2D, smooth, convex quadratic-like. Easy gradient test.

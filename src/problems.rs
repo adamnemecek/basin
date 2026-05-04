@@ -21,10 +21,12 @@
 
 pub mod rosenbrock;
 pub mod spec;
+pub mod sphere;
 
 pub use rosenbrock::{rosenbrock, rosenbrock_gradient, Rosenbrock, ROSENBROCK_SPEC};
 pub use spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
+pub use sphere::{sphere, sphere_gradient, Sphere, SPHERE_SPEC};
 
 /// All catalogued problem specs, for browsing and filtering. Append new
 /// problems here as they're added.
-pub static ALL_SPECS: &[&ProblemSpec] = &[&ROSENBROCK_SPEC];
+pub static ALL_SPECS: &[&ProblemSpec] = &[&ROSENBROCK_SPEC, &SPHERE_SPEC];

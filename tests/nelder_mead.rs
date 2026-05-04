@@ -1,4 +1,4 @@
-use basin::problems::Rosenbrock;
+use basin::problems::{Rosenbrock, Sphere};
 use basin::{
     BasicSimplexState, CostFunction, Executor, NelderMead, SimplexState, SimplexTolerance,
     TerminationReason,
@@ -81,19 +81,10 @@ fn nelder_mead_keeps_best_first_after_each_iter() {
     }
 }
 
-/// Sphere function: derivative-free path on a trivial convex problem.
-struct Sphere;
-impl CostFunction for Sphere {
-    type Param = Vec<f64>;
-    type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        x.iter().map(|v| v * v).sum()
-    }
-}
-
 #[test]
 fn nelder_mead_adaptive_sphere_5d() {
-    let problem = Sphere;
+    // Derivative-free path on a trivial convex problem.
+    let problem = Sphere::<Vec<f64>>::default();
 
     let result = Executor::new(
         problem,
