@@ -7,18 +7,20 @@
 //! type for `Vec`; `ndarray-linalg` requires system BLAS/LAPACK and
 //! breaks the wasm-default tenet).
 //!
-//! The op set is intentionally lean — exactly what a Gauss-Newton
-//! inner step needs:
+//! The op set covers what Gauss-Newton needs at minimum, plus a
+//! least-squares solve for sparse backends that ship QR:
 //!
 //! - [`MatVec`]: `y = A x` (matrix-vector product).
 //! - [`MatTransposeVec`]: `y = Aᵀ x` (transposed matrix-vector
 //!   product — used to form `Jᵀ r` without materializing `Jᵀ`).
 //! - [`GramMatrix`]: `G = Aᵀ A` (the SPD normal-equations matrix).
 //! - [`LinearSolveSpd`]: `A x = b` for SPD `A` (Cholesky inside).
+//! - [`LinearSolveLstsq`]: `min_x ‖A x − b‖₂` (QR inside). Implemented
+//!   per-backend wherever a sparse QR exists; not all backends do.
 //!
-//! QR / LU paths and `(AᵀA) x` for matrix-free Krylov inner solves
-//! are deliberately deferred — they land alongside the first solver
-//! that actually wants them (S3 / post-S6 respectively).
+//! Dense LU and `(AᵀA) x` for matrix-free Krylov inner solves are
+//! deliberately deferred — they land alongside the first solver that
+//! actually wants them (post-S6).
 
 /// Matrix-vector product `y = A x`.
 ///
@@ -114,19 +116,60 @@ pub trait LinearSolveSpd<V> {
     fn solve_spd(&self, b: &V) -> Result<V, LinearSolveError>;
 }
 
-/// Reasons a [`LinearSolveSpd`] (or future linear-solve trait) call
-/// can fail. Variants are backend-agnostic — backends translate their
-/// native error types into these.
+/// Least-squares solve `min_x ‖A x − b‖₂` via QR factorization. `A`
+/// is `self`; `b` is the right-hand side. Unlike [`LinearSolveSpd`],
+/// `A` need not be square or full-rank.
+///
+/// Owned-return for the same reasons as [`LinearSolveSpd`]: the
+/// `O(mn²)` factorization dominates the `O(n)` allocation, and the
+/// unified return shape stays honest across backends.
+///
+/// # Contract
+///
+/// - **Caller must:** pass a `b` of length `self.nrows()`. `self` may
+///   be any shape; backends do not require `self` to be square.
+/// - **Implementor must:** return [`LinearSolveError::Singular`] when
+///   the underlying QR factorization itself fails (allocation or
+///   index-overflow errors counted as `Singular` for callers who only
+///   need pass/fail). On success, the returned `V` has length
+///   `self.ncols()` and minimizes `‖A x − b‖₂` to within the backend's
+///   factorization accuracy.
+/// - **Caller must (numerical caveat):** rank-deficient inputs are
+///   *not* guaranteed to surface as [`LinearSolveError::Singular`] —
+///   sparse QR backends (faer) succeed on rank-deficient systems and
+///   produce a solution whose components in the null space are
+///   numerically meaningless. Callers that need rank-deficiency
+///   detection should check `‖A x − b‖₂` against expected residuals
+///   themselves.
+///
+/// # Backends
+///
+/// Implemented for `faer::sparse::SparseColMat<usize, f64>` (with
+/// `V = faer::Col<f64>`) when the `faer` feature is enabled.
+/// `nalgebra-sparse` does not ship a sparse QR at the pinned version,
+/// so `nalgebra_sparse::CscMatrix<f64>` deliberately does not
+/// implement this trait — per tenet 5, missing coverage is a
+/// compile-time error rather than a runtime surprise.
+pub trait LinearSolveLstsq<V> {
+    /// Solve the least-squares problem `min_x ‖self · x − b‖₂` via QR.
+    /// Returns [`LinearSolveError::Singular`] on numerical rank
+    /// deficiency.
+    fn solve_lstsq(&self, b: &V) -> Result<V, LinearSolveError>;
+}
+
+/// Reasons a linear-solve trait call can fail. Variants are
+/// backend-agnostic — backends translate their native error types
+/// into these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LinearSolveError {
     /// Cholesky factorization encountered a zero or negative pivot.
     /// The matrix is not positive definite (it may still be positive
     /// semi-definite, e.g. when `A = Jᵀ J` with rank-deficient `J`).
+    /// Reported by [`LinearSolveSpd`].
     NotPositiveDefinite,
-    /// The matrix is singular (zero pivot in a non-Cholesky
-    /// factorization). Reserved for future LU / QR paths; currently
-    /// unused by [`LinearSolveSpd`], which reports rank deficiency
-    /// as [`Self::NotPositiveDefinite`].
+    /// The matrix is numerically rank-deficient (zero on the diagonal
+    /// of an `R` or `U` factor). Reported by [`LinearSolveLstsq`] for
+    /// rank-deficient QR.
     Singular,
 }
 

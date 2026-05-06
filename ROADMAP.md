@@ -226,19 +226,87 @@ existing `linalg` module and `Jacobian` rustdoc. Madsen/Nielsen/
 Tingleff stays queued for S4 where the LM λ-update needs the full
 algorithmic context.
 
-### S2b. Sparse `Jacobian::Output` + sparse `LinearSolve`
+### S2b. Sparse `Jacobian::Output` + sparse `LinearSolve` — **done**
 
-Slotted after S3 (so dense GN is green first), before S4 (so LM gets
-sparse for free).
+Sparse CSC types land for both backends; sparse Gauss-Newton works
+end-to-end on a new `SparseLeastSquares` fixture without any solver-
+side change (the S2a `M: GramMatrix + MatTransposeVec<V> +
+LinearSolveSpd<V>` bound set is satisfied by the sparse impls
+exactly).
 
-- Add sparse matrix types as valid `Jacobian::Output`:
-  `nalgebra_sparse::CscMatrix<f64>`, `faer::sparse::SparseColMat<usize, f64>`.
-- Implement `LinearSolve` for both — sparse Cholesky/QR.
-- Add a sparse least-squares test problem (small linear regression as
-  residuals, where `J` is sparse by construction).
-- Sparse Gauss-Newton works automatically; verify with the new test
-  problem on at least one backend (faer almost certainly; nalgebra
-  if its sparse factorizations cooperate).
+**Sparse `Jacobian::Output` types wired.**
+
+- nalgebra path: `nalgebra_sparse::CscMatrix<f64>` over
+  `DVector<f64>`. Folded into the existing `nalgebra` Cargo feature
+  rather than getting its own — `nalgebra-sparse 0.10` is small and
+  pure-Rust, so the manifest stays one feature per backend per tenet
+  2. The 0.10 pin is required by MSRV: 0.11 wants edition2024
+  (Rust 1.85+).
+- faer path: `faer::sparse::SparseColMat<usize, f64>` over
+  `Col<f64>`. Faer's sparse module is bundled into the `faer 0.24`
+  dep with no extra feature needed.
+
+**Five linalg traits, with one honest asymmetry.**
+
+- `MatVec`, `MatTransposeVec`, `GramMatrix`, `LinearSolveSpd` —
+  implemented for both sparse types. nalgebra-sparse uses
+  `spmm_csc_dense` with `Op::Transpose` for the transposed SpMV (no
+  materialized `Aᵀ`); faer reuses the `SparseRowMatRef` view returned
+  by `transpose()` against the same `sparse_dense_matmul` entry
+  point. `GramMatrix::gram(&self) -> Self` survives sparse
+  unchanged: CSC^T · CSC → CSC for both backends, so the dense-
+  prototype shape from S2a didn't need to grow an associated
+  `Output` type.
+- `LinearSolveLstsq<V>` — new this session, mirrors
+  `LinearSolveSpd<V>` (owned-return, single-method, same `# Contract`
+  shape). Implemented for `SparseColMat` only — nalgebra-sparse
+  doesn't ship sparse QR. The asymmetry is documented on the trait's
+  `# Backends` note per tenet 5; missing coverage stays a compile-
+  time error rather than a runtime surprise.
+
+**`LinearSolveError::Singular` finally has an implementor.** S2a
+introduced the variant as "reserved for future LU/QR paths"; S2b's
+sparse-QR `solve_lstsq` is the first user. The QR path returns
+`Singular` on faer factorization-stage errors only — sparse QR
+succeeds on numerically rank-deficient inputs and produces a
+solution whose null-space components are meaningless. The
+`LinearSolveLstsq` rustdoc spells out this caveat (callers who need
+rank-deficiency detection check the residual norm themselves).
+
+**Test fixture: `SparseLeastSquares<M, V>`.** Linear regression
+`r(x) = A · x − b` with stored design matrix and target. Unlike the
+existing analytic problems in the corpus where the residual is a
+closed-form function of `x`, this one carries data — the struct is
+generic on `(M, V)` and per-backend `Residual` + `Jacobian` impls
+pick the concrete pair. `Jacobian::jacobian` returns `self.a.clone()`
+(constant `J` for linear residuals). The integration tests use a
+6×3 design (`I₃` stacked on three pairwise-sum rows) with `b = A·x*`
+where `x* = [1, 2, 3]`, so the closed-form least-squares minimum
+has zero residual. Sparse GN converges in two iterations on both
+backends (one full Newton step lands on `x*`, the next finds
+`‖Jᵀr‖_∞ = 0`).
+
+**Backends note on the test-problem corpus.** `SparseLeastSquares`
+is the first problem in `problems/` whose `Vec<f64>` and `ndarray`
+columns are deliberately empty rather than just deferred — those
+backends have no sparse matrix type to pair with, so per tenet 5 the
+absence is permanent rather than a follow-up TODO.
+
+**QR was scoped in mid-session.** The original brief left QR
+deferred (S2a and S3 both deferred QR for honest reasons). The user
+chose to include sparse QR this session — faer-sparse only — to
+exercise the second linalg-tier `Result`-returning solver and to
+unblock future TRF / rank-deficient-LM work without re-touching the
+linalg module. Dense QR stays deferred; no current solver needs it,
+and adding it alongside sparse QR would have expanded surface beyond
+what's load-bearing.
+
+**Paper ingestion.** Skipped this session — the API survey of pinned
+faer 0.24 sparse and nalgebra-sparse 0.10 sources gave enough signal
+to make the trait-shape decisions. The faer paper (Sarah Oudjedi,
+2024) and the nalgebra-sparse user guide stay queued for whenever a
+future session needs supernodal-vs-simplicial Cholesky tradeoffs or
+sparse QR rank-deficiency handling.
 
 ### S4. Levenberg-Marquardt (unconstrained)
 

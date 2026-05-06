@@ -7,10 +7,11 @@
 //!   [`NegInPlace`]. Backend-generic solvers (gradient descent,
 //!   Nelder-Mead) bound on these.
 //! - **`linalg` tier** ([`linalg`]): LA-heavy ops — [`MatVec`],
-//!   [`MatTransposeVec`], [`GramMatrix`], [`LinearSolveSpd`] — that only
-//!   the matrix-capable backends (nalgebra, faer) implement. LA-heavy
-//!   solvers (Gauss-Newton, LM) bound on these so other backends produce
-//!   compile-time errors instead of runtime surprises.
+//!   [`MatTransposeVec`], [`GramMatrix`], [`LinearSolveSpd`],
+//!   [`LinearSolveLstsq`] — that only the matrix-capable backends
+//!   (nalgebra, faer; sparse counterparts in S2b) implement. LA-heavy
+//!   solvers (Gauss-Newton, LM) bound on these so other backends
+//!   produce compile-time errors instead of runtime surprises.
 
 /// In-place `self ← self + scalar · other`. Backend-generic vector update.
 pub trait ScaledAdd<S> {
@@ -54,10 +55,18 @@ mod vec;
 #[cfg(feature = "nalgebra")]
 mod nalgebra_backend;
 
+#[cfg(feature = "nalgebra")]
+mod nalgebra_sparse_backend;
+
 #[cfg(feature = "ndarray")]
 mod ndarray_backend;
 
 #[cfg(feature = "faer")]
 mod faer_backend;
 
-pub use linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
+#[cfg(feature = "faer")]
+mod faer_sparse_backend;
+
+pub use linalg::{
+    GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd, MatTransposeVec, MatVec,
+};

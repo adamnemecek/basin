@@ -26,6 +26,7 @@ pub mod matyas;
 pub mod mccormick;
 pub mod powell_singular;
 pub mod rosenbrock;
+pub mod sparse_least_squares;
 pub mod spec;
 pub mod sphere;
 
@@ -44,6 +45,7 @@ pub use rosenbrock::{
     rosenbrock, rosenbrock_gradient, rosenbrock_residuals, rosenbrock_residuals_jacobian,
     Rosenbrock, RosenbrockResiduals, ROSENBROCK_SPEC,
 };
+pub use sparse_least_squares::{SparseLeastSquares, SPARSE_LEAST_SQUARES_SPEC};
 pub use spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 pub use sphere::{sphere, sphere_gradient, Sphere, SPHERE_SPEC};
 
@@ -58,4 +60,5 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &MCCORMICK_SPEC,
     &GOLDSTEIN_PRICE_SPEC,
     &POWELL_SINGULAR_SPEC,
+    &SPARSE_LEAST_SQUARES_SPEC,
 ];

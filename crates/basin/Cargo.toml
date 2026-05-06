@@ -21,7 +21,10 @@ path = "src/lib.rs"
 default = ["problems"]
 # Pin one version per backend (tenet 2 in AGENTS.md). A backend major bump
 # becomes a basin major bump — do not introduce per-version features.
-nalgebra = ["dep:nalgebra"]
+# `nalgebra-sparse` rides along on the same feature: it's a separate crate,
+# but logically part of the nalgebra story (sparse Jacobians, sparse
+# Cholesky). Folding it in keeps the manifest to one nalgebra feature.
+nalgebra = ["dep:nalgebra", "dep:nalgebra-sparse"]
 ndarray = ["dep:ndarray"]
 # `generativity` is pulled in transitively by faer; we force the older 1.1
 # line because 1.2.1 requires edition2024 (Rust 1.85+), above basin's MSRV.
@@ -37,6 +40,10 @@ problems = []
 # Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
 # MSRV of 1.84.1 (CRAN constraint — see AGENTS.md). Revisit when CRAN's pin moves.
 nalgebra = { version = "0.33", optional = true }
+# Pinned to 0.10 because 0.11 requires edition2024 (Rust 1.85+), above basin's
+# MSRV 1.84.1 (CRAN constraint). 0.10 tracks nalgebra 0.33 cleanly. Drop the
+# pin when CRAN's Rust pin moves.
+nalgebra-sparse = { version = "0.10", optional = true }
 # Pure-Rust (no BLAS feature) so it stays wasm-compatible per the WASM hard
 # constraint in AGENTS.md. 0.16's MSRV is well below basin's 1.84.1.
 ndarray = { version = "0.16", optional = true, default-features = false }

@@ -8,13 +8,17 @@ the previous lands.
 See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
 This section tracks the immediate next session's discrete items.
 
-- [ ] **S2b: sparse `Jacobian::Output` + sparse `LinearSolve`.**
-      Slotted between S3 (done) and S4 so LM gets sparse for free.
-      Add `nalgebra_sparse::CscMatrix<f64>` and
-      `faer::sparse::SparseColMat<usize, f64>` as valid
-      `Jacobian::Output`; implement sparse Cholesky/QR; add a sparse
-      least-squares fixture. Read the faer paper + nalgebra-sparse
-      user guide first. See `ROADMAP.md` Phase 1.
+- [x] **S2b: sparse `Jacobian::Output` + sparse `LinearSolve`.**
+      *(done)* CSC sparse Jacobian + sparse Cholesky/QR landed for
+      both backends; sparse Gauss-Newton works on the new
+      `SparseLeastSquares` fixture. See `ROADMAP.md` Phase 1 for
+      decisions and deferred follow-ups.
+
+- [ ] **S4: Levenberg-Marquardt (unconstrained).**
+      Gauss-Newton + Marquardt damping with the Nielsen 1999 λ-update.
+      Inherits dense + sparse + both backends from S2b. Read
+      Madsen/Nielsen/Tingleff (2004) + Nielsen (1999) + skim MINPACK
+      `lmder` first.
 
 ## Deferred (not now)
 
