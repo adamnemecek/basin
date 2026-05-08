@@ -27,8 +27,8 @@ pub mod solver;
 pub use crate::core::constraint::BoxConstrained;
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::math::{
-    AddDiagonalInPlace, Dot, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
-    MaxDiagonal, NegInPlace, NormInfinity, NormSquared, ScaledAdd,
+    AddDiagonalInPlace, ClampInPlace, Dot, GramMatrix, LinearSolveError, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal, NegInPlace, NormInfinity, NormSquared, ScaledAdd,
 };
 pub use crate::core::problem::{CostFunction, Gradient, Jacobian, Residual};
 pub use crate::core::solver::Solver;
@@ -39,9 +39,12 @@ pub use crate::core::state::{
 };
 pub use crate::core::termination::{
     CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
-    ParamTolerance, SimplexTolerance, TerminationCriterion, TerminationReason,
+    ParamTolerance, ProjectedGradientTolerance, SimplexTolerance, TerminationCriterion,
+    TerminationReason,
 };
 pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResult, Wolfe};
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
-pub use crate::solver::{Brent, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead};
+pub use crate::solver::{
+    Brent, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead, ProjectedGradientDescent,
+};

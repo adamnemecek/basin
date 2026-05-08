@@ -4,7 +4,7 @@ use super::linalg::{
     AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
     MaxDiagonal,
 };
-use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
 where
@@ -60,6 +60,31 @@ where
 {
     fn neg_in_place(&mut self) {
         self.apply(|x| *x = -*x);
+    }
+}
+
+impl<R, C, S> ClampInPlace for Matrix<f64, R, C, S>
+where
+    R: Dim,
+    C: Dim,
+    S: StorageMut<f64, R, C>,
+{
+    fn clamp_in_place(&mut self, lower: &Self, upper: &Self) {
+        assert_eq!(
+            self.shape(),
+            lower.shape(),
+            "clamp_in_place: lower shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            upper.shape(),
+            "clamp_in_place: upper shape mismatch"
+        );
+        // `iter_mut` and `iter` both traverse in column-major order, so
+        // zipping is consistent across self / lower / upper.
+        for ((x, &lo), &hi) in self.iter_mut().zip(lower.iter()).zip(upper.iter()) {
+            *x = x.clamp(lo, hi);
+        }
     }
 }
 

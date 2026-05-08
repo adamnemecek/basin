@@ -95,16 +95,45 @@ These shape API decisions and are non-obvious from the code alone:
    Solver-specific knobs stay on the solver. Subtlety: derivative-free solvers
    (Nelder-Mead, SA) have no gradient, so termination must be pluggable / opt-in
    based on what state and problem expose---not a fixed set of fields.
-4. **First-class constraints (planned).** argmin has no general constraint
-   interface; basin will. Box bounds and linear (in)equalities at minimum, with
-   a generic hook for nonlinear constraints later. Constraints describe the
-   *problem*, so they live on the problem side, not as executor config. Solvers
-   declare support via marker traits / associated types; constrained problems
-   handed to unconstrained solvers should be a compile-time error, with an
-   opt-in adapter (projection / penalty / barrier) to wrap unconstrained solvers
-   when needed. Concrete trait design is deferred until the first constrained
-   solver (likely projected gradient on box constraints) --- designing on paper
-   without a solver to validate against tends to need redoing.
+4. **First-class constraints.** argmin has no general constraint interface;
+   basin does. Box bounds and linear (in)equalities at minimum, with a generic
+   hook for nonlinear constraints later. Constraints describe the *problem*, so
+   they live on the problem side, not as executor config. Solvers declare
+   support via marker traits / associated types; constrained problems handed to
+   unconstrained solvers are a compile-time error, with an opt-in adapter
+   (projection / penalty / barrier) to wrap unconstrained solvers when needed.
+
+   **Status.** Box bounds ship as `BoxConstrained` in
+   `src/core/constraint.rs`, used by `Brent` (1D) and
+   `ProjectedGradientDescent` (n-D). Linear and nonlinear constraint kinds are
+   not yet designed --- the second kind is what reveals the right shared
+   abstraction (see below), so it waits for a real solver that needs it.
+
+   **Adapters must not re-implement the constraint trait they consumed.** A
+   wrapper that converts a constrained problem into an unconstrained one (log
+   barrier, quadratic penalty) exposes `CostFunction + Gradient` *only*. E.g.
+   `LogBarrier<P: BoxConstrained>` does not impl `BoxConstrained` itself ---
+   that asymmetry is what flows the wrapped problem to unconstrained solvers.
+   If the wrapper also implemented `BoxConstrained`, it would route back into
+   constrained solvers and the whole adapter model collapses. Load-bearing and
+   non-obvious; preserve it deliberately.
+
+   **Do not design a `Constraint` supertrait or hierarchy until ≥2
+   fundamentally different constrained solvers exist that share more than
+   `lower()` / `upper()` accessors.** The second constraint kind (linear
+   inequalities, then nonlinear) reveals whether the shared abstraction is "all
+   constraints have a feasibility check" or "all constraints have a projection"
+   or something else entirely. One-member hierarchies are overhead with no
+   value; designing on paper without a solver to validate against tends to need
+   redoing.
+
+   **Constraints live on the problem, never on state.** Don't put `lower` /
+   `upper` on `BasicState` "for convenience". State carries iteration history;
+   constraints define the problem. Bounds on state would silently un-constrain
+   a problem if a different state were swapped in, and decouple constraint
+   semantics from where the solver type-system enforces them. Termination
+   criteria that need bounds (e.g. `ProjectedGradientTolerance`) clone them at
+   construction --- that's the deliberate pattern, not a workaround.
 5. **Backends are tiered; not every solver works on every backend.** The shared
    math layer (`ScaledAdd`, `NormSquared`, `NormInfinity`, ...) stays small and
    honest: only ops that every backend can implement well belong there.

@@ -5,7 +5,8 @@
 
 use web_time::{Duration, Instant};
 
-use crate::core::math::{NormInfinity, NormSquared, ScaledAdd};
+use crate::core::constraint::BoxConstrained;
+use crate::core::math::{ClampInPlace, NormInfinity, NormSquared, ScaledAdd};
 use crate::core::state::{GradientState, SimplexState, State};
 
 /// Why the executor stopped. Returned on
@@ -21,6 +22,10 @@ pub enum TerminationReason {
     MaxGradientEvals,
     /// `‖∇f(x)‖ ≤ tol`.
     GradientTolerance,
+    /// `‖x − π_C(x − ∇f(x))‖_∞ ≤ tol` — projected-gradient stationarity
+    /// for box-constrained problems. Collapses to the unconstrained
+    /// gradient norm when no constraint is active.
+    ProjectedGradientTolerance,
     /// `‖x_k − x_{k−1}‖ ≤ tol`.
     ParamTolerance,
     /// `|f_k − f_{k−1}| ≤ tol`.
@@ -126,6 +131,74 @@ where
         let g = state.gradient()?;
         if g.norm_squared() <= self.0 * self.0 {
             Some(TerminationReason::GradientTolerance)
+        } else {
+            None
+        }
+    }
+}
+
+/// Stop when `‖x − π_C(x − ∇f(x))‖_∞ ≤ tol`, the canonical first-order
+/// optimality measure for box-constrained minimization. `π_C` is the
+/// projection onto the box `[lower, upper]` carried by this criterion.
+///
+/// The metric is zero exactly at a KKT point of the box-constrained
+/// problem: when no constraint is active it collapses to `‖∇f‖_∞`;
+/// when a face is active it collapses to the ∞-norm of the gradient
+/// components corresponding to *inactive* coordinates. This is why
+/// [`GradientTolerance`] is the wrong metric for constrained problems —
+/// `‖∇f‖` need not vanish at a constrained optimum (the gradient
+/// points into an active face), but the projected-gradient measure
+/// always does.
+///
+/// Construct from explicit bounds with [`new`](Self::new), or clone
+/// them off a [`BoxConstrained`] problem with
+/// [`from_problem`](Self::from_problem). The bounds are stored once at
+/// construction; the criterion does not call back into the problem.
+///
+/// Requires `S: GradientState` and `S::Param` to implement
+/// [`ScaledAdd<f64>`], [`ClampInPlace`], [`NormInfinity`], and `Clone`.
+/// Skipped silently when the state has no gradient populated yet
+/// (e.g. iter 0 before `init` has run).
+pub struct ProjectedGradientTolerance<P> {
+    lower: P,
+    upper: P,
+    tol: f64,
+}
+
+impl<P> ProjectedGradientTolerance<P> {
+    /// New criterion with explicit bounds.
+    pub fn new(lower: P, upper: P, tol: f64) -> Self {
+        Self { lower, upper, tol }
+    }
+
+    /// New criterion that clones its bounds off a [`BoxConstrained`]
+    /// problem.
+    pub fn from_problem<Pr>(problem: &Pr, tol: f64) -> Self
+    where
+        Pr: BoxConstrained<Param = P>,
+        P: Clone,
+    {
+        Self {
+            lower: problem.lower().clone(),
+            upper: problem.upper().clone(),
+            tol,
+        }
+    }
+}
+
+impl<S, P> TerminationCriterion<S> for ProjectedGradientTolerance<P>
+where
+    S: GradientState + State<Param = P>,
+    P: ScaledAdd<f64> + ClampInPlace + NormInfinity + Clone,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let g = state.gradient()?;
+        let mut probe = state.param().clone(); // x
+        probe.scaled_add(-1.0, g); // x − ∇f
+        probe.clamp_in_place(&self.lower, &self.upper); // π(x − ∇f)
+        probe.scaled_add(-1.0, state.param()); // π(x − ∇f) − x
+        if probe.norm_infinity() <= self.tol {
+            Some(TerminationReason::ProjectedGradientTolerance)
         } else {
             None
         }

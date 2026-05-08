@@ -408,14 +408,115 @@ LM (lands in S6 / TRF where rank-deficient `J` and box constraints make
 QR materially better). Geodesic acceleration / second-order corrections
 (post-S6).
 
-### S5. Box constraints + projected gradient descent
+### S5. Box constraints + projected gradient descent — **done**
 
-- First constrained solver per tenet 4. Smallest possible vehicle for
-  the `Constraint` trait.
-- Decision to make: constraint-as-marker-trait on the problem, or as
-  data on the problem? Lean: data, with a marker trait
-  `BoxConstrained` that solvers can require.
-- Add a constrained test problem.
+`ProjectedGradientDescent` lands in
+`solver/projected_gradient_descent.rs` as the first n-D constrained
+solver in basin. The `BoxConstrained` trait already lived at
+`core/constraint.rs` (introduced when 1D Brent landed) — S5 doesn't
+*introduce* it, it makes the first n-D solver actually require it,
+exercising tenet 4 end-to-end. Handing this solver an unconstrained
+problem is now a compile error.
+
+**Algorithm: naive PG.** Each iteration computes
+`d ← −∇f(x); α ← line_search.next(...); x ← π_C(x + α d)`. The line
+search runs against the *unconstrained* trial step `f(x + α d)`, not
+`f(π_C(x + α d))` — Armijo guarantees on the unconstrained step do
+not transfer to the projected post-step iterate. Documented as the
+known limitation; SPG (Birgin–Martínez–Raydan, projected line
+search) is a follow-up if the failure mode bites. At `init` the
+iterate is projected onto the feasible box once, so an infeasible
+starting point is silently corrected and downstream termination
+checks at iter 0 see a feasible iterate.
+
+**Vector-tier projection primitive.** `ClampInPlace` lands in
+`core/math/clamp.rs` with one method:
+`fn clamp_in_place(&mut self, lower: &Self, upper: &Self)`. Lives in
+the vector tier (every backend can implement it well, per tenet 5),
+not the linalg tier. Implemented for all four vector backends: Vec,
+nalgebra (`Matrix<f64, R, C, S: StorageMut>` — broad enough to cover
+DVector, DMatrix, etc.), ndarray (`ArrayBase<S: DataMut, D>`), and
+faer (`Col<f64>` via `faer::zip!` triple-zip). Naming follows the
+existing `NegInPlace` / `ScaledAdd` verb-form convention; the alternative
+`ProjectBoxInPlace` was rejected as speculative (the only n-D
+projection that's load-bearing today is component-wise).
+
+**`ProjectedGradientTolerance` criterion.** New framework-level
+criterion at `core/termination.rs`. Convergence test is the
+canonical KKT-residual metric `‖x − π_C(x − ∇f(x))‖_∞ ≤ tol`, which
+collapses to `‖∇f‖_∞` when no constraint is active and vanishes
+exactly at constrained KKT points. A regular `GradientTolerance`
+*does not* trigger at a face-active optimum (the gradient points
+into the active face), which is exactly why this criterion has to
+exist. Bounds are captured at construction time
+(`new(lower, upper, tol)` or `from_problem(&problem, tol)`) so the
+existing `TerminationCriterion::check(&mut self, &state)` signature
+stays unchanged — no problem-access plumbing in the executor.
+Mirrors the pattern `ParamTolerance` already established (criterion
+holds its own state). New `TerminationReason::ProjectedGradientTolerance`
+variant; the basin-wasm boundary string-mapping was extended to match.
+
+**Test problem.** `BoothBoxed<P>` lifted into
+`problems/booth.rs` next to the existing `Booth<P>` wrapper, sharing
+the same raw `_cost` / `_gradient` free fns (single source of
+truth). Carries `lower: P` / `upper: P` as data and impls
+`BoxConstrained` per backend. Booth's global min `(1, 3)` lies
+*outside* the `[-1, 1]²` box, so the constrained optimum is the box
+corner `(1, 1)` — a load-bearing edge-active test case where the
+unprojected ‖∇f‖_∞ ≈ 20 (so `GradientTolerance` would not trigger)
+but the projected metric vanishes exactly.
+
+**State-consistency choice.** PG mirrors GD's reuse of `BasicState<V>`
+unchanged — projected GD recomputes cost and gradient every iteration
+anyway, and there's no per-iteration scratch state that needs
+caching. The framework's `MaxIter`, `ParamTolerance`, `CostTolerance`,
+and `MaxTime` work on `BasicState<V>` for free; the new
+`ProjectedGradientTolerance` is the only criterion that knows about
+the bounds.
+
+**Tests: 20 new (16 integration + 4 unit).** Per backend (Vec,
+nalgebra, ndarray, faer), four integration cases under
+`tests/projected_gradient_descent_<backend>.rs`:
+
+1. **Slack bounds, interior min.** `BoothBoxed` with `[-5, 5]²` from
+   `(0, 0)`. Converges to `(1, 3)` to `‖·‖_∞ < 1e-4`. Verifies the
+   solver doesn't break the unconstrained case.
+2. **Tight bounds, edge-active min.** `BoothBoxed` with `[-1, 1]²`
+   from `(0, 0)`. Converges to `(1, 1)` (the corner of the box
+   closest to the unconstrained `(1, 3)`).
+3. **Infeasible start, init projection.** `BoothBoxed` with
+   `[-1, 1]²` from `(10, 10)`. After `init`, `state.param() == (1, 1)`
+   exactly. Asserted via `MaxIter(0)` so only `init` runs. Load-bearing
+   test for the `init`-time projection contract — confirmed by
+   reading `executor::run_loop` lines 266–268: `solver.init` runs
+   *before* the loop, so even with `max_iter = 0` the projected
+   iterate is the one returned.
+4. **`ProjectedGradientTolerance` triggers at `(1, 1)`.** Same setup
+   as case 2 with `tol = 1e-7`; asserts
+   `result.reason == TerminationReason::ProjectedGradientTolerance`.
+
+Plus four `Vec<f64>`-side unit tests for `ClampInPlace` (inside-the-box
+identity, partial-clip preserves untouched components, entire-box-clip
+pins to faces, equal bounds pin to the value). The other three backends
+exercise the trait implicitly through the integration tests.
+
+**Backends.** All four vector backends wired and tested. The
+`# Backends` rustdoc on `ProjectedGradientDescent` mirrors
+`GradientDescent` literally and adds `ClampInPlace` to the bound
+list plus the `BoxConstrained` problem requirement.
+
+**Out of scope.** SPG / projected line search (deferred to whenever
+the naive-PG Armijo-after-projection failure mode actually bites in
+practice). General `Constraint` supertrait or hierarchy (one
+constraint kind ≠ a hierarchy worth designing). Linear (in)equality
+constraints (S5 is box-only by ROADMAP scope). Active-set
+bookkeeping (TRF in S6 will introduce its own).
+
+**Paper ingestion.** Skipped this session — projected gradient
+descent is short enough (steepest-descent + a clamp) that the
+relevant equations come straight out of any constrained-optimization
+text. Branch/Coleman/Li 1999 stays queued for S6, where the TRF
+algorithm needs the full algorithmic context.
 
 ### S6. LM with box bounds (TRF — Trust Region Reflective)
 

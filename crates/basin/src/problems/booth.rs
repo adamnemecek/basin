@@ -12,7 +12,7 @@
 use core::marker::PhantomData;
 
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
-use crate::{CostFunction, Gradient};
+use crate::{BoxConstrained, CostFunction, Gradient};
 
 /// Evaluates the Booth function at `x`. Requires `x.len() == 2`.
 pub fn booth(x: &[f64]) -> f64 {
@@ -107,10 +107,66 @@ impl Gradient for Booth<Vec<f64>> {
     }
 }
 
+/// Booth function with explicit element-wise box bounds, suitable for
+/// constrained solvers ([`ProjectedGradientDescent`](crate::solver::ProjectedGradientDescent)).
+///
+/// Carries the bounds as data on the problem (tenet 4 in `AGENTS.md`)
+/// and routes cost and gradient through the same raw [`booth`] /
+/// [`booth_gradient`] free fns as the unconstrained [`Booth`]. The
+/// global minimum `(1, 3)` of unconstrained Booth is on the interior
+/// of `[-10, 10]²` but lies *outside* tighter boxes such as
+/// `[-1, 1]²`, where the constrained optimum is the box corner
+/// `(1, 1)` — see the integration tests for projection-active
+/// behavior.
+pub struct BoothBoxed<P> {
+    lower: P,
+    upper: P,
+}
+
+impl<P> BoothBoxed<P> {
+    /// Build a Booth problem with the given element-wise bounds.
+    /// Caller must ensure `lower[i] ≤ upper[i]` for each component
+    /// (the projection primitive [`f64::clamp`] panics on violation).
+    pub fn new(lower: P, upper: P) -> Self {
+        Self { lower, upper }
+    }
+}
+
+impl<P> HasSpec for BoothBoxed<P> {
+    const SPEC: &'static ProblemSpec = &BOOTH_SPEC;
+}
+
+impl CostFunction for BoothBoxed<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = f64;
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        booth(x)
+    }
+}
+
+impl Gradient for BoothBoxed<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        let mut out = vec![0.0; x.len()];
+        booth_gradient(x, &mut out);
+        out
+    }
+}
+
+impl BoxConstrained for BoothBoxed<Vec<f64>> {
+    fn lower(&self) -> &Vec<f64> {
+        &self.lower
+    }
+    fn upper(&self) -> &Vec<f64> {
+        &self.upper
+    }
+}
+
 #[cfg(feature = "nalgebra")]
 mod nalgebra_impl {
-    use super::{booth, booth_gradient, Booth};
-    use crate::{CostFunction, Gradient};
+    use super::{booth, booth_gradient, Booth, BoothBoxed};
+    use crate::{BoxConstrained, CostFunction, Gradient};
     use nalgebra::DVector;
 
     impl CostFunction for Booth<DVector<f64>> {
@@ -130,12 +186,39 @@ mod nalgebra_impl {
             out
         }
     }
+
+    impl CostFunction for BoothBoxed<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            booth(x.as_slice())
+        }
+    }
+
+    impl Gradient for BoothBoxed<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Gradient = DVector<f64>;
+        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+            let mut out = DVector::zeros(x.len());
+            booth_gradient(x.as_slice(), out.as_mut_slice());
+            out
+        }
+    }
+
+    impl BoxConstrained for BoothBoxed<DVector<f64>> {
+        fn lower(&self) -> &DVector<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &DVector<f64> {
+            &self.upper
+        }
+    }
 }
 
 #[cfg(feature = "ndarray")]
 mod ndarray_impl {
-    use super::{booth, booth_gradient, Booth};
-    use crate::{CostFunction, Gradient};
+    use super::{booth, booth_gradient, Booth, BoothBoxed};
+    use crate::{BoxConstrained, CostFunction, Gradient};
     use ndarray::Array1;
 
     impl CostFunction for Booth<Array1<f64>> {
@@ -158,13 +241,61 @@ mod ndarray_impl {
             out
         }
     }
+
+    impl CostFunction for BoothBoxed<Array1<f64>> {
+        type Param = Array1<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Array1<f64>) -> f64 {
+            booth(x.as_slice().expect("Array1 is contiguous"))
+        }
+    }
+
+    impl Gradient for BoothBoxed<Array1<f64>> {
+        type Param = Array1<f64>;
+        type Gradient = Array1<f64>;
+        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+            let mut out = Array1::zeros(x.len());
+            booth_gradient(
+                x.as_slice().expect("Array1 is contiguous"),
+                out.as_slice_mut().expect("Array1 is contiguous"),
+            );
+            out
+        }
+    }
+
+    impl BoxConstrained for BoothBoxed<Array1<f64>> {
+        fn lower(&self) -> &Array1<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &Array1<f64> {
+            &self.upper
+        }
+    }
 }
 
 #[cfg(feature = "faer")]
 mod faer_impl {
-    use super::Booth;
-    use crate::{CostFunction, Gradient};
+    use super::{Booth, BoothBoxed};
+    use crate::{BoxConstrained, CostFunction, Gradient};
     use faer::Col;
+
+    fn cost_inline(x: &Col<f64>) -> f64 {
+        debug_assert_eq!(x.nrows(), 2);
+        let (a, b) = (x[0], x[1]);
+        let t1 = a + 2.0 * b - 7.0;
+        let t2 = 2.0 * a + b - 5.0;
+        t1 * t1 + t2 * t2
+    }
+
+    fn grad_inline(x: &Col<f64>) -> Col<f64> {
+        debug_assert_eq!(x.nrows(), 2);
+        let (a, b) = (x[0], x[1]);
+        let t1 = a + 2.0 * b - 7.0;
+        let t2 = 2.0 * a + b - 5.0;
+        let g0 = 2.0 * t1 + 4.0 * t2;
+        let g1 = 4.0 * t1 + 2.0 * t2;
+        Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+    }
 
     // faer's `Col` doesn't expose a `&[f64]` directly across all 0.24 APIs we
     // care about, so we evaluate elementwise here rather than routing through
@@ -173,11 +304,7 @@ mod faer_impl {
         type Param = Col<f64>;
         type Output = f64;
         fn cost(&self, x: &Col<f64>) -> f64 {
-            debug_assert_eq!(x.nrows(), 2);
-            let (a, b) = (x[0], x[1]);
-            let t1 = a + 2.0 * b - 7.0;
-            let t2 = 2.0 * a + b - 5.0;
-            t1 * t1 + t2 * t2
+            cost_inline(x)
         }
     }
 
@@ -185,13 +312,32 @@ mod faer_impl {
         type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            debug_assert_eq!(x.nrows(), 2);
-            let (a, b) = (x[0], x[1]);
-            let t1 = a + 2.0 * b - 7.0;
-            let t2 = 2.0 * a + b - 5.0;
-            let g0 = 2.0 * t1 + 4.0 * t2;
-            let g1 = 4.0 * t1 + 2.0 * t2;
-            Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+            grad_inline(x)
+        }
+    }
+
+    impl CostFunction for BoothBoxed<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Col<f64>) -> f64 {
+            cost_inline(x)
+        }
+    }
+
+    impl Gradient for BoothBoxed<Col<f64>> {
+        type Param = Col<f64>;
+        type Gradient = Col<f64>;
+        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+            grad_inline(x)
+        }
+    }
+
+    impl BoxConstrained for BoothBoxed<Col<f64>> {
+        fn lower(&self) -> &Col<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &Col<f64> {
+            &self.upper
         }
     }
 }

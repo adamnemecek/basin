@@ -6,7 +6,7 @@ use super::linalg::{
     AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
     MaxDiagonal,
 };
-use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl ScaledAdd<f64> for Col<f64> {
     fn scaled_add(&mut self, scalar: f64, other: &Self) {
@@ -37,6 +37,23 @@ impl Dot for Col<f64> {
 impl NegInPlace for Col<f64> {
     fn neg_in_place(&mut self) {
         faer::zip!(self.as_mut()).for_each(|faer::unzip!(x)| *x = -*x);
+    }
+}
+
+impl ClampInPlace for Col<f64> {
+    fn clamp_in_place(&mut self, lower: &Self, upper: &Self) {
+        assert_eq!(
+            self.nrows(),
+            lower.nrows(),
+            "clamp_in_place: lower shape mismatch"
+        );
+        assert_eq!(
+            self.nrows(),
+            upper.nrows(),
+            "clamp_in_place: upper shape mismatch"
+        );
+        faer::zip!(self.as_mut(), lower.as_ref(), upper.as_ref())
+            .for_each(|faer::unzip!(x, lo, hi)| *x = x.clamp(*lo, *hi));
     }
 }
 

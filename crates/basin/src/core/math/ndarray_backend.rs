@@ -1,6 +1,6 @@
 use ndarray::{ArrayBase, Data, DataMut, Dimension};
 
-use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
 where
@@ -51,5 +51,28 @@ where
 {
     fn neg_in_place(&mut self) {
         self.map_inplace(|x| *x = -*x);
+    }
+}
+
+impl<S, D> ClampInPlace for ArrayBase<S, D>
+where
+    S: DataMut<Elem = f64>,
+    D: Dimension,
+{
+    fn clamp_in_place(&mut self, lower: &Self, upper: &Self) {
+        assert_eq!(
+            self.shape(),
+            lower.shape(),
+            "clamp_in_place: lower shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            upper.shape(),
+            "clamp_in_place: upper shape mismatch"
+        );
+        ndarray::Zip::from(self)
+            .and(lower)
+            .and(upper)
+            .for_each(|x, &lo, &hi| *x = x.clamp(lo, hi));
     }
 }

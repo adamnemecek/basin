@@ -9,6 +9,8 @@ pub mod gradient_descent;
 pub mod levenberg_marquardt;
 /// Nelder-Mead derivative-free simplex solver.
 pub mod nelder_mead;
+/// Projected gradient descent for box-constrained problems.
+pub mod projected_gradient_descent;
 
 /// BFGS quasi-Newton solver (nalgebra-only).
 #[cfg(feature = "nalgebra")]
@@ -21,3 +23,4 @@ pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
 pub use nelder_mead::NelderMead;
+pub use projected_gradient_descent::ProjectedGradientDescent;

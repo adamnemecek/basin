@@ -31,7 +31,7 @@ pub mod spec;
 pub mod sphere;
 
 pub use beale::{beale, beale_gradient, Beale, BEALE_SPEC};
-pub use booth::{booth, booth_gradient, Booth, BOOTH_SPEC};
+pub use booth::{booth, booth_gradient, Booth, BoothBoxed, BOOTH_SPEC};
 pub use goldstein_price::{
     goldstein_price, goldstein_price_gradient, GoldsteinPrice, GOLDSTEIN_PRICE_SPEC,
 };
