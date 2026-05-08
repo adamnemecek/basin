@@ -27,8 +27,9 @@ pub mod solver;
 pub use crate::core::constraint::BoxConstrained;
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::math::{
-    AddDiagonalInPlace, ClampInPlace, Dot, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal, NegInPlace, NormInfinity, NormSquared, ScaledAdd,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace, Dot, GramMatrix,
+    LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal, NegInPlace,
+    NormInfinity, NormSquared, ScaledAdd,
 };
 pub use crate::core::problem::{CostFunction, Gradient, Jacobian, Residual};
 pub use crate::core::solver::Solver;
@@ -47,4 +48,5 @@ pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResul
 pub use crate::solver::BFGS;
 pub use crate::solver::{
     Brent, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead, ProjectedGradientDescent,
+    Trf,
 };

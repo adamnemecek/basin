@@ -31,7 +31,10 @@ pub mod spec;
 pub mod sphere;
 
 pub use beale::{beale, beale_gradient, Beale, BEALE_SPEC};
-pub use booth::{booth, booth_gradient, Booth, BoothBoxed, BOOTH_SPEC};
+pub use booth::{
+    booth, booth_gradient, booth_residuals, booth_residuals_jacobian, Booth, BoothBoxed,
+    BoothBoxedResiduals, BoothResiduals, BOOTH_SPEC,
+};
 pub use goldstein_price::{
     goldstein_price, goldstein_price_gradient, GoldsteinPrice, GOLDSTEIN_PRICE_SPEC,
 };
@@ -45,7 +48,9 @@ pub use rosenbrock::{
     rosenbrock, rosenbrock_gradient, rosenbrock_residuals, rosenbrock_residuals_jacobian,
     Rosenbrock, RosenbrockResiduals, ROSENBROCK_SPEC,
 };
-pub use sparse_least_squares::{SparseLeastSquares, SPARSE_LEAST_SQUARES_SPEC};
+pub use sparse_least_squares::{
+    SparseLeastSquares, SparseLeastSquaresBoxed, SPARSE_LEAST_SQUARES_SPEC,
+};
 pub use spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
 pub use sphere::{sphere, sphere_gradient, Sphere, SPHERE_SPEC};
 

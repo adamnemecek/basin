@@ -67,11 +67,38 @@ impl<M, V> HasSpec for SparseLeastSquares<M, V> {
     const SPEC: &'static ProblemSpec = &SPARSE_LEAST_SQUARES_SPEC;
 }
 
+/// Sparse linear least-squares problem with explicit element-wise box
+/// bounds: `min_x ½ ‖A · x − b‖²` subject to `lower ≤ x ≤ upper`.
+/// Suitable for [`Trf`](crate::solver::Trf) when bounds make the
+/// closed-form least-squares minimum infeasible.
+pub struct SparseLeastSquaresBoxed<M, V> {
+    /// Design matrix `A` (typically tall and sparse).
+    pub a: M,
+    /// Target vector `b`.
+    pub b: V,
+    /// Element-wise lower bound on `x`.
+    pub lower: V,
+    /// Element-wise upper bound on `x`.
+    pub upper: V,
+}
+
+impl<M, V> SparseLeastSquaresBoxed<M, V> {
+    /// Build a bounded sparse linear-least-squares problem. Caller must
+    /// ensure `lower[i] ≤ upper[i]` per component.
+    pub fn new(a: M, b: V, lower: V, upper: V) -> Self {
+        Self { a, b, lower, upper }
+    }
+}
+
+impl<M, V> HasSpec for SparseLeastSquaresBoxed<M, V> {
+    const SPEC: &'static ProblemSpec = &SPARSE_LEAST_SQUARES_SPEC;
+}
+
 #[cfg(feature = "nalgebra")]
 mod nalgebra_impl {
-    use super::SparseLeastSquares;
+    use super::{SparseLeastSquares, SparseLeastSquaresBoxed};
     use crate::core::math::{MatVec, ScaledAdd};
-    use crate::{CostFunction, Jacobian, Residual};
+    use crate::{BoxConstrained, CostFunction, Jacobian, Residual};
     use nalgebra::DVector;
     use nalgebra_sparse::CscMatrix;
 
@@ -104,13 +131,50 @@ mod nalgebra_impl {
             self.a.clone()
         }
     }
+
+    impl CostFunction for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            let mut r = self.a.matvec(x);
+            r.scaled_add(-1.0, &self.b);
+            0.5 * r.iter().map(|v| v * v).sum::<f64>()
+        }
+    }
+
+    impl Residual for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DVector<f64>;
+        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+            let mut r = self.a.matvec(x);
+            r.scaled_add(-1.0, &self.b);
+            r
+        }
+    }
+
+    impl Jacobian for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = CscMatrix<f64>;
+        fn jacobian(&self, _x: &DVector<f64>) -> CscMatrix<f64> {
+            self.a.clone()
+        }
+    }
+
+    impl BoxConstrained for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
+        fn lower(&self) -> &DVector<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &DVector<f64> {
+            &self.upper
+        }
+    }
 }
 
 #[cfg(feature = "faer")]
 mod faer_impl {
-    use super::SparseLeastSquares;
+    use super::{SparseLeastSquares, SparseLeastSquaresBoxed};
     use crate::core::math::{MatVec, ScaledAdd};
-    use crate::{CostFunction, Jacobian, Residual};
+    use crate::{BoxConstrained, CostFunction, Jacobian, Residual};
     use faer::sparse::SparseColMat;
     use faer::Col;
 
@@ -145,6 +209,47 @@ mod faer_impl {
         fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
             // J(x) = A — constant in x for linear residuals.
             self.a.clone()
+        }
+    }
+
+    impl CostFunction for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
+        type Param = Col<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Col<f64>) -> f64 {
+            let mut r = self.a.matvec(x);
+            r.scaled_add(-1.0, &self.b);
+            let mut s = 0.0;
+            for i in 0..r.nrows() {
+                s += r[i] * r[i];
+            }
+            0.5 * s
+        }
+    }
+
+    impl Residual for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Col<f64>;
+        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+            let mut r = self.a.matvec(x);
+            r.scaled_add(-1.0, &self.b);
+            r
+        }
+    }
+
+    impl Jacobian for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
+        type Param = Col<f64>;
+        type Output = SparseColMat<usize, f64>;
+        fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
+            self.a.clone()
+        }
+    }
+
+    impl BoxConstrained for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
+        fn lower(&self) -> &Col<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &Col<f64> {
+            &self.upper
         }
     }
 }

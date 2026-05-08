@@ -17,8 +17,8 @@ use faer::sparse::SparseColMat;
 use faer::{Accum, Col, Par, Side};
 
 use super::linalg::{
-    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
+    LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal,
 };
 
 impl MatVec<Col<f64>> for SparseColMat<usize, f64> {
@@ -147,6 +147,46 @@ impl AddDiagonalInPlace for SparseColMat<usize, f64> {
             assert!(
                 found,
                 "add_diagonal_in_place: diagonal entry ({j}, {j}) missing from CSC pattern"
+            );
+        }
+    }
+}
+
+impl AddDiagonalVectorInPlace<Col<f64>> for SparseColMat<usize, f64> {
+    fn add_diagonal_vector_in_place(&mut self, diag: &Col<f64>) {
+        let n = self.ncols();
+        assert_eq!(
+            self.nrows(),
+            n,
+            "add_diagonal_vector_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            n
+        );
+        assert_eq!(
+            n,
+            diag.nrows(),
+            "add_diagonal_vector_in_place: matrix is {}x{} but diag has length {}",
+            n,
+            n,
+            diag.nrows()
+        );
+        let col_ptr: Vec<usize> = self.col_ptr().to_vec();
+        let row_idx: Vec<usize> = self.row_idx().to_vec();
+        let vals = self.val_mut();
+        for j in 0..n {
+            let start = col_ptr[j];
+            let end = col_ptr[j + 1];
+            let mut found = false;
+            for k in start..end {
+                if row_idx[k] == j {
+                    vals[k] += diag[j];
+                    found = true;
+                    break;
+                }
+            }
+            assert!(
+                found,
+                "add_diagonal_vector_in_place: diagonal entry ({j}, {j}) missing from CSC pattern"
             );
         }
     }
@@ -310,6 +350,21 @@ mod tests {
         g.add_diagonal_in_place(1e-3);
         let x = g.solve_spd(&b).expect("damped gram must be SPD");
         assert_eq!(x.nrows(), 2);
+    }
+
+    #[test]
+    fn add_diagonal_vector_in_place_adds_per_index() {
+        let mut a = csc2([1.0, 2.0], [3.0, 4.0]);
+        a.add_diagonal_vector_in_place(&Col::<f64>::from_fn(2, |i| [10.0, 100.0][i]));
+        // Original [[1,2],[3,4]] + diag(10, 100) → [[11,2],[3,104]].
+        let e0 = Col::<f64>::from_fn(2, |i| if i == 0 { 1.0 } else { 0.0 });
+        let e1 = Col::<f64>::from_fn(2, |i| if i == 1 { 1.0 } else { 0.0 });
+        let col0 = a.matvec(&e0);
+        let col1 = a.matvec(&e1);
+        assert!(approx_eq(col0[0], 11.0, 1e-12));
+        assert!(approx_eq(col0[1], 3.0, 1e-12));
+        assert!(approx_eq(col1[0], 2.0, 1e-12));
+        assert!(approx_eq(col1[1], 104.0, 1e-12));
     }
 
     #[test]

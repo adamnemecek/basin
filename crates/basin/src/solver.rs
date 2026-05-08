@@ -11,6 +11,8 @@ pub mod levenberg_marquardt;
 pub mod nelder_mead;
 /// Projected gradient descent for box-constrained problems.
 pub mod projected_gradient_descent;
+/// Levenberg-Marquardt with box bounds (TRF — trust-region-reflective).
+pub mod trf;
 
 /// BFGS quasi-Newton solver (nalgebra-only).
 #[cfg(feature = "nalgebra")]
@@ -24,3 +26,4 @@ pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
 pub use nelder_mead::NelderMead;
 pub use projected_gradient_descent::ProjectedGradientDescent;
+pub use trf::Trf;

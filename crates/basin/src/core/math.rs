@@ -48,6 +48,7 @@ pub trait NegInPlace {
     fn neg_in_place(&mut self);
 }
 
+mod cl_scaling;
 mod clamp;
 mod linalg;
 mod scalar;
@@ -68,8 +69,9 @@ mod faer_backend;
 #[cfg(feature = "faer")]
 mod faer_sparse_backend;
 
+pub use cl_scaling::BoxAffineScaling;
 pub use clamp::ClampInPlace;
 pub use linalg::{
-    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
+    LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal,
 };

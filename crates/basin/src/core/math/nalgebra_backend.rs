@@ -1,8 +1,12 @@
 use nalgebra::{DMatrix, DVector, Dim, Matrix, Storage, StorageMut};
 
+use super::cl_scaling::{
+    cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
+    BoxAffineScaling,
+};
 use super::linalg::{
-    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
-    MaxDiagonal,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal,
 };
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
@@ -88,6 +92,136 @@ where
     }
 }
 
+impl<R, C, S> BoxAffineScaling for Matrix<f64, R, C, S>
+where
+    R: Dim,
+    C: Dim,
+    S: StorageMut<f64, R, C>,
+{
+    fn compute_cl_scaling(
+        &self,
+        gradient: &Self,
+        lower: &Self,
+        upper: &Self,
+        d_sq: &mut Self,
+        c_diag: &mut Self,
+    ) {
+        let shape = self.shape();
+        assert_eq!(
+            shape,
+            gradient.shape(),
+            "compute_cl_scaling: gradient shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            lower.shape(),
+            "compute_cl_scaling: lower shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            upper.shape(),
+            "compute_cl_scaling: upper shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            d_sq.shape(),
+            "compute_cl_scaling: d_sq shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            c_diag.shape(),
+            "compute_cl_scaling: c_diag shape mismatch"
+        );
+        // Column-major iteration order matches the ClampInPlace impl;
+        // consistent across all six operands.
+        for (((((&x, &g), &l), &u), d), c) in self
+            .iter()
+            .zip(gradient.iter())
+            .zip(lower.iter())
+            .zip(upper.iter())
+            .zip(d_sq.iter_mut())
+            .zip(c_diag.iter_mut())
+        {
+            let (d_sq_i, c_i) = cl_scaling_pair(x, g, l, u);
+            *d = d_sq_i;
+            *c = c_i;
+        }
+    }
+
+    fn max_feasible_step(&self, step: &Self, lower: &Self, upper: &Self) -> f64 {
+        let shape = self.shape();
+        assert_eq!(
+            shape,
+            step.shape(),
+            "max_feasible_step: step shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            lower.shape(),
+            "max_feasible_step: lower shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            upper.shape(),
+            "max_feasible_step: upper shape mismatch"
+        );
+        let mut tau = f64::INFINITY;
+        for (((&x, &s), &l), &u) in self
+            .iter()
+            .zip(step.iter())
+            .zip(lower.iter())
+            .zip(upper.iter())
+        {
+            let t = max_feasible_step_component(x, s, l, u);
+            if t < tau {
+                tau = t;
+            }
+        }
+        tau
+    }
+
+    fn cl_kkt_inf_norm(&self, d_sq: &Self) -> f64 {
+        assert_eq!(
+            self.shape(),
+            d_sq.shape(),
+            "cl_kkt_inf_norm: shape mismatch"
+        );
+        self.iter()
+            .zip(d_sq.iter())
+            .map(|(&v, &d)| v.abs() / d)
+            .fold(0.0, f64::max)
+    }
+
+    fn weighted_norm_squared(&self, weights: &Self) -> f64 {
+        assert_eq!(
+            self.shape(),
+            weights.shape(),
+            "weighted_norm_squared: shape mismatch"
+        );
+        self.iter()
+            .zip(weights.iter())
+            .map(|(&v, &w)| v * v * w)
+            .sum()
+    }
+
+    fn project_strictly_inside(&mut self, lower: &Self, upper: &Self, rstep: f64) {
+        let shape = self.shape();
+        assert_eq!(
+            shape,
+            lower.shape(),
+            "project_strictly_inside: lower shape mismatch"
+        );
+        assert_eq!(
+            shape,
+            upper.shape(),
+            "project_strictly_inside: upper shape mismatch"
+        );
+        for ((x, &l), &u) in self.iter_mut().zip(lower.iter()).zip(upper.iter()) {
+            *x = project_strictly_inside_component(*x, l, u, rstep);
+        }
+    }
+}
+
 // ----------------------------------------------------------------------
 // linalg tier — dense ops on DMatrix<f64> with V = DVector<f64>.
 // Per tenet 5, this is dense-only; sparse comes in S2b.
@@ -152,6 +286,29 @@ impl AddDiagonalInPlace for DMatrix<f64> {
         );
         for i in 0..self.nrows() {
             self[(i, i)] += scalar;
+        }
+    }
+}
+
+impl AddDiagonalVectorInPlace<DVector<f64>> for DMatrix<f64> {
+    fn add_diagonal_vector_in_place(&mut self, diag: &DVector<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "add_diagonal_vector_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            diag.len(),
+            "add_diagonal_vector_in_place: matrix is {}x{} but diag has length {}",
+            self.nrows(),
+            self.ncols(),
+            diag.len()
+        );
+        for i in 0..self.nrows() {
+            self[(i, i)] += diag[i];
         }
     }
 }
@@ -262,6 +419,18 @@ mod tests {
         assert!(approx_eq(a[(2, 2)], 9.5, 1e-12));
         assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
         assert!(approx_eq(a[(1, 0)], 4.0, 1e-12));
+        assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
+    }
+
+    #[test]
+    fn add_diagonal_vector_in_place_adds_per_index() {
+        let mut a = DMatrix::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+        a.add_diagonal_vector_in_place(&DVector::from_vec(vec![10.0, 100.0, 1000.0]));
+        // Diagonal: 11, 105, 1009; off-diagonal untouched.
+        assert!(approx_eq(a[(0, 0)], 11.0, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 105.0, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 1009.0, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
         assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
     }
 

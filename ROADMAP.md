@@ -518,15 +518,160 @@ relevant equations come straight out of any constrained-optimization
 text. Branch/Coleman/Li 1999 stays queued for S6, where the TRF
 algorithm needs the full algorithmic context.
 
-### S6. LM with box bounds (TRF — Trust Region Reflective)
+### S6. LM with box bounds (TRF — Trust Region Reflective) — **done**
 
-- The modern reference for bounded LM (SciPy's `least_squares` with
-  `method='trf'`).
-- **[ingest]** Branch, Coleman, Li (1999), *A Subspace, Interior, and
-  Conjugate Gradient Method for Large-Scale Bound-Constrained
-  Minimization Problems*.
-- Cross-reference SciPy's `least_squares` source (BSD) for the
-  details (initial step, scaling) that aren't in the paper.
+`Trf` lands in `solver/trf.rs` as the first n-D box-constrained NLLS
+solver in basin and the natural extension of S4's `LevenbergMarquardt`
+to bounded problems. Mirrors LM's overall shape (`Solver<P,
+BasicState<V>>`, Nielsen smooth μ-update, `mu`/`nu` runtime fields,
+inner Cholesky-failure retry) with three additions: the Coleman-Li
+affine scaling diagonals `D` and `C` from BCL eqs (i)–(iv), a
+strict-interior step-back per BCL eq 2.7, and a scaled first-order
+optimality termination metric.
+
+**Algorithm: simplified BCL.** Each iteration solves
+`(JᵀJ + diag(c) + μ · diag(d²)) h = −g` via Cholesky on the
+SPD-by-construction damped Gram, then steps back to keep the iterate
+strictly inside `(lower, upper)`:
+
+```text
+α = min(1, θ · τ_max)        # τ_max from BoxAffineScaling::max_feasible_step
+x_trial = x + α · h
+ρ = (Δf − ½(αh)ᵀC(αh)) / -ψ_k(α·h)   # BCL gain ratio with C correction
+```
+
+ρ > 0 accepts and shrinks μ via Nielsen smooth cubic; ρ ≤ 0 rejects and
+bumps μ·ν, ν·=2 (same μ machinery as S4). Initial
+`μ₀ = τ · max diag(JᵀJ + diag(c))` (BCL-aware seeding).
+
+**Reduction to LM.** When `lower = -∞, upper = +∞` element-wise, the
+BCL scaling reduces to `D = I`, `C = 0`, the step-back is a no-op, and
+the algorithm becomes exactly LM with Nielsen's μ-update — same
+iterates. `Trf` strictly subsumes `LevenbergMarquardt` at the
+trait-bound level.
+
+**One linalg-tier addition.** `AddDiagonalVectorInPlace<V>`: adds a
+vector to the diagonal in place. The vector counterpart of the existing
+scalar `AddDiagonalInPlace`, used to add `c + μ·d²` (precomputed from
+`c.clone()` + `damping_vec.scaled_add(mu, &d_sq)`) in one in-place
+pass. Implemented for all four matrix backends (nalgebra dense/sparse,
+faer dense/sparse) — same coverage as the scalar trait. Sparse impls
+require the diagonal to be in the CSC pattern (always satisfied by a
+fresh Gram).
+
+**One vector-tier trait, five methods.** `BoxAffineScaling` in
+`core/math/cl_scaling.rs`:
+
+- `compute_cl_scaling(g, lower, upper, &mut d_sq, &mut c_diag)` — fills
+  `d_sq[i] = 1/|v_i|` and `c_diag[i] = |g_i|/|v_i|` (or 0 for infinite
+  bounds) per BCL eqs (i)–(iv).
+- `max_feasible_step(step, lower, upper) -> f64` — strict-interior
+  step-back's `τ_max`.
+- `cl_kkt_inf_norm(d_sq) -> f64` — the BCL first-order optimality
+  metric `‖v ⊙ g‖_∞ = max_i |g_i|/d_sq_i`. **Load-bearing distinction**:
+  not `‖D·g‖_∞ = max |g_i|/√|v_i|` (which blows up at face-active
+  points where `|v_i| → 0`) but `‖v·g‖_∞` (which goes to 0 at any KKT
+  point — interior or face-active). Matches SciPy's
+  `least_squares(method='trf')` optimality measure; the wrong choice
+  was caught by the tight-bounds test failing on the corner case
+  before being fixed.
+- `weighted_norm_squared(weights) -> f64` — `Σ self[i]² · weights[i]`,
+  for the BCL-scaled predicted reduction `½(μ‖Dh‖² − h^T g)`.
+- `project_strictly_inside(lower, upper, rstep)` — used at `init` to
+  bring an arbitrary starting point into the *open* box (`D` is
+  undefined where `v_i = 0`). Mirrors SciPy's `make_strictly_feasible`.
+
+Per-backend impls for all four vector backends (Vec, nalgebra,
+ndarray, faer) — pure element-wise, no LA dependency.
+
+**Test fixtures.**
+
+- `BoothResiduals<P>` and `BoothBoxedResiduals<P>` appended to
+  `problems/booth.rs`. Booth's `f = (x+2y−7)² + (2x+y−5)²` factors as
+  `Σ rᵢ²` with constant Jacobian `J = [[1, 2], [2, 1]]` — the linear-
+  residual sibling of `RosenbrockResiduals`. With box `[-1, 1]²`, the
+  unconstrained min `(1, 3)` is outside and the constrained min sits
+  at the corner `(1, 1)` — load-bearing edge-active test case.
+- `SparseLeastSquaresBoxed<M, V>` appended to
+  `problems/sparse_least_squares.rs`: same data shape as
+  `SparseLeastSquares` plus `lower`/`upper`. `BoxConstrained` impls for
+  both sparse backends.
+
+**Tests: 14 new (4 + 4 + 3 + 3).** Per dense backend (nalgebra, faer):
+
+1. **Slack bounds, interior min.** `BoothBoxedResiduals` with
+   `[-5, 5]²` from `(0, 0)` → unconstrained `(1, 3)` to ‖·‖ < 1e-5.
+2. **Tight bounds, edge-active min.** `BoothBoxedResiduals` with
+   `[-1, 1]²` from `(0, 0)` → corner `(1, 1)` to ‖·‖ < 1e-3 (the
+   strict-interior θ < 1 keeps the iterate just inside).
+3. **Infeasible-start strict-interior projection.** `BoothBoxedResiduals`
+   with `[-1, 1]²` from `(10, 10)`. After `init` (asserted via
+   `MaxIter(0)`), `state.param()` is *strictly* inside the box —
+   tighter than PG's `≤` because `D` is undefined on the face.
+4. **`SolverConverged` via `‖v ⊙ Jᵀr‖_∞ ≤ tol_grad`.**
+
+Per sparse backend (nalgebra-sparse, faer-sparse):
+
+1. **Slack bounds, interior min.** `SparseLeastSquaresBoxed` 6×3
+   regression with `[-10, 10]³` → `[1, 2, 3]`.
+2. **Bound-binding sparse case.** Upper bound on `x[2]` set to 1.5
+   (below the unconstrained 3); face is active at the optimum.
+3. **`SolverConverged` via the scaled-gradient metric.**
+
+**The BoxAffineScaling termination metric was the one place the
+implementation got it wrong on first cut and the tests caught it.**
+Initial `scaled_inf_norm` computed `max |g_i| · √(1/|v_i|) = max
+|g_i|/√|v_i|`, which blows up at face-active points. The tight-bounds
+and `SolverConverged` tests failed with `MaxIter` instead of converging.
+Fix: swap to `cl_kkt_inf_norm` computing `max |g_i| · |v_i| = max
+|g_i|/d_sq_i`, which goes to zero at any KKT point. Matches SciPy's
+`least_squares` `g_norm = max |g · v|`. Documented at length in the
+trait rustdoc and the NOTES.md.
+
+**`BoxConstrained: CostFunction` supertrait note.** `BoothBoxedResiduals`
+is also the first NLLS test fixture in basin where `BoxConstrained` is
+layered on `Residual + Jacobian`. The `BoxConstrained: CostFunction`
+supertrait forces NLLS-with-bounds problems to also implement
+`CostFunction` — fine in practice since `½‖r‖²` is trivial to compute,
+but worth noting that the LM bound on `Residual + Jacobian` only is
+*narrower* than the TRF bound on `Residual + Jacobian + BoxConstrained`.
+Handing TRF an unconstrained-only problem is a compile error per
+tenet 4.
+
+**Failure path.** No `SolverFailed` test for TRF. The damped, scaled
+Gram is SPD by construction for `μ > 0`, so Cholesky succeeds on the
+first attempt. The retry path (capped at 50 bumps, `μ` growing by
+2⁵⁰ ≈ 10¹⁵) is reachable only on pathologically ill-conditioned
+problems.
+
+**Backends.** All four LA-heavy backends wired and tested: nalgebra
+dense (`DVector`/`DMatrix`), faer dense (`Col`/`Mat`), nalgebra-sparse
+(`DVector`/`CscMatrix`), faer-sparse (`Col`/`SparseColMat`). `Vec<f64>`
+and `ndarray::Array1<f64>` produce a compile error per tenet 5
+(`Jacobian` isn't implemented on those). Vector-tier `BoxAffineScaling`
+covers all four vector backends including Vec and ndarray (pure
+element-wise, no LA story).
+
+**Out of scope.** STIR 2D subspace (BCL FIG.5) — for large-scale where
+dense Cholesky becomes expensive. Reflection technique (BCL FIG.2) —
+2-3× iteration-count reduction on many-bind problems but non-trivial
+implementation; deferred until a test case demands it. Explicit Δ
+trust-region radius with Moré-Sorensen-style λ-adaptation (BCL FIG.6) —
+LM-style μ-update reuses S4 machinery and matches SciPy's `trf_linear`.
+Negative-curvature termination clause (BCL §6) — needs eigendecomposition
+or Lanczos, not load-bearing before STIR.
+
+**Paper ingestion.** BCL 1999 ingested via the `ingest-paper` skill.
+Stage-2 marker pass on PDF pages 1, 3-4, 12, 15 (CPU, no `--use_llm`);
+notes at `references/branch-coleman-li-1999/NOTES.md`. The marker pass
+recovered FIG.1 (TIR pseudocode rasterized in the PDF and dropped by
+pymupdf4llm), eqs 2.1–2.7 defining `D`/`v`/`C`, FIG.5 (STIR pseudocode),
+and FIG.6 (trust-region update with literal constants). SciPy's
+`least_squares` source was *not* consulted directly — the BCL paper
+alone was enough since we picked LM-style μ-adaptation rather than the
+SciPy 2D-subspace + reflection path. The `g_norm = max |g · v|`
+optimality-metric reference came from secondary knowledge of SciPy's
+TRF, documented in the `cl_kkt_inf_norm` rustdoc.
 
 ## Phase 2 — Track B: toward CMA-ES
 

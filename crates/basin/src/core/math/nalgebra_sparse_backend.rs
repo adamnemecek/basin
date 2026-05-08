@@ -20,8 +20,8 @@ use nalgebra_sparse::ops::Op;
 use nalgebra_sparse::{CscMatrix, SparseEntryMut};
 
 use super::linalg::{
-    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
-    MaxDiagonal,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal,
 };
 
 impl MatVec<DVector<f64>> for CscMatrix<f64> {
@@ -110,6 +110,38 @@ impl AddDiagonalInPlace for CscMatrix<f64> {
                 SparseEntryMut::NonZero(v) => *v += scalar,
                 SparseEntryMut::Zero => panic!(
                     "add_diagonal_in_place: diagonal entry ({i}, {i}) missing from CSC pattern"
+                ),
+            }
+        }
+    }
+}
+
+impl AddDiagonalVectorInPlace<DVector<f64>> for CscMatrix<f64> {
+    fn add_diagonal_vector_in_place(&mut self, diag: &DVector<f64>) {
+        let n = self.nrows();
+        assert_eq!(
+            n,
+            self.ncols(),
+            "add_diagonal_vector_in_place: matrix must be square, got {}x{}",
+            n,
+            self.ncols()
+        );
+        assert_eq!(
+            n,
+            diag.len(),
+            "add_diagonal_vector_in_place: matrix is {}x{} but diag has length {}",
+            n,
+            self.ncols(),
+            diag.len()
+        );
+        for i in 0..n {
+            match self
+                .get_entry_mut(i, i)
+                .expect("add_diagonal_vector_in_place: index in bounds")
+            {
+                SparseEntryMut::NonZero(v) => *v += diag[i],
+                SparseEntryMut::Zero => panic!(
+                    "add_diagonal_vector_in_place: diagonal entry ({i}, {i}) missing from CSC pattern"
                 ),
             }
         }
@@ -254,5 +286,20 @@ mod tests {
         g.add_diagonal_in_place(1e-3);
         let x = g.solve_spd(&b).expect("damped gram must be SPD");
         assert_eq!(x.len(), 2);
+    }
+
+    #[test]
+    fn add_diagonal_vector_in_place_adds_per_index() {
+        let mut a = csc2([1.0, 2.0], [3.0, 4.0]);
+        a.add_diagonal_vector_in_place(&DVector::from_vec(vec![10.0, 100.0]));
+        // Original [[1,2],[3,4]] + diag(10, 100) → [[11,2],[3,104]].
+        let e0 = DVector::from_vec(vec![1.0, 0.0]);
+        let e1 = DVector::from_vec(vec![0.0, 1.0]);
+        let col0 = a.matvec(&e0);
+        let col1 = a.matvec(&e1);
+        assert!(approx_eq(col0[0], 11.0, 1e-12));
+        assert!(approx_eq(col0[1], 3.0, 1e-12));
+        assert!(approx_eq(col1[0], 2.0, 1e-12));
+        assert!(approx_eq(col1[1], 104.0, 1e-12));
     }
 }

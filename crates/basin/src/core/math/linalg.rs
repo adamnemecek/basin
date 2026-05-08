@@ -211,6 +211,39 @@ pub trait AddDiagonalInPlace {
     fn add_diagonal_in_place(&mut self, scalar: f64);
 }
 
+/// In-place diagonal augmentation `A ← A + diag(d)` for a vector `d`.
+/// The vector counterpart of [`AddDiagonalInPlace`]. The diagonal of
+/// the BCL trust-region-reflective subproblem is `c + μ·d²` — both
+/// vectors — and this trait expresses the addition in one in-place
+/// pass without materializing a full diagonal matrix.
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self` and a `diag` of length
+///   `self.nrows()`. Backends panic on shape mismatch or non-square.
+/// - **Caller must (sparse precondition):** every diagonal entry
+///   `(i, i)` must already exist in the sparsity pattern of `self`,
+///   the same precondition as scalar [`AddDiagonalInPlace`]. The Gram
+///   matrix `G = AᵀA` of any `A` with no zero columns satisfies this
+///   (`Gᵢᵢ = ‖A·,ᵢ‖² > 0`); callers that only invoke
+///   `add_diagonal_vector_in_place` on a freshly computed
+///   [`GramMatrix::gram`] result are safe by construction.
+/// - **Implementor must:** add `diag[i]` to `self[(i, i)]` for every
+///   `i` in `0..self.nrows()`. Off-diagonal entries are untouched.
+///   The op is `O(n)` for an `n × n` matrix.
+///
+/// # Backends
+///
+/// Same coverage as [`AddDiagonalInPlace`]: dense nalgebra
+/// (`DMatrix<f64>` over `DVector<f64>`), dense faer (`Mat<f64>` over
+/// `Col<f64>`), sparse nalgebra (`CscMatrix<f64>` over
+/// `DVector<f64>`), sparse faer (`SparseColMat<usize, f64>` over
+/// `Col<f64>`).
+pub trait AddDiagonalVectorInPlace<V> {
+    /// Add `diag[i]` to `self[(i, i)]` for every `i`, in place.
+    fn add_diagonal_vector_in_place(&mut self, diag: &V);
+}
+
 /// Reasons a linear-solve trait call can fail. Variants are
 /// backend-agnostic — backends translate their native error types
 /// into these.

@@ -12,7 +12,7 @@
 use core::marker::PhantomData;
 
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
-use crate::{BoxConstrained, CostFunction, Gradient};
+use crate::{BoxConstrained, CostFunction, Gradient, Residual};
 
 /// Evaluates the Booth function at `x`. Requires `x.len() == 2`.
 pub fn booth(x: &[f64]) -> f64 {
@@ -21,6 +21,27 @@ pub fn booth(x: &[f64]) -> f64 {
     let t1 = a + 2.0 * b - 7.0;
     let t2 = 2.0 * a + b - 5.0;
     t1 * t1 + t2 * t2
+}
+
+/// Writes the Booth residuals at `x` into `out`. Both slices must have
+/// length 2. `r(x, y) = [x + 2y − 7, 2x + y − 5]` so
+/// `Σ rᵢ² = booth(x, y)` exactly — the unscaled-sum convention shared
+/// with `RosenbrockResiduals`. Zero at `(1, 3)`.
+pub fn booth_residuals(x: &[f64], out: &mut [f64]) {
+    debug_assert_eq!(x.len(), 2);
+    debug_assert_eq!(out.len(), 2);
+    out[0] = x[0] + 2.0 * x[1] - 7.0;
+    out[1] = 2.0 * x[0] + x[1] - 5.0;
+}
+
+/// Writes the constant 2×2 Booth Jacobian `[[1, 2], [2, 1]]` into `out`
+/// in row-major order. `out.len()` must be 4.
+pub fn booth_residuals_jacobian(out: &mut [f64]) {
+    debug_assert_eq!(out.len(), 4);
+    out[0] = 1.0;
+    out[1] = 2.0;
+    out[2] = 2.0;
+    out[3] = 1.0;
 }
 
 /// Writes the Booth gradient at `x` into `out`. Both slices must have length 2.
@@ -163,11 +184,114 @@ impl BoxConstrained for BoothBoxed<Vec<f64>> {
     }
 }
 
+// ----------------------------------------------------------------------
+// Residual-form Booth (n = 2)
+// ----------------------------------------------------------------------
+// Booth factors as a 2-residual least-squares problem
+// `r = [x+2y−7, 2x+y−5]` with constant Jacobian `[[1,2],[2,1]]` and
+// `Σ rᵢ² == booth(x, y)` exactly (unscaled-sum convention shared with
+// `RosenbrockResiduals`). Used as a fixture for `Trf` (S6) — the
+// constrained optimum on `[-1, 1]²` is the corner (1, 1), giving a
+// load-bearing edge-active test case.
+
+/// Booth function exposed as a least-squares problem (2 residuals, 2
+/// parameters). Shares [`BOOTH_SPEC`] with the cost-form [`Booth`]
+/// wrapper.
+pub struct BoothResiduals<P = Vec<f64>>(PhantomData<fn() -> P>);
+
+impl<P> BoothResiduals<P> {
+    /// Build a freshly typed Booth-as-residuals instance.
+    pub const fn new() -> Self {
+        Self(PhantomData)
+    }
+}
+
+impl<P> Default for BoothResiduals<P> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<P> HasSpec for BoothResiduals<P> {
+    const SPEC: &'static ProblemSpec = &BOOTH_SPEC;
+}
+
+/// Booth-as-residuals with explicit element-wise box bounds, suitable
+/// for [`Trf`](crate::solver::Trf). The unconstrained min `(1, 3)`
+/// lies outside tighter boxes (e.g. `[-1, 1]²`), where the constrained
+/// optimum sits at the box corner `(1, 1)` — a load-bearing edge-active
+/// test case where the unprojected `‖∇f‖_∞` is large but the BCL
+/// scaled-gradient measure `‖D · Jᵀr‖_∞` vanishes.
+pub struct BoothBoxedResiduals<P> {
+    lower: P,
+    upper: P,
+}
+
+impl<P> BoothBoxedResiduals<P> {
+    /// Build a Booth-as-residuals problem with the given element-wise
+    /// bounds. Caller must ensure `lower[i] ≤ upper[i]`.
+    pub fn new(lower: P, upper: P) -> Self {
+        Self { lower, upper }
+    }
+}
+
+impl<P> HasSpec for BoothBoxedResiduals<P> {
+    const SPEC: &'static ProblemSpec = &BOOTH_SPEC;
+}
+
+impl CostFunction for BoothResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = f64;
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        booth(x)
+    }
+}
+
+impl Residual for BoothResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = Vec<f64>;
+    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+        let mut out = vec![0.0; 2];
+        booth_residuals(x, &mut out);
+        out
+    }
+}
+
+impl CostFunction for BoothBoxedResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = f64;
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        booth(x)
+    }
+}
+
+impl Residual for BoothBoxedResiduals<Vec<f64>> {
+    type Param = Vec<f64>;
+    type Output = Vec<f64>;
+    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+        let mut out = vec![0.0; 2];
+        booth_residuals(x, &mut out);
+        out
+    }
+}
+
+impl BoxConstrained for BoothBoxedResiduals<Vec<f64>> {
+    fn lower(&self) -> &Vec<f64> {
+        &self.lower
+    }
+    fn upper(&self) -> &Vec<f64> {
+        &self.upper
+    }
+}
+
 #[cfg(feature = "nalgebra")]
 mod nalgebra_impl {
-    use super::{booth, booth_gradient, Booth, BoothBoxed};
-    use crate::{BoxConstrained, CostFunction, Gradient};
-    use nalgebra::DVector;
+    use super::{
+        booth, booth_gradient, booth_residuals, booth_residuals_jacobian, Booth, BoothBoxed,
+        BoothBoxedResiduals, BoothResiduals,
+    };
+    use crate::{BoxConstrained, CostFunction, Gradient, Jacobian, Residual};
+    use nalgebra::{DMatrix, DVector};
 
     impl CostFunction for Booth<DVector<f64>> {
         type Param = DVector<f64>;
@@ -206,6 +330,72 @@ mod nalgebra_impl {
     }
 
     impl BoxConstrained for BoothBoxed<DVector<f64>> {
+        fn lower(&self) -> &DVector<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &DVector<f64> {
+            &self.upper
+        }
+    }
+
+    impl CostFunction for BoothResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            booth(x.as_slice())
+        }
+    }
+
+    impl Residual for BoothResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DVector<f64>;
+        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+            let mut out = DVector::zeros(2);
+            booth_residuals(x.as_slice(), out.as_mut_slice());
+            out
+        }
+    }
+
+    impl Jacobian for BoothResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DMatrix<f64>;
+        fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+            // Constant 2×2 Jacobian — independent of x.
+            let mut buf = [0.0_f64; 4];
+            booth_residuals_jacobian(&mut buf);
+            DMatrix::from_row_slice(2, 2, &buf)
+        }
+    }
+
+    impl CostFunction for BoothBoxedResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            booth(x.as_slice())
+        }
+    }
+
+    impl Residual for BoothBoxedResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DVector<f64>;
+        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+            let mut out = DVector::zeros(2);
+            booth_residuals(x.as_slice(), out.as_mut_slice());
+            out
+        }
+    }
+
+    impl Jacobian for BoothBoxedResiduals<DVector<f64>> {
+        type Param = DVector<f64>;
+        type Output = DMatrix<f64>;
+        fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+            let mut buf = [0.0_f64; 4];
+            booth_residuals_jacobian(&mut buf);
+            DMatrix::from_row_slice(2, 2, &buf)
+        }
+    }
+
+    impl BoxConstrained for BoothBoxedResiduals<DVector<f64>> {
         fn lower(&self) -> &DVector<f64> {
             &self.lower
         }
@@ -275,9 +465,9 @@ mod ndarray_impl {
 
 #[cfg(feature = "faer")]
 mod faer_impl {
-    use super::{Booth, BoothBoxed};
-    use crate::{BoxConstrained, CostFunction, Gradient};
-    use faer::Col;
+    use super::{booth_residuals_jacobian, Booth, BoothBoxed, BoothBoxedResiduals, BoothResiduals};
+    use crate::{BoxConstrained, CostFunction, Gradient, Jacobian, Residual};
+    use faer::{Col, Mat};
 
     fn cost_inline(x: &Col<f64>) -> f64 {
         debug_assert_eq!(x.nrows(), 2);
@@ -333,6 +523,74 @@ mod faer_impl {
     }
 
     impl BoxConstrained for BoothBoxed<Col<f64>> {
+        fn lower(&self) -> &Col<f64> {
+            &self.lower
+        }
+        fn upper(&self) -> &Col<f64> {
+            &self.upper
+        }
+    }
+
+    fn residuals_inline(x: &Col<f64>) -> Col<f64> {
+        debug_assert_eq!(x.nrows(), 2);
+        let r0 = x[0] + 2.0 * x[1] - 7.0;
+        let r1 = 2.0 * x[0] + x[1] - 5.0;
+        Col::<f64>::from_fn(2, |i| if i == 0 { r0 } else { r1 })
+    }
+
+    impl CostFunction for BoothResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Col<f64>) -> f64 {
+            cost_inline(x)
+        }
+    }
+
+    impl Residual for BoothResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Col<f64>;
+        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+            residuals_inline(x)
+        }
+    }
+
+    impl Jacobian for BoothResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Mat<f64>;
+        fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
+            let mut buf = [0.0_f64; 4];
+            booth_residuals_jacobian(&mut buf);
+            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
+        }
+    }
+
+    impl CostFunction for BoothBoxedResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Col<f64>) -> f64 {
+            cost_inline(x)
+        }
+    }
+
+    impl Residual for BoothBoxedResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Col<f64>;
+        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+            residuals_inline(x)
+        }
+    }
+
+    impl Jacobian for BoothBoxedResiduals<Col<f64>> {
+        type Param = Col<f64>;
+        type Output = Mat<f64>;
+        fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
+            let mut buf = [0.0_f64; 4];
+            booth_residuals_jacobian(&mut buf);
+            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
+        }
+    }
+
+    impl BoxConstrained for BoothBoxedResiduals<Col<f64>> {
         fn lower(&self) -> &Col<f64> {
             &self.lower
         }

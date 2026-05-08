@@ -2,9 +2,13 @@ use faer::linalg::matmul::matmul;
 use faer::linalg::solvers::{Llt, Solve};
 use faer::{Accum, Col, Mat, Par, Side};
 
+use super::cl_scaling::{
+    cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
+    BoxAffineScaling,
+};
 use super::linalg::{
-    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
-    MaxDiagonal,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal,
 };
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
@@ -54,6 +58,94 @@ impl ClampInPlace for Col<f64> {
         );
         faer::zip!(self.as_mut(), lower.as_ref(), upper.as_ref())
             .for_each(|faer::unzip!(x, lo, hi)| *x = x.clamp(*lo, *hi));
+    }
+}
+
+impl BoxAffineScaling for Col<f64> {
+    fn compute_cl_scaling(
+        &self,
+        gradient: &Self,
+        lower: &Self,
+        upper: &Self,
+        d_sq: &mut Self,
+        c_diag: &mut Self,
+    ) {
+        let n = self.nrows();
+        assert_eq!(
+            n,
+            gradient.nrows(),
+            "compute_cl_scaling: gradient shape mismatch"
+        );
+        assert_eq!(n, lower.nrows(), "compute_cl_scaling: lower shape mismatch");
+        assert_eq!(n, upper.nrows(), "compute_cl_scaling: upper shape mismatch");
+        assert_eq!(n, d_sq.nrows(), "compute_cl_scaling: d_sq shape mismatch");
+        assert_eq!(
+            n,
+            c_diag.nrows(),
+            "compute_cl_scaling: c_diag shape mismatch"
+        );
+        // Faer's `zip!` macro caps at four operands; do an indexed loop.
+        for i in 0..n {
+            let (d_sq_i, c_i) = cl_scaling_pair(self[i], gradient[i], lower[i], upper[i]);
+            d_sq[i] = d_sq_i;
+            c_diag[i] = c_i;
+        }
+    }
+
+    fn max_feasible_step(&self, step: &Self, lower: &Self, upper: &Self) -> f64 {
+        let n = self.nrows();
+        assert_eq!(n, step.nrows(), "max_feasible_step: step shape mismatch");
+        assert_eq!(n, lower.nrows(), "max_feasible_step: lower shape mismatch");
+        assert_eq!(n, upper.nrows(), "max_feasible_step: upper shape mismatch");
+        let mut tau = f64::INFINITY;
+        for i in 0..n {
+            let t = max_feasible_step_component(self[i], step[i], lower[i], upper[i]);
+            if t < tau {
+                tau = t;
+            }
+        }
+        tau
+    }
+
+    fn cl_kkt_inf_norm(&self, d_sq: &Self) -> f64 {
+        assert_eq!(
+            self.nrows(),
+            d_sq.nrows(),
+            "cl_kkt_inf_norm: shape mismatch"
+        );
+        self.iter()
+            .zip(d_sq.iter())
+            .map(|(&v, &d)| v.abs() / d)
+            .fold(0.0, f64::max)
+    }
+
+    fn weighted_norm_squared(&self, weights: &Self) -> f64 {
+        assert_eq!(
+            self.nrows(),
+            weights.nrows(),
+            "weighted_norm_squared: shape mismatch"
+        );
+        self.iter()
+            .zip(weights.iter())
+            .map(|(&v, &w)| v * v * w)
+            .sum()
+    }
+
+    fn project_strictly_inside(&mut self, lower: &Self, upper: &Self, rstep: f64) {
+        let n = self.nrows();
+        assert_eq!(
+            n,
+            lower.nrows(),
+            "project_strictly_inside: lower shape mismatch"
+        );
+        assert_eq!(
+            n,
+            upper.nrows(),
+            "project_strictly_inside: upper shape mismatch"
+        );
+        for i in 0..n {
+            self[i] = project_strictly_inside_component(self[i], lower[i], upper[i], rstep);
+        }
     }
 }
 
@@ -148,6 +240,29 @@ impl AddDiagonalInPlace for Mat<f64> {
         );
         for i in 0..self.nrows() {
             self[(i, i)] += scalar;
+        }
+    }
+}
+
+impl AddDiagonalVectorInPlace<Col<f64>> for Mat<f64> {
+    fn add_diagonal_vector_in_place(&mut self, diag: &Col<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "add_diagonal_vector_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            diag.nrows(),
+            "add_diagonal_vector_in_place: matrix is {}x{} but diag has length {}",
+            self.nrows(),
+            self.ncols(),
+            diag.nrows()
+        );
+        for i in 0..self.nrows() {
+            self[(i, i)] += diag[i];
         }
     }
 }
@@ -272,5 +387,17 @@ mod tests {
         g.add_diagonal_in_place(1e-3);
         let x = g.solve_spd(&b).expect("damped gram must be SPD");
         assert_eq!(x.nrows(), 2);
+    }
+
+    #[test]
+    fn add_diagonal_vector_in_place_adds_per_index() {
+        let mut a = Mat::<f64>::from_fn(3, 3, |i, j| (i * 3 + j + 1) as f64);
+        a.add_diagonal_vector_in_place(&Col::<f64>::from_fn(3, |i| [10.0, 100.0, 1000.0][i]));
+        // Diagonal: 1+10=11, 5+100=105, 9+1000=1009; off-diagonal untouched.
+        assert!(approx_eq(a[(0, 0)], 11.0, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 105.0, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 1009.0, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
+        assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
     }
 }

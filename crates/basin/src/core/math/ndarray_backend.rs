@@ -1,5 +1,9 @@
 use ndarray::{ArrayBase, Data, DataMut, Dimension};
 
+use super::cl_scaling::{
+    cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
+    BoxAffineScaling,
+};
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
@@ -74,5 +78,135 @@ where
             .and(lower)
             .and(upper)
             .for_each(|x, &lo, &hi| *x = x.clamp(lo, hi));
+    }
+}
+
+impl<S, D> BoxAffineScaling for ArrayBase<S, D>
+where
+    S: DataMut<Elem = f64>,
+    D: Dimension,
+{
+    fn compute_cl_scaling(
+        &self,
+        gradient: &Self,
+        lower: &Self,
+        upper: &Self,
+        d_sq: &mut Self,
+        c_diag: &mut Self,
+    ) {
+        assert_eq!(
+            self.shape(),
+            gradient.shape(),
+            "compute_cl_scaling: gradient shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            lower.shape(),
+            "compute_cl_scaling: lower shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            upper.shape(),
+            "compute_cl_scaling: upper shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            d_sq.shape(),
+            "compute_cl_scaling: d_sq shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            c_diag.shape(),
+            "compute_cl_scaling: c_diag shape mismatch"
+        );
+        ndarray::Zip::from(d_sq)
+            .and(c_diag)
+            .and(self)
+            .and(gradient)
+            .and(lower)
+            .and(upper)
+            .for_each(|d, c, &x, &g, &l, &u| {
+                let (d_sq_i, c_i) = cl_scaling_pair(x, g, l, u);
+                *d = d_sq_i;
+                *c = c_i;
+            });
+    }
+
+    fn max_feasible_step(&self, step: &Self, lower: &Self, upper: &Self) -> f64 {
+        assert_eq!(
+            self.shape(),
+            step.shape(),
+            "max_feasible_step: step shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            lower.shape(),
+            "max_feasible_step: lower shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            upper.shape(),
+            "max_feasible_step: upper shape mismatch"
+        );
+        let mut tau = f64::INFINITY;
+        ndarray::Zip::from(self)
+            .and(step)
+            .and(lower)
+            .and(upper)
+            .for_each(|&x, &s, &l, &u| {
+                let t = max_feasible_step_component(x, s, l, u);
+                if t < tau {
+                    tau = t;
+                }
+            });
+        tau
+    }
+
+    fn cl_kkt_inf_norm(&self, d_sq: &Self) -> f64 {
+        assert_eq!(
+            self.shape(),
+            d_sq.shape(),
+            "cl_kkt_inf_norm: shape mismatch"
+        );
+        let mut best = 0.0_f64;
+        ndarray::Zip::from(self).and(d_sq).for_each(|&v, &d| {
+            let candidate = v.abs() / d;
+            if candidate > best {
+                best = candidate;
+            }
+        });
+        best
+    }
+
+    fn weighted_norm_squared(&self, weights: &Self) -> f64 {
+        assert_eq!(
+            self.shape(),
+            weights.shape(),
+            "weighted_norm_squared: shape mismatch"
+        );
+        let mut sum = 0.0_f64;
+        ndarray::Zip::from(self)
+            .and(weights)
+            .for_each(|&v, &w| sum += v * v * w);
+        sum
+    }
+
+    fn project_strictly_inside(&mut self, lower: &Self, upper: &Self, rstep: f64) {
+        assert_eq!(
+            self.shape(),
+            lower.shape(),
+            "project_strictly_inside: lower shape mismatch"
+        );
+        assert_eq!(
+            self.shape(),
+            upper.shape(),
+            "project_strictly_inside: upper shape mismatch"
+        );
+        ndarray::Zip::from(self)
+            .and(lower)
+            .and(upper)
+            .for_each(|x, &l, &u| {
+                *x = project_strictly_inside_component(*x, l, u, rstep);
+            });
     }
 }

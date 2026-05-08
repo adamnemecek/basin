@@ -1,0 +1,423 @@
+use crate::core::constraint::BoxConstrained;
+use crate::core::math::{
+    AddDiagonalVectorInPlace, BoxAffineScaling, Dot, GramMatrix, LinearSolveSpd, MatTransposeVec,
+    MaxDiagonal, NegInPlace, NormSquared, ScaledAdd,
+};
+use crate::core::problem::{Jacobian, Residual};
+use crate::core::solver::Solver;
+use crate::core::state::BasicState;
+use crate::core::termination::TerminationReason;
+
+/// Levenberg-Marquardt with box bounds (TRF — trust-region-reflective)
+/// for nonlinear least-squares problems `min ½‖r(x)‖²` subject to
+/// `lower ≤ x ≤ upper`. The first n-D box-constrained NLLS solver in
+/// basin and the natural extension of [`LevenbergMarquardt`](super::LevenbergMarquardt)
+/// to bounded problems.
+///
+/// # Algorithm
+///
+/// At each iteration the solver computes the Coleman-Li affine scaling
+/// from Branch-Coleman-Li 1999 — a diagonal trust-region matrix
+/// `D = diag(|v|^{-1/2})` and a diagonal curvature correction
+/// `C = D · diag(g) · J^v · D` (also diagonal, non-negative) — and
+/// solves the damped, scaled normal equations
+///
+/// ```text
+/// (JᵀJ + diag(c) + μ · diag(d²)) h = −g
+/// ```
+///
+/// via Cholesky on the SPD Gram. The unconstrained step `h` is then
+/// scaled back into the open feasible region by the largest
+/// `α ∈ (0, 1]` such that `x + α·h` stays inside `(lower, upper)`,
+/// multiplied by a strict-interior factor `θ ≈ 0.99995`. The damping
+/// `μ` adapts via the Nielsen smooth cubic gain-ratio update — same
+/// machinery as [`LevenbergMarquardt`](super::LevenbergMarquardt) — and
+/// initial `μ₀ = τ · max diag(JᵀJ + diag(c))`.
+///
+/// The four-case dispatch defining `v(x)` and the elementwise diagonals
+/// `d²[i] = 1/|v_i|` and `c[i] = |g_i|/|v_i|` (or 0 for infinite bounds)
+/// follow Branch-Coleman-Li 1999 eqs (i)–(iv) — see
+/// `references/branch-coleman-li-1999/source.marker.md:43-72` and
+/// `references/branch-coleman-li-1999/NOTES.md`.
+///
+/// # Reduction to LM
+///
+/// When `lower = -∞` and `upper = +∞` element-wise, the BCL scaling
+/// reduces to `D = I`, `C = 0`, the step-back is a no-op, and the
+/// algorithm becomes exactly Levenberg-Marquardt with Nielsen's μ-update
+/// — same iterates, same convergence. `Trf` strictly subsumes
+/// [`LevenbergMarquardt`](super::LevenbergMarquardt) at the trait-bound
+/// level (the reverse is a compile error: LM bounds on
+/// `Residual + Jacobian` only, not [`BoxConstrained`]).
+///
+/// # What basin's S6 ships, and what it doesn't
+///
+/// Basin's `Trf` is a deliberate simplification of the full STIR
+/// algorithm in BCL §4. It ships:
+///
+/// - The Coleman-Li affine scaling matrix `D` and curvature correction
+///   `C` (BCL eqs 2.1–2.6).
+/// - LM-style μ-adaptation via Nielsen smooth cubic, in lieu of the
+///   explicit trust-region radius `Δ` of BCL FIG.6.
+/// - Strict-interior step-back to keep iterates in the *open* box
+///   (`D` is undefined on a finite face).
+/// - First-order optimality termination via `‖v ⊙ Jᵀr‖_∞ ≤ tol_grad`.
+///
+/// What it does **not** ship:
+///
+/// - **STIR 2D subspace** (BCL FIG.5). The full-space subproblem is
+///   solved each iteration. Adequate for small/medium dense and
+///   sparse problems; large-scale Krylov inner solves wait for a
+///   future session.
+/// - **Reflection technique** (BCL §2 / FIG.2). The unconstrained step
+///   is straight-line stepped back to the box boundary, never
+///   reflected off it. Reflection saves ~2-3× iterations on problems
+///   where many components bind (BCL Table 1) — defer until a test
+///   case demands it.
+/// - **Explicit trust-region radius `Δ`** with Moré-Sorensen-style
+///   λ-adaptation (BCL FIG.6). The LM-style μ-update is simpler and
+///   reuses [`LevenbergMarquardt`](super::LevenbergMarquardt)'s
+///   machinery.
+/// - **Negative-curvature termination clause** (BCL §6). The
+///   `‖D·g‖_∞ ≤ τ` clause alone is used; the curvature test would need
+///   an eigendecomposition or Lanczos pass that isn't worth the
+///   surface before STIR lands.
+///
+/// # Failure modes
+///
+/// - **Cholesky failure under bumped μ.** The damped, scaled Gram
+///   `JᵀJ + diag(c) + μ·diag(d²)` is SPD by construction for `μ > 0`,
+///   so Cholesky should succeed on the first attempt. The retry loop
+///   bumps μ via `μ ← μ·ν, ν ← 2ν` if it doesn't, capped at
+///   [`max_inner_attempts`](Self::max_inner_attempts) (default 50).
+///   Cap exhaustion or μ overflowing to `inf` returns
+///   [`TerminationReason::SolverFailed`].
+/// - **Boundary starting point.** `D` is undefined where `v_i = 0`
+///   (i.e. on a finite face). [`init`](Solver::init) projects the
+///   starting iterate strictly into `(lower, upper)` via
+///   [`BoxAffineScaling::project_strictly_inside`], so feasible-but-
+///   on-boundary starts are silently corrected.
+///
+/// # Termination
+///
+/// Beyond the framework criteria
+/// ([`MaxIter`](crate::core::termination::MaxIter),
+/// [`CostTolerance`](crate::core::termination::CostTolerance),
+/// [`ParamTolerance`](crate::core::termination::ParamTolerance), …),
+/// the solver emits [`TerminationReason::SolverConverged`] when
+/// `‖v ⊙ Jᵀr‖_∞ ≤ tol_grad` (equivalently `max_i |g_i| · |v_i|`,
+/// where `v_i` is BCL's signed distance-to-bound). The metric goes to
+/// zero at any KKT point — interior *or* face-active — so it works
+/// uniformly across the corner / edge / interior cases. Collapses to
+/// LM's `‖Jᵀr‖_∞` when no constraint is active. Default
+/// `tol_grad = 1e-8`; set to `0.0` to disable the check.
+///
+/// `state.gradient = None` for the same reason as
+/// [`LevenbergMarquardt`](super::LevenbergMarquardt) — the L2-squared
+/// [`GradientTolerance`](crate::core::termination::GradientTolerance)
+/// is the wrong metric for NLLS, and
+/// [`ProjectedGradientTolerance`](crate::core::termination::ProjectedGradientTolerance)
+/// uses the unscaled projected-gradient measure rather than the scaled
+/// one we want here.
+///
+/// # Backends
+///
+/// LA-heavy: nalgebra (`DVector<f64>` / `DMatrix<f64>`) and faer
+/// (`Col<f64>` / `Mat<f64>`) at the dense tier; nalgebra-sparse
+/// (`DVector<f64>` / `CscMatrix<f64>`) and faer-sparse (`Col<f64>` /
+/// `SparseColMat<usize, f64>`) at the sparse tier. `Vec<f64>` and
+/// `ndarray::Array1<f64>` produce a compile-time error per tenet 5
+/// (the [`Jacobian`] trait isn't implemented on those backends).
+///
+/// The sparse damping path requires the diagonal of `JᵀJ` to be in the
+/// CSC pattern (always true when `J` has no zero columns); see
+/// [`AddDiagonalVectorInPlace`].
+///
+/// # State convention
+///
+/// Same as [`LevenbergMarquardt`](super::LevenbergMarquardt):
+/// `state.cost` carries the LM convention `½‖r‖²`. The bound on `P`
+/// includes [`BoxConstrained`] (which inherits
+/// [`CostFunction`](crate::core::problem::CostFunction)) but the solver
+/// never calls `cost()` — it computes `½‖r‖²` from the residual it
+/// evaluates itself. Problems whose user-facing `cost()` uses an
+/// unscaled `Σ rᵢ²` form (e.g.
+/// [`BoothBoxedResiduals`](crate::problems::BoothBoxedResiduals)) will
+/// see `state.cost()` differ from `problem.cost(state.param())` by a
+/// factor of two; both go to zero at the optimum.
+pub struct Trf {
+    tol_grad: f64,
+    tau: f64,
+    rstep: f64,
+    theta: f64,
+    max_inner_attempts: u32,
+
+    // Runtime state, populated by `init` and mutated by `next_iter`
+    // through `&mut self`.
+    mu: Option<f64>,
+    nu: f64,
+}
+
+impl Default for Trf {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl Trf {
+    /// `Trf` with the canonical defaults: `tol_grad = 1e-8`,
+    /// `tau = 1e-3`, `rstep = 1e-10`, `theta = 0.99995`,
+    /// `max_inner_attempts = 50`.
+    pub fn new() -> Self {
+        Self {
+            tol_grad: 1e-8,
+            tau: 1e-3,
+            rstep: 1e-10,
+            theta: 0.99995,
+            max_inner_attempts: 50,
+            mu: None,
+            nu: 2.0,
+        }
+    }
+
+    /// First-order optimality tolerance: emit
+    /// [`TerminationReason::SolverConverged`] when
+    /// `‖D · Jᵀr‖_∞ ≤ tol`. Set to `0.0` to disable. Default `1e-8`.
+    pub fn tol_grad(mut self, tol: f64) -> Self {
+        assert!(tol >= 0.0, "tol_grad must be ≥ 0");
+        self.tol_grad = tol;
+        self
+    }
+
+    /// Initial damping scale `τ` in `μ₀ = τ · max diag(JᵀJ + diag(c))`.
+    /// Smaller (e.g. `1e-6`) when `x₀` is believed close to the
+    /// optimum; larger (e.g. `1.0`) when far from it. Default `1e-3`.
+    pub fn tau(mut self, tau: f64) -> Self {
+        assert!(tau > 0.0, "tau must be > 0");
+        self.tau = tau;
+        self
+    }
+
+    /// Strict-interior projection scale at `init`. Components within
+    /// `rstep · max(1, |bound|)` of a finite bound are nudged inward.
+    /// Default `1e-10` matches SciPy's `make_strictly_feasible`.
+    pub fn rstep(mut self, rstep: f64) -> Self {
+        assert!(rstep > 0.0, "rstep must be > 0");
+        self.rstep = rstep;
+        self
+    }
+
+    /// Strict-interior step-back factor: when the unconstrained step
+    /// would land on or beyond a face, the actual step is scaled by
+    /// `theta · τ_max` instead of `τ_max` to keep the iterate strictly
+    /// inside. Must be in `(0, 1)`. Default `0.99995`.
+    pub fn theta(mut self, theta: f64) -> Self {
+        assert!(
+            theta > 0.0 && theta < 1.0,
+            "theta must be in (0, 1), got {theta}"
+        );
+        self.theta = theta;
+        self
+    }
+
+    /// Maximum number of damping bumps inside a single outer iteration
+    /// before giving up with [`TerminationReason::SolverFailed`]. Each
+    /// bump multiplies μ by ν (initially 2) and doubles ν. Default
+    /// `50` is effectively unreachable in practice (μ grows by `2^50 ≈
+    /// 10¹⁵` before bailing). Default `50`.
+    pub fn max_inner_attempts(mut self, n: u32) -> Self {
+        assert!(n > 0, "max_inner_attempts must be > 0");
+        self.max_inner_attempts = n;
+        self
+    }
+}
+
+impl<P, V, M> Solver<P, BasicState<V>> for Trf
+where
+    P: Residual<Param = V, Output = V>
+        + Jacobian<Param = V, Output = M>
+        + BoxConstrained<Param = V>,
+    V: ScaledAdd<f64> + NormSquared + NegInPlace + Dot + BoxAffineScaling + Clone,
+    M: GramMatrix
+        + MatTransposeVec<V>
+        + LinearSolveSpd<V>
+        + AddDiagonalVectorInPlace<V>
+        + MaxDiagonal
+        + Clone,
+{
+    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+        // Project the starting iterate strictly into (lower, upper).
+        // D is undefined where v_i = 0 (a finite face), so an
+        // on-boundary or infeasible start is silently corrected.
+        state
+            .param
+            .project_strictly_inside(problem.lower(), problem.upper(), self.rstep);
+
+        let r = problem.residual(&state.param);
+        let j = problem.jacobian(&state.param);
+        state.cost = Some(0.5 * r.norm_squared());
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+
+        // μ₀ = τ · max diag(JᵀJ + diag(c)). The C-correction is
+        // typically small; the τ · max diag scaling matches Nielsen's
+        // recommendation for LM, generalized to the BCL M-matrix.
+        let g = j.mat_transpose_vec(&r);
+        let mut d_sq = state.param.clone();
+        let mut c_diag = state.param.clone();
+        state.param.compute_cl_scaling(
+            &g,
+            problem.lower(),
+            problem.upper(),
+            &mut d_sq,
+            &mut c_diag,
+        );
+
+        let mut a = j.gram();
+        a.add_diagonal_vector_in_place(&c_diag);
+        let max_diag = a.max_diagonal().max(1.0);
+        self.mu = Some(self.tau * max_diag);
+        self.nu = 2.0;
+        state
+    }
+
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> (BasicState<V>, Option<TerminationReason>) {
+        let r = problem.residual(&state.param);
+        let j = problem.jacobian(&state.param);
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+
+        let g = j.mat_transpose_vec(&r);
+
+        // Compute the Coleman-Li affine scaling diagonals at the
+        // current iterate. d_sq[i] = 1/|v_i|, c_diag[i] = |g_i|/|v_i|
+        // (or 0 for infinite bounds).
+        let mut d_sq = state.param.clone();
+        let mut c_diag = state.param.clone();
+        state.param.compute_cl_scaling(
+            &g,
+            problem.lower(),
+            problem.upper(),
+            &mut d_sq,
+            &mut c_diag,
+        );
+
+        // First-order optimality: ‖v ⊙ Jᵀr‖_∞ ≤ tol_grad, equal to
+        // `max_i |g_i| / d_sq_i` in our representation (since
+        // `d_sq[i] = 1/|v_i|`). Goes to zero at any KKT point — interior
+        // *or* face-active. Collapses to LM's `‖Jᵀr‖_∞` when bounds are
+        // infinite (then `|v_i| = 1`, `d_sq = 1`, division is identity).
+        if self.tol_grad > 0.0 && g.cl_kkt_inf_norm(&d_sq) <= self.tol_grad {
+            return (state, Some(TerminationReason::SolverConverged));
+        }
+
+        let mut neg_g = g.clone();
+        neg_g.neg_in_place();
+
+        let m = j.gram();
+
+        let mut mu = self
+            .mu
+            .expect("mu not set: Solver::init must run before next_iter");
+        let mut nu = self.nu;
+
+        // Inner damping loop: solve (J^TJ + diag(c) + μ·diag(d_sq)) h = −g.
+        // The damped, scaled Gram is SPD by construction for μ > 0; the
+        // retry path matters only for pathological cases where roundoff
+        // breaks SPD-ness at the chosen μ.
+        let h;
+        let mut attempts: u32 = 0;
+        loop {
+            let mut a_damped = m.clone();
+            // damping_vec = c + μ · d_sq.
+            let mut damping_vec = c_diag.clone();
+            damping_vec.scaled_add(mu, &d_sq);
+            a_damped.add_diagonal_vector_in_place(&damping_vec);
+            match a_damped.solve_spd(&neg_g) {
+                Ok(step) => {
+                    h = step;
+                    break;
+                }
+                Err(_) => {
+                    attempts += 1;
+                    if attempts >= self.max_inner_attempts || !mu.is_finite() {
+                        self.mu = Some(mu);
+                        self.nu = nu;
+                        return (state, Some(TerminationReason::SolverFailed));
+                    }
+                    mu *= nu;
+                    nu *= 2.0;
+                }
+            }
+        }
+
+        // Step-back to the open feasible region. The unconstrained
+        // Newton step h might land on or beyond a face; scale it down
+        // by min(1, θ · τ_max) so the iterate stays strictly inside.
+        let tau_max = state
+            .param
+            .max_feasible_step(&h, problem.lower(), problem.upper());
+        let alpha = if tau_max >= 1.0 {
+            1.0
+        } else {
+            self.theta * tau_max
+        };
+
+        // Trial step.
+        let mut x_trial = state.param.clone();
+        x_trial.scaled_add(alpha, &h);
+        let r_trial = problem.residual(&x_trial);
+        state.cost_evals += 1;
+        let f_trial = 0.5 * r_trial.norm_squared();
+
+        let prev_cost = state
+            .cost
+            .expect("cost not set: Solver::init must run before next_iter");
+
+        // BCL gain ratio with the C-correction (eq. ψ_k from
+        // `source.marker.md:138`). Numerator is "actual reduction in
+        // M-model": Δf − ½ s^T C s. Denominator is the predicted
+        // reduction in BCL's *undamped* M-model evaluated at s = α·h,
+        // derived from the Lagrangian (M + μD²) h = −g:
+        //
+        //   −ψ_k(α·h) = −α(1 − ½α) h^T g + ½ α² μ ‖D·h‖²
+        //
+        // For α = 1 this reduces to ½(μ ‖D·h‖² − h^T g), which mirrors
+        // Nielsen's LM formula with D folded in.
+        let h_t_g = h.dot(&g);
+        let dh_norm_sq = h.weighted_norm_squared(&d_sq);
+        let predicted =
+            -alpha * (1.0 - 0.5 * alpha) * h_t_g + 0.5 * alpha * alpha * mu * dh_norm_sq;
+        let half_s_t_c_s = 0.5 * alpha * alpha * h.weighted_norm_squared(&c_diag);
+        let actual = prev_cost - f_trial - half_s_t_c_s;
+
+        let rho = if predicted > 0.0 {
+            actual / predicted
+        } else {
+            0.0
+        };
+
+        if rho > 0.0 {
+            // Accept. Update x and cost; adapt μ via Nielsen smooth
+            // cubic with β=2, γ=3, p=3 (matches LevenbergMarquardt).
+            state.param = x_trial;
+            state.cost = Some(f_trial);
+            let factor = 1.0 - (2.0 * rho - 1.0).powi(3);
+            mu *= factor.max(1.0 / 3.0);
+            nu = 2.0;
+        } else {
+            // Reject. Bump μ geometrically; double ν so consecutive
+            // rejections escalate damping faster.
+            mu *= nu;
+            nu *= 2.0;
+        }
+
+        self.mu = Some(mu);
+        self.nu = nu;
+        (state, None)
+    }
+}
