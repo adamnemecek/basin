@@ -308,16 +308,105 @@ to make the trait-shape decisions. The faer paper (Sarah Oudjedi,
 future session needs supernodal-vs-simplicial Cholesky tradeoffs or
 sparse QR rank-deficiency handling.
 
-### S4. Levenberg-Marquardt (unconstrained)
+### S4. Levenberg-Marquardt (unconstrained) — **done**
 
-- Gauss-Newton + Marquardt damping. Use **Nielsen 1999** λ-update (the
-  variant MINPACK and most modern LM use; better λ recovery than
-  Marquardt's original multiply/divide).
-- **[ingest]** Nielsen, *Damping Parameter in Marquardt's Method*
-  (1999, IMM-DTU). Short, readable, directly implementable.
-- **[ingest]** MINPACK's `lmder` source/docs as the reference impl
-  (public domain Fortran, well-commented).
-- Inherits dense + sparse + both backends from the layer below.
+`LevenbergMarquardt` lands in `solver/levenberg_marquardt.rs` as the
+first damped-Newton solver in the codebase. Same `Solver<P,
+BasicState<V>>` shape as Gauss-Newton; the only solver-side change is
+two extra trait bounds on `M` (`AddDiagonalInPlace + MaxDiagonal`) and
+one extra on `V` (`Dot`).
+
+**Algorithm: Nielsen 1999 smooth update.** Each outer iteration solves
+the damped normal equations `(JᵀJ + μI) h = −Jᵀr` via Cholesky-on-Gram,
+then adapts μ from the gain ratio
+`ρ = (F(x) − F(x+h)) / (L(0) − L(h))` (Nielsen eq. 2.2). On a
+successful step (ρ > 0): `μ ← μ · max(1/3, 1 − (2ρ−1)³); ν ← 2`. On a
+failed step (ρ ≤ 0): `μ ← μ·ν; ν ← 2ν` with `ν` initialized to 2 — the
+ν-doubling lets consecutive failures escalate damping quickly. The
+paper's parameter choice (β = 2, γ = 3, p = 3) is the canonical one
+used in MNT 2004, Ceres, and every modern LM. Initial damping
+`μ₀ = τ · max diag(J(x₀)ᵀ J(x₀))` (eq. 1.10) with default τ = 10⁻³.
+
+**Linalg additions.** Two new traits in `linalg.rs`:
+
+- `AddDiagonalInPlace` — `A ← A + scalar · I` in place. Implemented for
+  all four backends (nalgebra dense/sparse, faer dense/sparse). The
+  sparse impls require the diagonal to be in the CSC pattern; LM only
+  ever calls it on a freshly computed `JᵀJ` whose diagonal is positive
+  by construction (full column rank), so this is safe. Documented as a
+  precondition.
+- `MaxDiagonal` — `maxᵢ Aᵢᵢ` returning `f64`. Implemented for the same
+  four backends. Used only at `init`-time to size μ₀; sparse backends
+  treat missing-pattern diagonal entries as the implicit zero, matching
+  CSC semantics.
+
+Eight unit tests cover the new traits — two per backend (basic
+diagonal-augmentation correctness + the load-bearing
+"damping regularizes a singular Gram" property that motivates LM
+existing).
+
+**State-consistency choice.** LM mirrors GN's choice of leaving
+`state.gradient = None`. The framework's `GradientTolerance` (`‖∇f‖₂²
+≤ tol²`) is the wrong metric for NLLS — the canonical first-order
+test is the ∞-norm of `Jᵀr`, which the solver checks internally and
+emits `SolverConverged` on. Documented in the rustdoc `# Termination`
+section. Carrying μ and ν across iterations works through `&mut self`
+on `Solver::next_iter`, so no new state type was needed; `BasicState<V>`
+remains the state for both GN and LM.
+
+**Tests: 14 new (4 + 4 + 3 + 3).** Per backend (nalgebra, faer):
+
+1. Convergence on Rosenbrock-as-residuals from `(-1.2, 1.0)` (matches
+   GN's path; LM converges in ~10 iterations vs GN's 2 because the
+   damping is non-zero, but reaches the same optimum cleanly).
+2. **The "why LM" test.** Powell singular from `(1, 2, 1, 1)` where
+   GN's Cholesky fails on the rank-deficient `JᵀJ` — LM's damping
+   regularizes the system and converges to the origin in ~50 iterations.
+   This is the canonical demonstration that LM strictly subsumes GN.
+3. Powell singular from the classical start `(3, −1, 0, 1)` — both GN
+   and LM converge here (the rank deficiency only bites at the
+   optimum); LM matches GN's iteration count to within a small constant.
+4. `SolverConverged` via `‖Jᵀr‖_∞ ≤ tol_grad` (parallel to GN's test).
+
+Per backend (nalgebra-sparse, faer-sparse), reusing the
+`SparseLeastSquares<M, V>` fixture from S2b:
+
+1. Convergence on the 6×3 sparse linear-regression fixture; LM lands at
+   `[1, 2, 3]` to ‖·‖_∞ < 1e-7.
+2. Sparse `add_diagonal_in_place` round-trip verification (tighter
+   `tol_grad`).
+3. `SolverConverged` exit reason.
+
+**Failure path.** No `SolverFailed` test for LM. The damping is
+designed to prevent Cholesky failure; the only path that can hit
+`SolverFailed` is the inner attempts cap (default 50 bumps, μ growing
+by 2⁵⁰ ≈ 10¹⁵), which requires a pathologically constructed problem.
+Out of scope for this session.
+
+**Paper ingestion.** Nielsen 1999 was ingested via the `ingest-paper`
+skill. The PDF was rotated 90° two-column landscape and pymupdf4llm
+mangled it; the user manually rotated and split to 29 single-column
+pages before re-running, then a stage-2 marker pass on pages 0–13
+(~50 min CPU on 8 cores) recovered the literal constants in equations
+(1.10), (2.2), (2.3), (2.5) that pymupdf4llm had stripped. See
+`references/nielsen-1999/NOTES.md` for the algorithm map and parser
+quirks.
+
+**lmder.f** was read for understanding only (public domain Fortran).
+It uses QR + Marquardt-style λ-update; basin uses Cholesky + Nielsen
+update. The high-level loop shape (outer iterate → inner damping →
+gain-ratio adapt) is shared.
+
+**Existing Rust crate `levenberg-marquardt` v0.15.0** is also a port
+of MINPACK lmder.f (MIT, nalgebra-only) — different algorithm from
+ours, useful only as an independent reproduction target on shared
+problems. Not a structural reference. Notes in `NOTES.md`.
+
+**Out of scope.** Box constraints (S5). Scaling matrix `D` in
+`(JᵀJ + μDᵀD)` (lmder uses it; Nielsen drops it). QR-on-stacked-system
+LM (lands in S6 / TRF where rank-deficient `J` and box constraints make
+QR materially better). Geodesic acceleration / second-order corrections
+(post-S6).
 
 ### S5. Box constraints + projected gradient descent
 

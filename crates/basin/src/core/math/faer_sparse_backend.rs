@@ -17,7 +17,8 @@ use faer::sparse::SparseColMat;
 use faer::{Accum, Col, Par, Side};
 
 use super::linalg::{
-    GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd, MatTransposeVec, MatVec,
+    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal,
 };
 
 impl MatVec<Col<f64>> for SparseColMat<usize, f64> {
@@ -79,6 +80,75 @@ impl GramMatrix for SparseColMat<usize, f64> {
             .expect("gram: out of memory while transposing");
         sparse_sparse_matmul(at_csc.as_ref(), self.as_ref(), 1.0, Par::Seq)
             .expect("gram: out of memory while multiplying")
+    }
+}
+
+impl MaxDiagonal for SparseColMat<usize, f64> {
+    fn max_diagonal(&self) -> f64 {
+        let n = self.ncols();
+        assert_eq!(
+            self.nrows(),
+            n,
+            "max_diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            n
+        );
+        // Walk each column and search its row-index slice for the
+        // diagonal entry. Missing diagonals contribute the implicit
+        // zero; this matches MaxDiagonal's contract.
+        let col_ptr = self.col_ptr();
+        let row_idx = self.row_idx();
+        let vals = self.val();
+        let mut best = f64::NEG_INFINITY;
+        for j in 0..n {
+            let start = col_ptr[j];
+            let end = col_ptr[j + 1];
+            let v = (start..end)
+                .find_map(|k| (row_idx[k] == j).then_some(vals[k]))
+                .unwrap_or(0.0);
+            if v > best {
+                best = v;
+            }
+        }
+        best
+    }
+}
+
+impl AddDiagonalInPlace for SparseColMat<usize, f64> {
+    fn add_diagonal_in_place(&mut self, scalar: f64) {
+        let n = self.ncols();
+        assert_eq!(
+            self.nrows(),
+            n,
+            "add_diagonal_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            n
+        );
+        // col_ptr / row_idx are immutable views of the symbolic part;
+        // val_mut needs &mut self. Faer 0.24 doesn't expose a single
+        // accessor that hands out (symbolic borrow, mutable val borrow)
+        // on the owned SparseColMat without a reborrow dance, so clone
+        // the symbolic vectors. Cost is O(nnz) of usize copies vs. the
+        // O(n³) Cholesky that follows in the LM loop — negligible.
+        let col_ptr: Vec<usize> = self.col_ptr().to_vec();
+        let row_idx: Vec<usize> = self.row_idx().to_vec();
+        let vals = self.val_mut();
+        for j in 0..n {
+            let start = col_ptr[j];
+            let end = col_ptr[j + 1];
+            let mut found = false;
+            for k in start..end {
+                if row_idx[k] == j {
+                    vals[k] += scalar;
+                    found = true;
+                    break;
+                }
+            }
+            assert!(
+                found,
+                "add_diagonal_in_place: diagonal entry ({j}, {j}) missing from CSC pattern"
+            );
+        }
     }
 }
 
@@ -214,6 +284,32 @@ mod tests {
         let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
         let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
         assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn add_diagonal_in_place_adds_to_diagonal_only() {
+        let mut a = csc2([1.0, 2.0], [3.0, 4.0]);
+        a.add_diagonal_in_place(0.5);
+        // Original [[1,2],[3,4]] + 0.5·I = [[1.5,2],[3,4.5]].
+        let e0 = Col::<f64>::from_fn(2, |i| if i == 0 { 1.0 } else { 0.0 });
+        let e1 = Col::<f64>::from_fn(2, |i| if i == 1 { 1.0 } else { 0.0 });
+        let col0 = a.matvec(&e0);
+        let col1 = a.matvec(&e1);
+        assert!(approx_eq(col0[0], 1.5, 1e-12));
+        assert!(approx_eq(col0[1], 3.0, 1e-12));
+        assert!(approx_eq(col1[0], 2.0, 1e-12));
+        assert!(approx_eq(col1[1], 4.5, 1e-12));
+    }
+
+    #[test]
+    fn add_diagonal_regularizes_singular_gram() {
+        let a = csc2([1.0, 2.0], [2.0, 4.0]);
+        let mut g = a.gram();
+        let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
+        assert!(g.clone().solve_spd(&b).is_err());
+        g.add_diagonal_in_place(1e-3);
+        let x = g.solve_spd(&b).expect("damped gram must be SPD");
+        assert_eq!(x.nrows(), 2);
     }
 
     #[test]

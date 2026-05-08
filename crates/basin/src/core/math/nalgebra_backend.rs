@@ -1,6 +1,9 @@
 use nalgebra::{DMatrix, DVector, Dim, Matrix, Storage, StorageMut};
 
-use super::linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
+use super::linalg::{
+    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
+    MaxDiagonal,
+};
 use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
@@ -98,6 +101,36 @@ impl GramMatrix for DMatrix<f64> {
     }
 }
 
+impl MaxDiagonal for DMatrix<f64> {
+    fn max_diagonal(&self) -> f64 {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "max_diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        (0..self.nrows())
+            .map(|i| self[(i, i)])
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+}
+
+impl AddDiagonalInPlace for DMatrix<f64> {
+    fn add_diagonal_in_place(&mut self, scalar: f64) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "add_diagonal_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        for i in 0..self.nrows() {
+            self[(i, i)] += scalar;
+        }
+    }
+}
+
 impl LinearSolveSpd<DVector<f64>> for DMatrix<f64> {
     fn solve_spd(&self, b: &DVector<f64>) -> Result<DVector<f64>, LinearSolveError> {
         assert_eq!(
@@ -192,5 +225,35 @@ mod tests {
         let b = DVector::from_vec(vec![1.0, 1.0]);
         let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
         assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn add_diagonal_in_place_adds_to_diagonal_only() {
+        let mut a = DMatrix::from_row_slice(3, 3, &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
+        a.add_diagonal_in_place(0.5);
+        // Diagonal: 1.5, 5.5, 9.5; off-diagonal untouched.
+        assert!(approx_eq(a[(0, 0)], 1.5, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 5.5, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 9.5, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
+        assert!(approx_eq(a[(1, 0)], 4.0, 1e-12));
+        assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
+    }
+
+    #[test]
+    fn add_diagonal_regularizes_singular_gram() {
+        // The "why LM works" property: a rank-deficient Gram becomes
+        // SPD once you add μI, and Cholesky succeeds.
+        let a = DMatrix::from_row_slice(2, 2, &[1.0, 2.0, 2.0, 4.0]);
+        let mut g = a.gram();
+        assert!(g
+            .clone()
+            .solve_spd(&DVector::from_vec(vec![1.0, 1.0]))
+            .is_err());
+        g.add_diagonal_in_place(1e-3);
+        let x = g
+            .solve_spd(&DVector::from_vec(vec![1.0, 1.0]))
+            .expect("damped gram must be SPD");
+        assert_eq!(x.len(), 2);
     }
 }

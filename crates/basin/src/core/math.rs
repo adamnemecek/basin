@@ -68,5 +68,6 @@ mod faer_backend;
 mod faer_sparse_backend;
 
 pub use linalg::{
-    GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd, MatTransposeVec, MatVec,
+    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd,
+    MatTransposeVec, MatVec, MaxDiagonal,
 };

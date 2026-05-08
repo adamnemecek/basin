@@ -17,9 +17,12 @@ use nalgebra::{DMatrix, DVector};
 use nalgebra_sparse::factorization::CscCholesky;
 use nalgebra_sparse::ops::serial::spmm_csc_dense;
 use nalgebra_sparse::ops::Op;
-use nalgebra_sparse::CscMatrix;
+use nalgebra_sparse::{CscMatrix, SparseEntryMut};
 
-use super::linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
+use super::linalg::{
+    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
+    MaxDiagonal,
+};
 
 impl MatVec<DVector<f64>> for CscMatrix<f64> {
     fn matvec(&self, x: &DVector<f64>) -> DVector<f64> {
@@ -63,6 +66,53 @@ impl GramMatrix for CscMatrix<f64> {
         // pattern construction + spmm. Aᵀ A → CSC of shape
         // `(ncols, ncols)`; transpose() materializes Aᵀ as CSC.
         &self.transpose() * self
+    }
+}
+
+impl MaxDiagonal for CscMatrix<f64> {
+    fn max_diagonal(&self) -> f64 {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "max_diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        // Implicit-zero entries contribute 0.0 to the comparison.
+        (0..self.nrows())
+            .map(|i| {
+                self.get_entry(i, i)
+                    .expect("max_diagonal: index in bounds")
+                    .into_value()
+            })
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+}
+
+impl AddDiagonalInPlace for CscMatrix<f64> {
+    fn add_diagonal_in_place(&mut self, scalar: f64) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "add_diagonal_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        // get_entry_mut does a binary search per column (O(log nnz_col));
+        // for our LM use case this runs once per outer iteration on the
+        // n×n Gram, so an O(n log nnz) walk is negligible next to the
+        // factorization that follows.
+        for i in 0..self.nrows() {
+            match self
+                .get_entry_mut(i, i)
+                .expect("add_diagonal_in_place: index in bounds")
+            {
+                SparseEntryMut::NonZero(v) => *v += scalar,
+                SparseEntryMut::Zero => panic!(
+                    "add_diagonal_in_place: diagonal entry ({i}, {i}) missing from CSC pattern"
+                ),
+            }
+        }
     }
 }
 
@@ -175,5 +225,34 @@ mod tests {
         let b = DVector::from_vec(vec![1.0, 1.0]);
         let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
         assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn add_diagonal_in_place_adds_to_diagonal_only() {
+        // Build a CSC with all 4 entries explicit so the diagonal is in
+        // the pattern; the row==col precondition holds.
+        let mut a = csc2([1.0, 2.0], [3.0, 4.0]);
+        a.add_diagonal_in_place(0.5);
+        // Materialize as columns of the gram via SpMV-on-eᵢ.
+        let e0 = DVector::from_vec(vec![1.0, 0.0]);
+        let e1 = DVector::from_vec(vec![0.0, 1.0]);
+        let col0 = a.matvec(&e0);
+        let col1 = a.matvec(&e1);
+        // Original a = [[1,2],[3,4]]; after +0.5 on diag → [[1.5,2],[3,4.5]].
+        assert!(approx_eq(col0[0], 1.5, 1e-12));
+        assert!(approx_eq(col0[1], 3.0, 1e-12));
+        assert!(approx_eq(col1[0], 2.0, 1e-12));
+        assert!(approx_eq(col1[1], 4.5, 1e-12));
+    }
+
+    #[test]
+    fn add_diagonal_regularizes_singular_gram() {
+        let a = csc2([1.0, 2.0], [2.0, 4.0]);
+        let mut g = a.gram();
+        let b = DVector::from_vec(vec![1.0, 1.0]);
+        assert!(g.clone().solve_spd(&b).is_err());
+        g.add_diagonal_in_place(1e-3);
+        let x = g.solve_spd(&b).expect("damped gram must be SPD");
+        assert_eq!(x.len(), 2);
     }
 }

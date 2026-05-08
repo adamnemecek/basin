@@ -2,7 +2,10 @@ use faer::linalg::matmul::matmul;
 use faer::linalg::solvers::{Llt, Solve};
 use faer::{Accum, Col, Mat, Par, Side};
 
-use super::linalg::{GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec};
+use super::linalg::{
+    AddDiagonalInPlace, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
+    MaxDiagonal,
+};
 use super::{Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl ScaledAdd<f64> for Col<f64> {
@@ -102,6 +105,36 @@ impl GramMatrix for Mat<f64> {
     }
 }
 
+impl MaxDiagonal for Mat<f64> {
+    fn max_diagonal(&self) -> f64 {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "max_diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        (0..self.nrows())
+            .map(|i| self[(i, i)])
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+}
+
+impl AddDiagonalInPlace for Mat<f64> {
+    fn add_diagonal_in_place(&mut self, scalar: f64) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "add_diagonal_in_place: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        for i in 0..self.nrows() {
+            self[(i, i)] += scalar;
+        }
+    }
+}
+
 impl LinearSolveSpd<Col<f64>> for Mat<f64> {
     fn solve_spd(&self, b: &Col<f64>) -> Result<Col<f64>, LinearSolveError> {
         assert_eq!(
@@ -198,5 +231,29 @@ mod tests {
         let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
         let err = g.solve_spd(&b).expect_err("rank-deficient gram must fail");
         assert_eq!(err, LinearSolveError::NotPositiveDefinite);
+    }
+
+    #[test]
+    fn add_diagonal_in_place_adds_to_diagonal_only() {
+        let mut a = Mat::<f64>::from_fn(3, 3, |i, j| (i * 3 + j + 1) as f64);
+        a.add_diagonal_in_place(0.5);
+        // Diagonal: 1+0.5=1.5, 5+0.5=5.5, 9+0.5=9.5; off-diagonal untouched.
+        assert!(approx_eq(a[(0, 0)], 1.5, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 5.5, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 9.5, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
+        assert!(approx_eq(a[(1, 0)], 4.0, 1e-12));
+        assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
+    }
+
+    #[test]
+    fn add_diagonal_regularizes_singular_gram() {
+        let a = mat2([1.0, 2.0], [2.0, 4.0]);
+        let mut g = a.gram();
+        let b = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
+        assert!(g.clone().solve_spd(&b).is_err());
+        g.add_diagonal_in_place(1e-3);
+        let x = g.solve_spd(&b).expect("damped gram must be SPD");
+        assert_eq!(x.nrows(), 2);
     }
 }

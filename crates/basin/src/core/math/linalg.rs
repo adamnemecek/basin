@@ -157,6 +157,60 @@ pub trait LinearSolveLstsq<V> {
     fn solve_lstsq(&self, b: &V) -> Result<V, LinearSolveError>;
 }
 
+/// `max_i Aᵢᵢ` — the maximum diagonal entry of a square matrix.
+/// Used by Levenberg-Marquardt to size the initial damping parameter
+/// `μ₀ = τ · max diag(J(x₀)ᵀ J(x₀))` (Nielsen 1999 eq. 1.10).
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self`. Backends panic otherwise.
+/// - **Caller must (sparse precondition):** for sparse impls, missing
+///   diagonal entries from the CSC pattern are treated as the implicit
+///   zero. The Gram of any `A` with no zero columns has all-positive
+///   diagonal entries, so the relevant case for LM is unaffected.
+/// - **Implementor must:** return `maxᵢ self[(i, i)]` as `f64`. For an
+///   empty matrix (0×0) the result is unspecified; backends may return
+///   `0.0` or `f64::NEG_INFINITY`. Callers should not invoke on empty
+///   matrices.
+///
+/// # Backends
+///
+/// Same coverage as [`AddDiagonalInPlace`].
+pub trait MaxDiagonal {
+    /// Compute the maximum diagonal entry as `f64`.
+    fn max_diagonal(&self) -> f64;
+}
+
+/// In-place diagonal augmentation `A ← A + scalar · I`. The minimal
+/// op needed to express the Levenberg-Marquardt damped normal-equations
+/// matrix `JᵀJ + μI` without materializing the identity.
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self`. Backends panic otherwise.
+/// - **Caller must (sparse precondition):** for sparse impls, every
+///   diagonal entry `(i, i)` must already exist in the sparsity
+///   pattern of `self`. The Gram matrix `G = AᵀA` of any `A` with no
+///   zero columns satisfies this (`Gᵢᵢ = ‖A·,ᵢ‖² > 0`), so callers
+///   that only invoke `add_diagonal_in_place` on a freshly computed
+///   [`GramMatrix::gram`] result are safe by construction. Backends
+///   panic on a missing diagonal entry rather than silently growing
+///   the pattern.
+/// - **Implementor must:** add `scalar` to every diagonal entry of
+///   `self` in place. Off-diagonal entries are untouched. The op is
+///   `O(n)` for an `n × n` matrix.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` and `faer::Mat<f64>` at the
+/// dense tier, and for `nalgebra_sparse::CscMatrix<f64>` and
+/// `faer::sparse::SparseColMat<usize, f64>` at the sparse tier — same
+/// coverage as [`GramMatrix`] / [`LinearSolveSpd`].
+pub trait AddDiagonalInPlace {
+    /// Add `scalar` to every diagonal entry of `self` in place.
+    fn add_diagonal_in_place(&mut self, scalar: f64);
+}
+
 /// Reasons a linear-solve trait call can fail. Variants are
 /// backend-agnostic — backends translate their native error types
 /// into these.
