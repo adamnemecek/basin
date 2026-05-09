@@ -11,7 +11,7 @@ dependencies = [
   # LaTeX equations and decent figure handling. Used selectively on pages where
   # math fidelity matters — see ../README and the ingest-paper skill.
   "marker-pdf",
-  "pycma",
+  "cma",
 ]
 
 [tool.uv]

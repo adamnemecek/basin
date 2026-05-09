@@ -247,7 +247,7 @@ impl<V, M> CmaEs<V, M> {
 /// Asymptotic expansion of `E‖N(0, I_n)‖ = √2 Γ((n+1)/2) / Γ(n/2)`.
 /// Accurate to ~10 digits for `n ≥ 1`; avoids needing `lgamma` (which
 /// is not in stable `std` on basin's MSRV).
-fn expected_norm_n01(n: usize) -> f64 {
+pub(crate) fn expected_norm_n01(n: usize) -> f64 {
     let n = n as f64;
     n.sqrt() * (1.0 - 1.0 / (4.0 * n) + 1.0 / (21.0 * n * n))
 }
@@ -255,7 +255,12 @@ fn expected_norm_n01(n: usize) -> f64 {
 /// Compute the recombination weights and derived constants per
 /// Hansen 2016 Table 1 rows (49)–(53), plus `µ_eff` and `µ_eff_neg`.
 /// Returns `(weights, mu_eff, sum_w)`.
-fn compute_weights(n: usize, lambda: usize, c_1: f64, c_mu: f64) -> (Vec<f64>, f64, f64) {
+pub(crate) fn compute_weights(
+    n: usize,
+    lambda: usize,
+    c_1: f64,
+    c_mu: f64,
+) -> (Vec<f64>, f64, f64) {
     let mu = lambda / 2;
     // Raw preliminary weights w_i' = ln((λ+1)/2) − ln i (eq. 49).
     let raw: Vec<f64> = (1..=lambda)
@@ -392,7 +397,7 @@ where
 /// Sort `candidates` and `costs` jointly by ascending cost. NaN costs
 /// sort last (mirrors `nelder_mead::sort_simplex` /
 /// `random_search::sort_population_ascending`).
-fn sort_population_ascending<V>(candidates: &mut [V], costs: &mut [f64]) {
+pub(crate) fn sort_population_ascending<V>(candidates: &mut [V], costs: &mut [f64]) {
     let n = candidates.len();
     debug_assert_eq!(n, costs.len());
     let mut idx: Vec<usize> = (0..n).collect();

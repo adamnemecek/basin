@@ -8,8 +8,8 @@ use super::cl_scaling::{
 };
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
-    SymmetricEigenError,
+    MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate,
+    SymmetricEigen, SymmetricEigenError,
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
@@ -330,6 +330,19 @@ impl MaxDiagonal for DMatrix<f64> {
         (0..self.nrows())
             .map(|i| self[(i, i)])
             .fold(f64::NEG_INFINITY, f64::max)
+    }
+}
+
+impl MatDiagonal<DVector<f64>> for DMatrix<f64> {
+    fn diagonal(&self) -> DVector<f64> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        DVector::from_iterator(self.nrows(), (0..self.nrows()).map(|i| self[(i, i)]))
     }
 }
 

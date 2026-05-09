@@ -1,3 +1,6 @@
+/// Box-constrained CMA-ES with adaptive quadratic boundary penalty
+/// (Hansen `BoundPenalty`, the default in pycma).
+pub mod bounded_cma_es;
 /// Brent's method (1D root / minimum bracketing).
 pub mod brent;
 /// Hansen 2016 (µ/µ_W, λ)-CMA-ES with negative weights.
@@ -24,6 +27,7 @@ pub mod bfgs;
 
 #[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;
+pub use bounded_cma_es::BoundedCmaEs;
 pub use brent::Brent;
 pub use cma_es::CmaEs;
 pub use gauss_newton::GaussNewton;

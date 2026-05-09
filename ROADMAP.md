@@ -925,12 +925,152 @@ implementation is from Hansen 2016 directly. The MATLAB source in
 Appendix C of the tutorial is part of the paper and was likewise
 not copied.
 
-### S9. CMA-ES with bounds
+### S9. CMA-ES with bounds — **done**
 
-- Multiple options in literature: resampling, reflection, penalty,
-  BIPOP. Pick one, document the rest.
-- **[ingest]** Reference for whichever bound-handling we pick — likely
-  what `pycma` does, or Hansen's combustion-control paper appendix.
+`BoundedCmaEs` lands in `solver/bounded_cma_es.rs` as the box-
+constrained sibling of S8's `CmaEs`. Same `Solver<P,
+BasicPopulationState<V>>` shape, same nalgebra+faer backend coverage,
+same TolX termination — the only addition is Hansen's adaptive
+quadratic boundary penalty (pycma's `BoundPenalty`, the long-time
+default) woven through sample evaluation and the top of `next_iter`.
+
+**Algorithm: adaptive quadratic penalty (Hansen / pycma).** Per
+generation: sample `x_k ~ N(m, σ² C)` exactly as in `CmaEs`, repair
+`x_k_rep = clamp(x_k, l, u)`, evaluate `f_raw = f(x_k_rep)` at the
+repaired point, add penalty `pen = (1/n) Σ_i γ_i (x_k[i] − x_k_rep[i])²`,
+sort the population by `f_raw + pen`. The **un-repaired** sample
+enters recombination so the covariance learns "don't go that way";
+the **penalized** cost is what ranks the population. After each
+m / σ / C update (and before the next sample loop), γ is adapted from
+(a) the IQR of recent raw fitness values, normalized by the average
+per-axis variance, and (b) the per-coordinate violation of the new
+mean, measured in σ-units. Both pieces are scale-invariant under σ,
+so the penalty self-tunes without user knobs. The initial mean is
+projected onto `[lower, upper]` once at iter 0 (mirrors PGD's iter-0
+projection — pycma doesn't do this, basin does for ergonomics).
+
+**Why this strategy and not the others.** Resampling distorts the
+implicit sampling distribution and rejection rates explode when the
+optimum is on a face. Reflection / clipping is unprincipled — clipping
+puts a delta on the distribution that fights covariance adaptation;
+reflection aliases multimodally near corners. Smooth-boundary
+transformations (pycma's `BoundTransform`) distort the optimization
+landscape near active bounds. Adaptive penalty is the only one with
+a serious self-adapting reference implementation (pycma) and matches
+CMA-ES's "no extra knobs" ethos. **BIPOP** is sometimes lumped with
+these but is a population-restart scheme, orthogonal to bound
+handling — reserved for S11.
+
+**Tenet 4: constraints on the problem, not state.** The user impls
+`CostFunction + BoxConstrained` on the same problem type, exactly as
+with `ProjectedGradientDescent` / `Brent` / `Trf`. No new constraint
+trait, no constraint state on `BasicPopulationState` — γ and the
+fitness-IQR history live solver-internally on `Working<V, M>`, since
+they're adaptation state, not constraint definition.
+
+**State storage convention.** `BasicPopulationState.costs` carries
+**penalized** fitness values (so the `PopulationState`
+sorted-ascending invariant remains coherent for tenet-3 termination
+criteria). Raw fitness is held in a sidecar `Vec<f64>` on `Working`
+in *sample order* (not sorted) — γ-update reads it as a flat bag of
+values for the IQR estimator, so order is irrelevant.
+
+**One new math primitive.** `MatDiagonal<V>::diagonal(&self) -> V`
+extracts `diag(C)` as a vector for the σ²·diag(C) per-axis
+variances the γ-update needs. Wired for `nalgebra::DMatrix<f64>`
+(over `DVector<f64>`) and `faer::Mat<f64>` (over `Col<f64>`). Same
+backend coverage as `SymmetricEigen` — every dense matrix backend
+that supports CMA-ES's eigendecomposition gets `MatDiagonal` for
+free as a few-line impl. The other math traits (`SampleStandardNormal`,
+`ScaleInPlace`, `ComponentMulAssign`, `RankOneUpdate`,
+`SymmetricEigen`, `MatrixIdentity`, `MatVec`, `MatTransposeVec`,
+`NormSquared`, `ScaledAdd`, `VectorLen`) are reused unchanged from
+S8; `ClampInPlace` is reused from PGD.
+
+**Termination.** Solver-internal **TolX** carries over from S8
+unchanged: `σ · max_i d_i < tol_x`, default `tol_x = 1e−12 · σ_init`.
+No new criteria — feasibility is enforced by construction at the
+sample-evaluation site (every evaluated point is in
+`[lower, upper]`), and the framework's `MaxIter` / `MaxCostEvals`
+work against `BasicPopulationState` without modification.
+
+**Code reuse from S8.** Three helpers in `solver/cma_es.rs` were
+bumped to `pub(crate)` and shared verbatim:
+`expected_norm_n01(n)`, `compute_weights(n, λ, c_1, c_µ)`, and
+`sort_population_ascending(candidates, costs)`. The CMA core itself
+(sampling, recombination, σ adaptation, rank-1 + rank-µ C update,
+eigendecomposition, TolX termination) is duplicated in
+`bounded_cma_es.rs` rather than refactored into a shared inner loop —
+the bound-handling additions thread through enough of the iter
+sequence (sample → repair → evaluate → penalize, plus γ-update at
+the top of `next_iter`) that a shared inner loop would expose more
+internals than the duplication costs. Same call as
+`GradientDescent` vs. `ProjectedGradientDescent`.
+
+**Tests: 12 integration (6 + 6 × {nalgebra, faer}).** Per LA-heavy
+backend:
+
+1. **Reproducibility.** Same seed → identical trajectory.
+2. **Slack bounds recover unconstrained minimum.** Booth on
+   `[−5, 5]²` → `(1, 3)` within `1e−2` after 400 iters. Verifies
+   the penalty machinery doesn't get in the way when bounds are
+   inactive.
+3. **Tight bounds converge to box corner.** Booth on `[−1, 1]²`
+   → `(1, 1)` within `1e−2` after 800 iters. Verifies the
+   adaptive penalty steers the search distribution toward an
+   active corner without the rank-µ update going sideways.
+4. **Infeasible initial mean converges.** Start at `(10, 10)` with
+   bounds `[−1, 1]²` → `(1, 1)` within `1e−2` after 800 iters.
+   Tests the iter-0 mean projection plus penalty co-recovery.
+5. **`SolverConverged` via TolX.** 2000-iter cap on slack-bounded
+   Booth; the run terminates by TolX, not `MaxIter`.
+6. **PopulationState invariants.** `candidates` and `costs` stay
+   length-λ and sorted ascending across iterations (where `costs`
+   holds penalized values).
+
+All 12 tests pass on both backends.
+
+**Backends.** Same coverage and reasoning as S8: nalgebra
+(`DVector<f64>` / `DMatrix<f64>`) and faer (`Col<f64>` / `Mat<f64>`).
+`Vec<f64>` and `ndarray` produce a compile-time error per tenet 5
+(no honest matrix type / no pure-Rust `SymmetricEigen` on
+`Array2<f64>`).
+
+**Out of scope.** Linear-equality constraints (need a different
+solver entirely — projection onto an affine set, not a box). General
+nonlinear constraints (waiting for the second concrete solver kind
+per AGENTS.md tenet 4 — pycma's `AugmentedLagrangian` is the
+candidate reference but the *abstraction* it should bind to isn't
+designed yet). The other CMA-ES termination heuristics
+(NoEffectAxis, NoEffectCoord, ConditionCov, EqualFunValues,
+Stagnation, TolXUp, TolFun) — same OOS as S8, those are restart-
+machinery / state-introspection concerns. Pycma's `countiter == 2`
+γ re-init path — minor empirical refinement, skipped for v1; will
+revisit if a head-to-head pycma comparison shows divergence.
+`BoundTransform` (smooth-boundary alternative) — explicitly chose
+penalty over transform, see S9 doc-comment for rationale.
+
+**Reference ingestion.** pycma r4.4.4 `cma/boundary_handler.py`
+(BSD-3-Clause) vendored verbatim under
+`references/pycma-bound-handling/`, alongside a NOTES.md mapping
+the algorithm to basin's port (γ initialization, the IQR /
+σ²-normalization, the `tanh(edist/3)/2` damping factor, the
+`5·dfit` decay cap, the `20 + 3n/λ` history depth). The
+`ingest-paper` skill's PDF-shaped Stage-1 dump didn't apply
+(the reference is code, not a PDF) — manual NOTES.md is the
+bridge. Hansen et al. 2009 *A Method for Handling Uncertainty…*
+(IEEE TEC) is the paper anchor and is referenced in NOTES.md;
+no PDF was needed because the pycma source is the operative
+authority.
+
+**Reference impls.** pycma `BoundPenalty.update` was studied
+line-by-line and basin's `update_gamma` mirrors its active branch
+(boundary_handler.py:731). The legacy elif/else branches are dead
+code in pycma and were skipped. The penalty `/n` divisor (also
+pycma-specific, not in Hansen 2009) is preserved because pycma's
+γ-init `2·dfit` is calibrated against it. No code was ported; the
+implementation is rewritten from the algorithm description in
+NOTES.md.
 
 ## Phase 3 — Convergence
 

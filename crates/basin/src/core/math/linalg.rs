@@ -181,6 +181,27 @@ pub trait MaxDiagonal {
     fn max_diagonal(&self) -> f64;
 }
 
+/// Extract the diagonal `diag(self) ∈ R^n` of a square matrix into a
+/// freshly allocated vector. CMA-ES with bounds (S9) needs the per-axis
+/// variances `σ² · diag(C)` for the adaptive boundary penalty.
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self`. Backends panic otherwise.
+/// - **Implementor must:** return a fresh `V` of length `self.nrows()`
+///   with `out[i] = self[(i, i)]`. The op is `O(n)`.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`) and
+/// `faer::Mat<f64>` (over `Col<f64>`) — the dense matrix backends that
+/// support [`SymmetricEigen`], which is the gating requirement of
+/// CMA-ES.
+pub trait MatDiagonal<V> {
+    /// Return `diag(self)` as a fresh `V` of length `self.nrows()`.
+    fn diagonal(&self) -> V;
+}
+
 /// In-place diagonal augmentation `A ← A + scalar · I`. The minimal
 /// op needed to express the Levenberg-Marquardt damped normal-equations
 /// matrix `JᵀJ + μI` without materializing the identity.

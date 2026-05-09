@@ -48,6 +48,6 @@ pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResul
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{
-    Brent, CmaEs, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead,
+    BoundedCmaEs, Brent, CmaEs, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead,
     ProjectedGradientDescent, RandomSearch, Trf,
 };
