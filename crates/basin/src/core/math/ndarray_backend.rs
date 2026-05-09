@@ -1,12 +1,16 @@
 use ndarray::{Array1, ArrayBase, Data, DataMut, Dimension};
 use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
     BoxAffineScaling,
 };
-use super::sample::SampleUniformBox;
-use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::sample::{SampleStandardNormal, SampleUniformBox};
+use super::{
+    ClampInPlace, ComponentMulAssign, Dot, NegInPlace, NormInfinity, NormSquared, ScaleInPlace,
+    ScaledAdd, VectorLen,
+};
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
 where
@@ -68,6 +72,43 @@ impl SampleUniformBox for Array1<f64> {
             "sample_uniform_box: bounds length mismatch"
         );
         Array1::from_shape_fn(lower.len(), |i| rng.random_range(lower[i]..=upper[i]))
+    }
+}
+
+impl VectorLen for Array1<f64> {
+    fn vec_len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl SampleStandardNormal for Array1<f64> {
+    fn sample_standard_normal<R: Rng + ?Sized>(template: &Self, rng: &mut R) -> Self {
+        Array1::from_shape_fn(template.len(), |_| StandardNormal.sample(rng))
+    }
+}
+
+impl<S, D> ScaleInPlace for ArrayBase<S, D>
+where
+    S: DataMut<Elem = f64>,
+    D: Dimension,
+{
+    fn scale_in_place(&mut self, scalar: f64) {
+        self.map_inplace(|x| *x *= scalar);
+    }
+}
+
+impl<S, D> ComponentMulAssign for ArrayBase<S, D>
+where
+    S: DataMut<Elem = f64>,
+    D: Dimension,
+{
+    fn component_mul_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.shape(),
+            other.shape(),
+            "component_mul_assign: shape mismatch"
+        );
+        self.zip_mut_with(other, |x, y| *x *= y);
     }
 }
 

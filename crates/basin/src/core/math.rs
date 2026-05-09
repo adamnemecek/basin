@@ -48,6 +48,41 @@ pub trait NegInPlace {
     fn neg_in_place(&mut self);
 }
 
+/// In-place scalar multiplication `self ← scalar · self`. Used by
+/// CMA-ES to update the cumulation paths (`p_σ ← (1−c_σ) p_σ + …`,
+/// Hansen 2016 eq. 31) and the covariance matrix
+/// (`C ← (1 + c_1 δ_h − c_1 − c_µ Σ w_j) C + …`, eq. 47) without
+/// allocating a clone per iteration.
+///
+/// `ScaledAdd<f64>` already covers `self ← self + s · other`; the
+/// borrow checker forbids `self.scaled_add(s, &self)`, so an honest
+/// in-place scale needs its own trait.
+pub trait ScaleInPlace {
+    /// Multiply every component of `self` by `scalar` in place.
+    fn scale_in_place(&mut self, scalar: f64);
+}
+
+/// Number of components in a 1-D vector. Used by CMA-ES to derive the
+/// search-space dimension `n` from a template vector at solver
+/// construction time, so callers don't have to thread `n` separately
+/// from the initial mean. Method named `vec_len` to avoid colliding
+/// with the inherent `len()` methods on `Vec`, `DVector`, `Array1`,
+/// `Col`.
+pub trait VectorLen {
+    /// Number of components in `self`.
+    fn vec_len(&self) -> usize;
+}
+
+/// In-place componentwise multiplication `self[i] ← self[i] · other[i]`.
+/// CMA-ES uses this to apply the diagonal `D` (sqrt-eigenvalue) factor:
+/// the sampling step `y_k = B D z_k` is `z.component_mul_assign(&d);
+/// y = B.matvec(&z)`, and the conjugate-path step `C^{−1/2} v =
+/// B (1/d ⊙ Bᵀv)` is the same pattern with `1/d`.
+pub trait ComponentMulAssign {
+    /// Multiply `self[i]` by `other[i]` for every `i`, in place.
+    fn component_mul_assign(&mut self, other: &Self);
+}
+
 mod cl_scaling;
 mod clamp;
 mod linalg;
@@ -74,6 +109,7 @@ pub use cl_scaling::BoxAffineScaling;
 pub use clamp::ClampInPlace;
 pub use linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
-    LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal,
+    LinearSolveSpd, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate,
+    SymmetricEigen, SymmetricEigenError,
 };
-pub use sample::SampleUniformBox;
+pub use sample::{SampleStandardNormal, SampleUniformBox};

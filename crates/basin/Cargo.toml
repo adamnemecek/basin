@@ -72,6 +72,9 @@ web-time = "1"
 # when CRAN's Rust pin moves.
 rand = { version = "0.9", default-features = false }
 rand_chacha = { version = "0.9", default-features = false }
+# Standard-normal sampling for CMA-ES. rand_distr 0.5 pairs with rand 0.9.
+# default-features off to stay consistent with the wasm-safe rand setup.
+rand_distr = { version = "0.5", default-features = false }
 
 [dev-dependencies]
 # Benches are hand-rolled (no criterion/divan) because their transitive

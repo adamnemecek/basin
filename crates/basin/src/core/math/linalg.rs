@@ -244,6 +244,120 @@ pub trait AddDiagonalVectorInPlace<V> {
     fn add_diagonal_vector_in_place(&mut self, diag: &V);
 }
 
+/// `n × n` identity matrix constructor. The smallest piece of matrix
+/// "fabric" needed by CMA-ES, which initializes its covariance as
+/// `C = I` (Hansen 2016, "Initialization" in Figure 6) but is generic
+/// over the matrix type.
+///
+/// # Contract
+///
+/// - **Implementor must:** return a square `n × n` matrix with `1.0` on
+///   the diagonal and `0.0` elsewhere. Allocates fresh storage per call.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` and `faer::Mat<f64>`. Sparse
+/// counterparts are intentionally unimplemented — sparse identity is a
+/// degenerate sparsity pattern that no current solver wants to construct
+/// at runtime.
+pub trait MatrixIdentity {
+    /// Build the `n × n` identity matrix.
+    fn identity(n: usize) -> Self;
+}
+
+/// Symmetric (self-adjoint) eigendecomposition `A = U diag(λ) Uᵀ`. The
+/// load-bearing op for CMA-ES, which factors its covariance every
+/// iteration to compute both the sampling map `B D z_k = y_k ~ N(0, C)`
+/// (Hansen 2016 eq. 39) and the conjugate-path scaling
+/// `C^{−1/2} = B D^{−1} Bᵀ` (eq. 43).
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square, symmetric `self`. Backends treat the
+///   lower triangle as authoritative; non-symmetric inputs produce
+///   meaningless eigenpairs without an error.
+/// - **Implementor must:** return `(eigenvectors, eigenvalues)` where
+///   columns of `eigenvectors` are an orthonormal basis and
+///   `eigenvalues[i]` is the eigenvalue paired with column `i`. The
+///   `eigenvectors` matrix is `n × n` and the `eigenvalues` vector is
+///   length `n` (with `n = self.nrows()`).
+/// - **Implementor may:** return eigenvalues in any order — backends
+///   currently produce ascending order (faer) or unsorted (nalgebra),
+///   and CMA-ES doesn't depend on either. Callers that need a specific
+///   ordering must sort the pairs themselves.
+/// - **Implementor must:** return [`SymmetricEigenError::Failed`] when
+///   the underlying QR/Jacobi/divide-and-conquer iteration fails to
+///   converge. Numerically near-singular but well-defined inputs
+///   succeed; the eigenvalues may include very small values that
+///   callers can clamp before taking square roots.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`)
+/// via `nalgebra::SymmetricEigen` (pure-Rust QR iteration), and for
+/// `faer::Mat<f64>` (with `V = faer::Col<f64>`) via
+/// `faer::linalg::evd::self_adjoint_evd`.
+pub trait SymmetricEigen<V> {
+    /// Eigendecompose a symmetric `self` into `(B, λ)` such that
+    /// `self ≈ B diag(λ) Bᵀ` in floating-point arithmetic.
+    ///
+    /// Named `try_eigh` rather than `symmetric_eigen` so that calls go
+    /// to the trait method without colliding with nalgebra's inherent
+    /// `Matrix::symmetric_eigen` (which consumes `self` and returns a
+    /// `SymmetricEigen` struct, not a `Result`).
+    fn try_eigh(&self) -> Result<(Self, V), SymmetricEigenError>
+    where
+        Self: Sized;
+}
+
+/// Reasons a [`SymmetricEigen::symmetric_eigen`] call can fail. Variants
+/// are backend-agnostic — backends translate their native error types
+/// into these.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SymmetricEigenError {
+    /// The eigensolver iteration failed to converge to the requested
+    /// accuracy. Both backends use bounded-iteration QR / divide-and-
+    /// conquer methods that can in principle fail on pathological
+    /// inputs.
+    Failed,
+}
+
+impl core::fmt::Display for SymmetricEigenError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Failed => f.write_str("symmetric eigendecomposition failed to converge"),
+        }
+    }
+}
+
+impl core::error::Error for SymmetricEigenError {}
+
+/// In-place rank-one update `self ← self + α · v · vᵀ`. CMA-ES uses
+/// this twice per iteration: once with `(α, v) = (c_1, p_c)` for the
+/// rank-one path-update term, and again, repeatedly, with
+/// `(α, v) = (c_µ · w_i°, y_{i:λ})` for the rank-µ recombination term
+/// (Hansen 2016 eq. 47).
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self` and a `v` of length
+///   `self.nrows()`. Backends panic on shape mismatch.
+/// - **Implementor must:** add `α · v[i] · v[j]` to `self[(i, j)]` for
+///   every `(i, j)`, in place. Off-diagonal entries are touched. The op
+///   is `O(n²)` for an `n × n` matrix.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`)
+/// via `ger`, and for `faer::Mat<f64>` (with `V = faer::Col<f64>`) via
+/// the `matmul` accumulator. Sparse backends do *not* implement this —
+/// a rank-one update of a sparse matrix would densify the pattern, and
+/// CMA-ES's covariance is dense by construction anyway.
+pub trait RankOneUpdate<V> {
+    /// Compute `self ← self + α · v · vᵀ` in place.
+    fn rank_one_update(&mut self, alpha: f64, v: &V);
+}
+
 /// Reasons a linear-solve trait call can fail. Variants are
 /// backend-agnostic — backends translate their native error types
 /// into these.

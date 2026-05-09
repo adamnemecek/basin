@@ -1,11 +1,15 @@
 use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
     BoxAffineScaling,
 };
-use super::sample::SampleUniformBox;
-use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::sample::{SampleStandardNormal, SampleUniformBox};
+use super::{
+    ClampInPlace, ComponentMulAssign, Dot, NegInPlace, NormInfinity, NormSquared, ScaleInPlace,
+    ScaledAdd, VectorLen,
+};
 
 impl ScaledAdd<f64> for Vec<f64> {
     fn scaled_add(&mut self, scalar: f64, other: &Self) {
@@ -40,6 +44,44 @@ impl NegInPlace for Vec<f64> {
         for x in self.iter_mut() {
             *x = -*x;
         }
+    }
+}
+
+impl ScaleInPlace for Vec<f64> {
+    fn scale_in_place(&mut self, scalar: f64) {
+        for x in self.iter_mut() {
+            *x *= scalar;
+        }
+    }
+}
+
+impl ComponentMulAssign for Vec<f64> {
+    fn component_mul_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.len(),
+            other.len(),
+            "component_mul_assign: length mismatch"
+        );
+        for (x, y) in self.iter_mut().zip(other.iter()) {
+            *x *= *y;
+        }
+    }
+}
+
+impl VectorLen for Vec<f64> {
+    fn vec_len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl SampleStandardNormal for Vec<f64> {
+    fn sample_standard_normal<R: Rng + ?Sized>(template: &Self, rng: &mut R) -> Self {
+        let n = template.len();
+        let mut out = Vec::with_capacity(n);
+        for _ in 0..n {
+            out.push(StandardNormal.sample(rng));
+        }
+        out
     }
 }
 

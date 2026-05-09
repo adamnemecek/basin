@@ -1,5 +1,7 @@
 /// Brent's method (1D root / minimum bracketing).
 pub mod brent;
+/// Hansen 2016 (µ/µ_W, λ)-CMA-ES with negative weights.
+pub mod cma_es;
 /// Pure Gauss-Newton solver for nonlinear least squares.
 pub mod gauss_newton;
 /// Steepest-descent solver with a pluggable line search.
@@ -23,6 +25,7 @@ pub mod bfgs;
 #[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;
 pub use brent::Brent;
+pub use cma_es::CmaEs;
 pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;

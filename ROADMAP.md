@@ -801,15 +801,129 @@ docs.rs) gave enough signal to pin versions and trait shape. The
 Hansen CMA-ES tutorial stays queued for S8 where the algorithm and
 its constants need a literal reference.
 
-### S8. CMA-ES (vanilla)
+### S8. CMA-ES (vanilla) — **done**
 
-- Second LA-heavy solver: needs eigendecomposition of the covariance.
-- **[ingest]** Hansen, *The CMA Evolution Strategy: A Tutorial*
-  (latest revision). Canonical reference; pseudocode is
-  implementation-ready.
-- Sanity-check constants against `pycma` source.
-- Default to `(μ/μ_w, λ)`-CMA-ES with rank-μ + rank-1 updates,
-  popsize `4 + ⌊3 ln n⌋`. Stick to tutorial defaults.
+`CmaEs` lands in `solver/cma_es.rs` as the second LA-heavy solver in
+basin and the first stochastic LA-heavy solver. Implements
+`(µ/µ_W, λ)`-CMA-ES with negative weights (aCMA-ES) per Hansen 2016
+Figure 6 / Table 1 — same `Solver<P, BasicPopulationState<V>>` shape
+as `RandomSearch`, with five new math ops underneath.
+
+**Algorithm: Hansen 2016 with the 2016 negative-weights setting.**
+Each iteration: rebuild `y_{i:λ} = (x_{i:λ} − m)/σ` from the previous
+generation's sorted candidates, compute the recombination mean
+`⟨y⟩_w = Σ w_i y_{i:λ}`, advance the mean (eq. 42), update the
+conjugate path `p_σ` (eq. 43) and step-size `σ` (eq. 44), test the
+`h_σ` heuristic (`(1−c_σ)^{2(g+1)}` denominator, matching pycma),
+update the cumulation path `p_c` (eq. 45), apply the rank-1 +
+rank-µ covariance update with negative-weight rescaling (eqs. 46–47),
+re-eigendecompose `C` into `(B, d²)`, then sample λ fresh candidates
+`x_k = m + σ B (d ⊙ z_k)` for the next generation. Init samples the
+first generation with `C = I` (so `B D = I`, no eigendecomposition
+needed at iter 0).
+
+**Five new math primitives.** Vector tier: `SampleStandardNormal`
+(per-component `N(0,1)` via `rand_distr::StandardNormal`),
+`ComponentMulAssign` (`y[i] *= x[i]`), `ScaleInPlace` (`y *= s`,
+borrow-checker-honest counterpart of `ScaledAdd`), and `VectorLen`
+(get `n` from a template — used to derive constants from
+`initial_mean.vec_len()` so the user doesn't pass `n` separately).
+Linalg tier: `SymmetricEigen<V>::try_eigh` returning `(B, λ)` with
+`A ≈ B diag(λ) Bᵀ`, `MatrixIdentity::identity(n)` for the `C = I`
+init, and `RankOneUpdate<V>` for the `C += α v vᵀ` accumulator.
+Method named `try_eigh` rather than `symmetric_eigen` to avoid
+colliding with nalgebra's inherent `Matrix::symmetric_eigen` (which
+consumes `self` and returns a `SymmetricEigen` struct, not a
+`Result`).
+
+**Default parameters per Table 1.** Resolved at init time from the
+problem dimension `n = initial_mean.vec_len()` and the optional
+`λ_override` (default `4 + ⌊3 ln n⌋`, eq. 48). Recombination weights
+follow rows (49)–(53): preliminary `w_i' = ln((λ+1)/2) − ln i`,
+positive weights normalized to sum to 1, negative weights bounded by
+`min(α_µ, α_µeff, α_pos_def) / Σ|w_j'|−`. The "apparent circular
+dependency" between `c_1`, `c_µ`, `α_µ`, `µ_eff`, and the negative
+weights is broken (per Hansen Appendix A) by computing `µ_eff` once
+from raw `w_i'` (it's invariant under positive-weight rescaling),
+deriving `c_1`, `c_µ` from it, then computing the final weights.
+
+**State shape: `BasicPopulationState<V>` reused unchanged from S7.**
+The user-visible iterate is the population's best (sorted ascending).
+Solver-internal mutable state — `m`, `σ`, `C`, `B`, `d`, `d_inv`,
+`p_σ`, `p_c`, `weights`, all the constants, RNG, generation
+counter — lives on the solver via `&mut self`. The S7 contract about
+`init` resampling regardless of caller-provided population carries
+over: passing a custom `BasicPopulationState::from_population(...)`
+is silently overwritten by the solver's seeded sampler at `init`,
+keeping reproducibility honest.
+
+**Termination.** Solver-internal **TolX** via `Solver::terminate`:
+`σ · max_i d_i < tol_x` emits `SolverConverged`. Default
+`tol_x = 1e−12 · initial_sigma` per Hansen Appendix B.3. Other
+CMA-ES termination heuristics (NoEffectAxis, NoEffectCoord,
+ConditionCov, EqualFunValues, Stagnation, TolXUp, TolFun) are out
+of scope — most need state introspection that would force a richer
+state shape, or are restart-machinery (S11) concerns.
+
+**Tests: 11 integration + 5 unit (6 + 5 + 2 × {nalgebra, faer}).**
+Per LA-heavy backend (nalgebra `(DVector, DMatrix)`, faer
+`(Col, Mat)`):
+
+1. **Reproducibility.** Same seed → identical trajectory.
+2. **Convergence on Sphere 5-D from `(1, 1, 1, 1, 1)`.** 80 iters at
+   default λ ≈ 8 → cost < `1e−6`.
+3. **Convergence on Rosenbrock 2-D from `(−1, 1)`.** 800 iters at
+   default λ = 6 → iterate within `1e−3` of `(1, 1)`. The canonical
+   non-convex banana-valley test where CMA-ES is supposed to shine.
+4. **`SolverConverged` via TolX.** 2000-iter cap on Sphere 3-D with
+   default `tol_x = 1e−12 · σ₀`; the run terminates by TolX, not by
+   `MaxIter`.
+5. **PopulationState invariants.** `candidates` and `costs` stay
+   length-λ and sorted ascending across iterations.
+
+Plus, on nalgebra only:
+6. **Different seeds → different trajectories** (constant-RNG bug
+   regression).
+
+Plus per backend, two new linalg unit tests for the matrix tier:
+matrix-identity correctness, rank-1 outer-product update, and
+symmetric eigendecomposition recomposition `B diag(λ) Bᵀ ≈ A`
+to `1e−10`.
+
+**Backends.** All four LA-heavy combinations would in principle work
+— but only nalgebra and faer carry the full
+`SymmetricEigen + MatrixIdentity + RankOneUpdate + ScaleInPlace +
+MatVec + MatTransposeVec` set, so those are the two wired and tested.
+`Vec<f64>` and `ndarray::Array1<f64>` produce a compile-time error
+per tenet 5 (no honest matrix type / no pure-Rust eigendecomposition
+on `Array2<f64>`). The vector-tier additions (`SampleStandardNormal`,
+`ComponentMulAssign`, `ScaleInPlace`, `VectorLen`) cover all four
+vector backends including Vec and ndarray, anticipating future
+stochastic solvers that don't need a covariance.
+
+**Out of scope.** Bounded variant (S9). Eigendecomposition refresh
+every `max(1, ⌊1/(10n(c_1+c_µ))⌋)` iterations (Hansen Appendix B.2)
+— we refresh every iteration for simplicity. BIPOP / IPOP restarts
+(S11). Constraint handling (S9). Active-CMA decay tightening when
+C is ill-conditioned (pycma-specific, not in the tutorial). Adaptive
+σ-stalling termination (TolXUp, EqualFunValues, Stagnation).
+
+**Paper ingestion.** Hansen 2016 ingested via `ingest-paper`. The
+fast `pymupdf4llm` pass mangled equations badly (eq. 1–60 came out
+as `aVar[ˆτyx[z][2][]]`-style bracket noise), but **direct
+`pymupdf.get_text()`** on the algorithm-summary pages (28–31) and
+the step-size pages (16–21) extracted the math cleanly — no marker
+pass needed. The marker recipe was attempted but blocked by an
+unrelated `pycma` dep in `tools/pyproject.toml` that uv refuses to
+resolve; the pymupdf path was sufficient. Notes at
+`references/hansen-2016/NOTES.md`.
+
+**Reference impls.** pycma (BSD-3-Clause) was consulted for the
+`h_σ` denominator convention (`(2*countiter + 2)`) and the
+weights-bounding flow ordering, but no code was ported — basin's
+implementation is from Hansen 2016 directly. The MATLAB source in
+Appendix C of the tutorial is part of the paper and was likewise
+not copied.
 
 ### S9. CMA-ES with bounds
 

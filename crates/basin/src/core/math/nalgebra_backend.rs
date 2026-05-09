@@ -1,5 +1,6 @@
 use nalgebra::{DMatrix, DVector, Dim, Matrix, Storage, StorageMut};
 use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
@@ -7,10 +8,14 @@ use super::cl_scaling::{
 };
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal,
+    MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
+    SymmetricEigenError,
 };
-use super::sample::SampleUniformBox;
-use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::sample::{SampleStandardNormal, SampleUniformBox};
+use super::{
+    ClampInPlace, ComponentMulAssign, Dot, NegInPlace, NormInfinity, NormSquared, ScaleInPlace,
+    ScaledAdd, VectorLen,
+};
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
 where
@@ -77,6 +82,46 @@ impl SampleUniformBox for DVector<f64> {
             "sample_uniform_box: bounds length mismatch"
         );
         DVector::from_fn(lower.len(), |i, _| rng.random_range(lower[i]..=upper[i]))
+    }
+}
+
+impl VectorLen for DVector<f64> {
+    fn vec_len(&self) -> usize {
+        self.len()
+    }
+}
+
+impl SampleStandardNormal for DVector<f64> {
+    fn sample_standard_normal<G: Rng + ?Sized>(template: &Self, rng: &mut G) -> Self {
+        DVector::from_fn(template.len(), |_, _| StandardNormal.sample(rng))
+    }
+}
+
+impl<R, C, S> ScaleInPlace for Matrix<f64, R, C, S>
+where
+    R: Dim,
+    C: Dim,
+    S: StorageMut<f64, R, C>,
+{
+    fn scale_in_place(&mut self, scalar: f64) {
+        // nalgebra's `*=` allocates intermediate; iterate manually.
+        self.apply(|x| *x *= scalar);
+    }
+}
+
+impl<R, C, S> ComponentMulAssign for Matrix<f64, R, C, S>
+where
+    R: Dim,
+    C: Dim,
+    S: StorageMut<f64, R, C>,
+{
+    fn component_mul_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.shape(),
+            other.shape(),
+            "component_mul_assign: shape mismatch"
+        );
+        self.zip_apply(other, |x, y| *x *= y);
     }
 }
 
@@ -326,6 +371,55 @@ impl AddDiagonalVectorInPlace<DVector<f64>> for DMatrix<f64> {
     }
 }
 
+impl MatrixIdentity for DMatrix<f64> {
+    fn identity(n: usize) -> Self {
+        DMatrix::identity(n, n)
+    }
+}
+
+impl SymmetricEigen<DVector<f64>> for DMatrix<f64> {
+    fn try_eigh(&self) -> Result<(Self, DVector<f64>), SymmetricEigenError> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "try_eigh: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        // `try_new` is the bounded-iteration form. Convergence epsilon
+        // matches nalgebra's `symmetric_eigen` default; the iteration
+        // cap is the standard `n × 30` heuristic.
+        let n = self.nrows();
+        let max_iter = n.saturating_mul(30).max(64);
+        nalgebra::SymmetricEigen::try_new(self.clone(), 1e-10, max_iter)
+            .map(|eig| (eig.eigenvectors, eig.eigenvalues))
+            .ok_or(SymmetricEigenError::Failed)
+    }
+}
+
+impl RankOneUpdate<DVector<f64>> for DMatrix<f64> {
+    fn rank_one_update(&mut self, alpha: f64, v: &DVector<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "rank_one_update: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            v.len(),
+            "rank_one_update: matrix is {}x{} but v has length {}",
+            self.nrows(),
+            self.ncols(),
+            v.len()
+        );
+        // self ← self + α · v · vᵀ via ger (nalgebra's BLAS-2 rank-1 update).
+        // ger(α, v, w, β) computes self ← α v wᵀ + β self.
+        self.ger(alpha, v, v, 1.0);
+    }
+}
+
 impl LinearSolveSpd<DVector<f64>> for DMatrix<f64> {
     fn solve_spd(&self, b: &DVector<f64>) -> Result<DVector<f64>, LinearSolveError> {
         assert_eq!(
@@ -445,6 +539,50 @@ mod tests {
         assert!(approx_eq(a[(2, 2)], 1009.0, 1e-12));
         assert!(approx_eq(a[(0, 1)], 2.0, 1e-12));
         assert!(approx_eq(a[(2, 1)], 8.0, 1e-12));
+    }
+
+    #[test]
+    fn matrix_identity_is_diagonal_ones() {
+        let i: DMatrix<f64> = MatrixIdentity::identity(3);
+        assert_eq!(i.shape(), (3, 3));
+        for r in 0..3 {
+            for c in 0..3 {
+                let want = if r == c { 1.0 } else { 0.0 };
+                assert!(approx_eq(i[(r, c)], want, 1e-12));
+            }
+        }
+    }
+
+    #[test]
+    fn rank_one_update_outer_product() {
+        // self = 0; α = 2; v = (1, 2, 3) → α v vᵀ = 2 [[1,2,3],[2,4,6],[3,6,9]].
+        let mut a = DMatrix::<f64>::zeros(3, 3);
+        let v = DVector::from_vec(vec![1.0, 2.0, 3.0]);
+        a.rank_one_update(2.0, &v);
+        assert!(approx_eq(a[(0, 0)], 2.0, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 4.0, 1e-12));
+        assert!(approx_eq(a[(0, 2)], 6.0, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 8.0, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 18.0, 1e-12));
+    }
+
+    #[test]
+    fn symmetric_eigen_recovers_factorization() {
+        // C = [[2, 1], [1, 2]] has eigenvalues 1, 3 and eigenvectors
+        // ([1, -1]/√2, [1, 1]/√2). Verify B Λ Bᵀ ≈ C.
+        let c = DMatrix::from_row_slice(2, 2, &[2.0, 1.0, 1.0, 2.0]);
+        let (b, lambda) = c.try_eigh().expect("eigendecomposition");
+        // B Λ Bᵀ
+        let mut lambda_diag = DMatrix::<f64>::zeros(2, 2);
+        for i in 0..2 {
+            lambda_diag[(i, i)] = lambda[i];
+        }
+        let recomposed = &b * &lambda_diag * b.transpose();
+        for r in 0..2 {
+            for c_idx in 0..2 {
+                assert!(approx_eq(recomposed[(r, c_idx)], c[(r, c_idx)], 1e-10));
+            }
+        }
     }
 
     #[test]

@@ -2,6 +2,7 @@ use faer::linalg::matmul::matmul;
 use faer::linalg::solvers::{Llt, Solve};
 use faer::{Accum, Col, Mat, Par, Side};
 use rand::Rng;
+use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
@@ -9,10 +10,14 @@ use super::cl_scaling::{
 };
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal,
+    MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
+    SymmetricEigenError,
 };
-use super::sample::SampleUniformBox;
-use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
+use super::sample::{SampleStandardNormal, SampleUniformBox};
+use super::{
+    ClampInPlace, ComponentMulAssign, Dot, NegInPlace, NormInfinity, NormSquared, ScaleInPlace,
+    ScaledAdd, VectorLen,
+};
 
 impl ScaledAdd<f64> for Col<f64> {
     fn scaled_add(&mut self, scalar: f64, other: &Self) {
@@ -54,6 +59,35 @@ impl SampleUniformBox for Col<f64> {
             "sample_uniform_box: bounds length mismatch"
         );
         Col::<f64>::from_fn(lower.nrows(), |i| rng.random_range(lower[i]..=upper[i]))
+    }
+}
+
+impl VectorLen for Col<f64> {
+    fn vec_len(&self) -> usize {
+        self.nrows()
+    }
+}
+
+impl SampleStandardNormal for Col<f64> {
+    fn sample_standard_normal<R: Rng + ?Sized>(template: &Self, rng: &mut R) -> Self {
+        Col::<f64>::from_fn(template.nrows(), |_| StandardNormal.sample(rng))
+    }
+}
+
+impl ScaleInPlace for Col<f64> {
+    fn scale_in_place(&mut self, scalar: f64) {
+        faer::zip!(self.as_mut()).for_each(|faer::unzip!(x)| *x *= scalar);
+    }
+}
+
+impl ComponentMulAssign for Col<f64> {
+    fn component_mul_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.nrows(),
+            other.nrows(),
+            "component_mul_assign: shape mismatch"
+        );
+        faer::zip!(self.as_mut(), other.as_ref()).for_each(|faer::unzip!(x, y)| *x *= *y);
     }
 }
 
@@ -280,6 +314,79 @@ impl AddDiagonalVectorInPlace<Col<f64>> for Mat<f64> {
     }
 }
 
+impl ScaleInPlace for Mat<f64> {
+    fn scale_in_place(&mut self, scalar: f64) {
+        faer::zip!(self.as_mut()).for_each(|faer::unzip!(x)| *x *= scalar);
+    }
+}
+
+impl MatrixIdentity for Mat<f64> {
+    fn identity(n: usize) -> Self {
+        Mat::<f64>::identity(n, n)
+    }
+}
+
+impl SymmetricEigen<Col<f64>> for Mat<f64> {
+    fn try_eigh(&self) -> Result<(Self, Col<f64>), SymmetricEigenError> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "try_eigh: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        // faer takes the lower triangle as authoritative; CMA-ES's
+        // covariance is built from rank-one updates that touch both
+        // triangles symmetrically, so this assumption holds.
+        let eig = self
+            .self_adjoint_eigen(Side::Lower)
+            .map_err(|_| SymmetricEigenError::Failed)?;
+        let n = self.nrows();
+        let u_ref = eig.U();
+        let s_ref = eig.S();
+        // Materialize both as fresh, owned types so the caller doesn't
+        // hold a borrow into a transient eig wrapper.
+        let mut u_mat = Mat::<f64>::zeros(n, n);
+        for j in 0..n {
+            for i in 0..n {
+                u_mat[(i, j)] = u_ref[(i, j)];
+            }
+        }
+        let s_col = Col::<f64>::from_fn(n, |i| s_ref[i]);
+        Ok((u_mat, s_col))
+    }
+}
+
+impl RankOneUpdate<Col<f64>> for Mat<f64> {
+    fn rank_one_update(&mut self, alpha: f64, v: &Col<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "rank_one_update: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            v.nrows(),
+            "rank_one_update: matrix is {}x{} but v has length {}",
+            self.nrows(),
+            self.ncols(),
+            v.nrows()
+        );
+        // self ← self + α · v · vᵀ via matmul accumulator. v is n×1;
+        // v.transpose() is 1×n; the outer product is n×n.
+        matmul(
+            self.as_mut(),
+            Accum::Add,
+            v.as_mat(),
+            v.transpose().as_mat(),
+            alpha,
+            Par::Seq,
+        );
+    }
+}
+
 impl LinearSolveSpd<Col<f64>> for Mat<f64> {
     fn solve_spd(&self, b: &Col<f64>) -> Result<Col<f64>, LinearSolveError> {
         assert_eq!(
@@ -400,6 +507,58 @@ mod tests {
         g.add_diagonal_in_place(1e-3);
         let x = g.solve_spd(&b).expect("damped gram must be SPD");
         assert_eq!(x.nrows(), 2);
+    }
+
+    #[test]
+    fn matrix_identity_is_diagonal_ones() {
+        let i: Mat<f64> = MatrixIdentity::identity(3);
+        assert_eq!((i.nrows(), i.ncols()), (3, 3));
+        for r in 0..3 {
+            for c in 0..3 {
+                let want = if r == c { 1.0 } else { 0.0 };
+                assert!(approx_eq(i[(r, c)], want, 1e-12));
+            }
+        }
+    }
+
+    #[test]
+    fn rank_one_update_outer_product() {
+        let mut a = Mat::<f64>::zeros(3, 3);
+        let v = Col::<f64>::from_fn(3, |i| [1.0, 2.0, 3.0][i]);
+        a.rank_one_update(2.0, &v);
+        assert!(approx_eq(a[(0, 0)], 2.0, 1e-12));
+        assert!(approx_eq(a[(0, 1)], 4.0, 1e-12));
+        assert!(approx_eq(a[(0, 2)], 6.0, 1e-12));
+        assert!(approx_eq(a[(1, 1)], 8.0, 1e-12));
+        assert!(approx_eq(a[(2, 2)], 18.0, 1e-12));
+    }
+
+    #[test]
+    fn symmetric_eigen_recovers_factorization() {
+        // C = [[2, 1], [1, 2]] has eigenvalues 1, 3.
+        let c = mat2([2.0, 1.0], [1.0, 2.0]);
+        let (b, lambda) = c.try_eigh().expect("eigendecomposition");
+        // Recompose: B diag(λ) Bᵀ.
+        let mut bd = b.clone();
+        for j in 0..2 {
+            for i in 0..2 {
+                bd[(i, j)] *= lambda[j];
+            }
+        }
+        let mut recomposed = Mat::<f64>::zeros(2, 2);
+        matmul(
+            recomposed.as_mut(),
+            Accum::Replace,
+            bd.as_ref(),
+            b.transpose(),
+            1.0,
+            Par::Seq,
+        );
+        for r in 0..2 {
+            for c_idx in 0..2 {
+                assert!(approx_eq(recomposed[(r, c_idx)], c[(r, c_idx)], 1e-10));
+            }
+        }
     }
 
     #[test]
