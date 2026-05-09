@@ -5,13 +5,12 @@ use basin::{BasicState, Executor, LevenbergMarquardt, TerminationReason};
 use faer::sparse::{SparseColMat, Triplet};
 use faer::Col;
 
+type FaerSparseLeastSquares = SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>>;
+
 /// Mirror of the GN sparse fixture: 6×3 design with `b = A·[1,2,3]` so
 /// the closed-form least-squares minimum has zero residual at
 /// `x* = [1, 2, 3]`.
-fn fixture() -> (
-    SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>>,
-    Col<f64>,
-) {
+fn fixture() -> (FaerSparseLeastSquares, Col<f64>) {
     let triplets = [
         Triplet::new(0_usize, 0_usize, 1.0),
         Triplet::new(1, 1, 1.0),

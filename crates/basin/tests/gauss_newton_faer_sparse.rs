@@ -5,13 +5,12 @@ use basin::{BasicState, Executor, GaussNewton, TerminationReason};
 use faer::sparse::{SparseColMat, Triplet};
 use faer::Col;
 
+type FaerSparseLeastSquares = SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>>;
+
 /// 6×3 sparse design with `b = A·[1,2,3]` so the closed-form
 /// least-squares minimum has zero residual at `x* = [1, 2, 3]`.
 /// Sparsity pattern: an I₃ block stacked on a pairwise-sum block.
-fn fixture() -> (
-    SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>>,
-    Col<f64>,
-) {
+fn fixture() -> (FaerSparseLeastSquares, Col<f64>) {
     let triplets = [
         // Top: identity I₃
         Triplet::new(0_usize, 0_usize, 1.0),

@@ -5,13 +5,9 @@ use basin::{BasicState, Executor, TerminationReason, Trf};
 use faer::sparse::{SparseColMat, Triplet};
 use faer::Col;
 
-fn fixture(
-    lower: Col<f64>,
-    upper: Col<f64>,
-) -> (
-    SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>>,
-    Col<f64>,
-) {
+type FaerSparseLeastSquaresBoxed = SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>>;
+
+fn fixture(lower: Col<f64>, upper: Col<f64>) -> (FaerSparseLeastSquaresBoxed, Col<f64>) {
     let triplets = [
         Triplet::new(0_usize, 0_usize, 1.0),
         Triplet::new(1, 1, 1.0),
