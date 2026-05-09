@@ -35,6 +35,7 @@ pub mod constraint;
 pub mod executor;
 pub mod math;
 pub mod problem;
+pub mod rng;
 pub mod solver;
 pub mod state;
 pub mod termination;

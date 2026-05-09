@@ -132,6 +132,38 @@ pub trait SimplexState: State {
     fn costs(&self) -> &[Self::Float];
 }
 
+/// States built around a population of `λ` candidate parameters and
+/// parallel costs.
+///
+/// Mirrors [`SimplexState`]: the trait exists so termination criteria
+/// that need to inspect the whole population (diversity, generation
+/// spread, stall counters) can bound on a richer view than
+/// [`State::param`] / [`State::cost`], which only see the best
+/// candidate. The vehicle for stochastic solvers
+/// ([`RandomSearch`](crate::solver::RandomSearch); CMA-ES once it lands).
+///
+/// # Contract
+///
+/// - **Implementor must:** keep [`candidates`](Self::candidates) and
+///   [`costs`](Self::costs) sorted by **ascending cost** at the start
+///   and end of every
+///   [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+///   call (and at the end of [`Solver::init`](crate::core::solver::Solver::init)).
+///   So [`State::param`] / [`State::cost`] always return the current
+///   best candidate (`candidates[0]` / `costs[0]`).
+/// - **Implementor must:** sort `NaN` costs *last*, so a single bad
+///   evaluation can't drag itself to the front and become the
+///   "best" candidate.
+/// - **Implementor must:** keep the two slices the same length and in
+///   parallel order — `costs[i]` is the cost at `candidates[i]`.
+pub trait PopulationState: State {
+    /// All `λ` candidates, sorted by ascending cost.
+    fn candidates(&self) -> &[Self::Param];
+    /// Costs in parallel with [`candidates`](Self::candidates), sorted
+    /// ascending.
+    fn costs(&self) -> &[Self::Float];
+}
+
 /// Default state for single-iterate solvers (gradient descent,
 /// Gauss-Newton, …): one `param`, optional cached cost and gradient,
 /// plus iteration / evaluation counters.
@@ -481,5 +513,104 @@ impl<V, M> GradientState for QuasiNewtonState<V, M> {
 
     fn increment_gradient_evals(&mut self, by: u64) {
         self.gradient_evals += by;
+    }
+}
+
+/// Default [`PopulationState`] implementation: `λ` candidate parameters
+/// and parallel costs. The solver keeps both sorted by ascending cost
+/// at the start and end of every `next_iter`, so [`State::param`] /
+/// [`State::cost`] always return the current best candidate.
+///
+/// Vehicle for [`RandomSearch`](crate::solver::RandomSearch); will be
+/// reused by CMA-ES (S8) without changes.
+pub struct BasicPopulationState<V> {
+    pub(crate) candidates: Vec<V>,
+    pub(crate) costs: Vec<f64>,
+    pub(crate) iter: u64,
+    pub(crate) cost_evals: u64,
+}
+
+impl<V> BasicPopulationState<V> {
+    /// Build from a pre-constructed population (advanced users; custom
+    /// initial distributions). Costs are filled by the solver in
+    /// [`Solver::init`](crate::core::solver::Solver::init).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `candidates` is empty — a population must have at
+    /// least one member.
+    pub fn from_population(candidates: Vec<V>) -> Self {
+        assert!(
+            !candidates.is_empty(),
+            "BasicPopulationState requires a non-empty population"
+        );
+        let n = candidates.len();
+        Self {
+            candidates,
+            costs: vec![f64::INFINITY; n],
+            iter: 0,
+            cost_evals: 0,
+        }
+    }
+
+    /// Empty container with `lambda` capacity reserved. The solver
+    /// fills it in [`Solver::init`](crate::core::solver::Solver::init)
+    /// (e.g. by sampling uniformly in the problem's box).
+    ///
+    /// Use this constructor when the *solver* owns the initial-
+    /// population distribution (the random-search style); use
+    /// [`from_population`](Self::from_population) when the *caller* owns
+    /// it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `lambda == 0`.
+    pub fn with_size(lambda: usize) -> Self {
+        assert!(lambda >= 1, "BasicPopulationState requires lambda >= 1");
+        Self {
+            candidates: Vec::with_capacity(lambda),
+            costs: Vec::with_capacity(lambda),
+            iter: 0,
+            cost_evals: 0,
+        }
+    }
+}
+
+impl<V> State for BasicPopulationState<V> {
+    type Param = V;
+    type Float = f64;
+
+    fn iter(&self) -> u64 {
+        self.iter
+    }
+
+    fn increment_iter(&mut self) {
+        self.iter += 1;
+    }
+
+    fn cost_evals(&self) -> u64 {
+        self.cost_evals
+    }
+
+    fn increment_cost_evals(&mut self, by: u64) {
+        self.cost_evals += by;
+    }
+
+    fn param(&self) -> &V {
+        &self.candidates[0]
+    }
+
+    fn cost(&self) -> f64 {
+        self.costs[0]
+    }
+}
+
+impl<V> PopulationState for BasicPopulationState<V> {
+    fn candidates(&self) -> &[V] {
+        &self.candidates
+    }
+
+    fn costs(&self) -> &[f64] {
+        &self.costs
     }
 }

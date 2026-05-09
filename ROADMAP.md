@@ -675,16 +675,131 @@ TRF, documented in the `cl_kkt_inf_norm` rustdoc.
 
 ## Phase 2 — Track B: toward CMA-ES
 
-### S7. Wasm-safe RNG abstraction + simple stochastic solver
+### S7. Wasm-safe RNG abstraction + simple stochastic solver — **done**
 
-- Pick `rand` + a wasm-compatible seedable PRNG (probably
-  `rand_chacha`). Document the seed-control story — reproducibility
-  matters for stochastic tests.
-- Vehicle solver: random search or a (1+1) evolution strategy. Tiny,
-  but exercises stochastic state + new termination considerations
-  (no monotone cost).
-- New `PopulationState` (n candidates, n costs) — analogous to
-  `BasicSimplexState`.
+`RandomSearch` lands in `solver/random_search.rs` as the first
+stochastic, derivative-free, population-based solver in basin and the
+vehicle for the new `BasicPopulationState` / `PopulationState` story.
+Same `Solver<P, S>` shape as every other solver, with the RNG carried
+on the solver itself (`&mut self` on `init` / `next_iter`) — same seed
+in, same iterate trajectory out, on every platform basin builds for.
+
+**Algorithm: elitist (1+λ) random search.** At `init` the solver fills
+the population with λ candidates drawn component-wise uniformly from
+the problem's box `[lower, upper]`, evaluates each, and sorts by
+ascending cost. Each `next_iter` snapshots the elite
+`(candidates[0], costs[0])`, resamples λ fresh candidates, evaluates
+them, sorts the combined `λ + 1` set, and truncates back to λ. The
+elite carry-over keeps `state.cost()` non-increasing across
+generations, so the framework's `CostTolerance` and `ParamTolerance`
+work honestly under stochastic dynamics without any termination-layer
+redesign. (CMA-ES is genuinely non-monotone and the "no monotone
+cost" termination story will be designed alongside it in S8 / S9.)
+
+**RNG: `rand 0.9` + `rand_chacha 0.9`, ChaCha8Rng only.** Both pinned
+to the 0.9 line: `rand 0.10` and `rand_chacha 0.10` require
+edition2024 (Rust 1.85+), above basin's MSRV. `default-features =
+false` on `rand` drops `std_rng` / `thread_rng` and the implicit
+`getrandom` JS-feature pull-in — a `ChaCha8Rng::seed_from_u64(seed)`
+works on `wasm32-unknown-unknown` with no JS shim. Verified with
+`cargo build --target wasm32-unknown-unknown --all-features` after
+landing the deps. Unconditional (not feature-gated): RNG is core
+infrastructure, not optional; the manifest stays at one feature per
+backend per tenet 2. New `core/rng.rs` module is a tiny re-export
+layer (`pub use rand::{Rng, RngCore, SeedableRng}; pub use
+rand_chacha::ChaCha8Rng;`).
+
+**One vector-tier trait, one method.** `SampleUniformBox` in
+`core/math/sample.rs`:
+
+```rust
+pub trait SampleUniformBox: Sized {
+    fn sample_uniform_box<R: Rng + ?Sized>(
+        lower: &Self, upper: &Self, rng: &mut R,
+    ) -> Self;
+}
+```
+
+Per-component uniform sample via `rng.random_range(lower[i]..=upper[i])`.
+Inclusive-bound semantics (`Uniform::new_inclusive`) so equal bounds
+deterministically pin the coordinate. Implemented for all four vector
+backends (Vec, nalgebra `DVector`, ndarray `Array1`, faer `Col`) —
+sampling allocates a fresh vector per call, so the trait is concrete
+on each backend's specific 1D type rather than generic over
+`Matrix<f64, R, C, S>` (the existing `ClampInPlace` shape doesn't
+extend honestly here — there's no generic constructor across the four
+backends). Standard-normal sampling (the natural next step for S8) is
+*not* introduced this session — adding a `SampleStandardNormal` trait
+without a caller would be speculative; CMA-ES is the right time to
+design its shape.
+
+**New state: `BasicPopulationState<V>` + `PopulationState` trait.** Same
+shape as `BasicSimplexState<V>` + `SimplexState` — `candidates: Vec<V>`,
+`costs: Vec<f64>`, sorted ascending by cost so `param() = &candidates[0]`
+and `cost() = costs[0]`. NaN-last sort comparator lifted from
+Nelder-Mead. Two constructors: `with_size(lambda)` (empty container,
+solver fills it in `init` — the common case) and `from_population(Vec<V>)`
+(advanced users with custom initial distributions). Capability trait
+`PopulationState` exposes `candidates()` / `costs()` slices for any
+future population-aware termination criterion (a `PopulationStalled`
+"no improvement in N generations" check is the natural follow-up but
+unjustified without a real test case).
+
+**Tests: 18 new + 2 unit (4 + 4 + 4 + 6 + 2).** Per backend (Vec,
+nalgebra, ndarray, faer):
+
+1. **Reproducibility.** Same seed → identical trajectory across two
+   independent runs. Load-bearing for the stochastic-solver contract.
+2. **Convergence on `BoothBoxed`** with `[-1, 1]²` from λ = 64,
+   200 iterations: lands within `0.05` of the constrained optimum
+   `(1, 1)` (the unconstrained min `(1, 3)` is outside the box). Loose
+   tolerance because random search converges polynomially in the
+   sample budget.
+3. **Elitism / monotonicity.** `state.cost()` is non-increasing across
+   `next_iter`, asserted iteration-by-iteration via `Stepper::step`.
+4. **Sort + length invariants** survive iteration: `candidates.len() ==
+   costs.len() == λ` and costs are sorted ascending.
+
+Vec backend additionally covers:
+5. **Different seeds → different trajectories** (constant-RNG bug
+   regression).
+6. **`MaxIter(0)` returns the init-time elite**, with every component
+   inside the box (init-time projection contract).
+
+Plus two `core/math/vec.rs` unit tests for `SampleUniformBox`:
+in-bounds correctness with a pinned coordinate (lower == upper), and
+seed-reproducibility on a single sample.
+
+**State-consistency choice.** `RandomSearch` always *clears* the
+population at `init` and fills it from its own RNG, even when the
+caller built the state via `BasicPopulationState::from_population(...)`.
+Reason: making the trajectory depend on the constructor would silently
+break reproducibility for callers using the common `with_size` path.
+Callers who genuinely want a custom initial population should drive
+the solver step-by-step rather than letting `init` overwrite it. This
+is documented on the solver's `# Contract` rustdoc.
+
+**Backends.** All four vector backends wired and tested. The
+`# Backends` rustdoc on `RandomSearch` mirrors `GradientDescent`'s
+literally — backend-generic, four concrete `V` choices behind the
+respective feature flags, plus `BoxConstrained` on the problem.
+
+**Out of scope.** `(1+1)`-ES with Gaussian perturbation (would need
+`rand_distr::StandardNormal`, deferred to S8). Non-elitist random
+search and the new termination criteria it would force (`PopulationStalled`,
+diversity-based checks) — bigger redesign than warranted before
+CMA-ES actually needs them. `serde` integration for checkpointing
+seeded RNGs (no caller yet). Generalizing `BasicState<P, F>` over `F:
+Float` (the trigger TODO.md called out for the first stochastic
+solver) — `f64` everywhere is still honest, no f32 user has appeared,
+and the bound-boilerplate cost of preemptive generality outweighs
+deferring per the *Provisional choices* section of `AGENTS.md`.
+
+**Paper ingestion.** Skipped — random search is a half-page algorithm
+with no canonical paper. `rand` and `rand_chacha` API surveys (via
+docs.rs) gave enough signal to pin versions and trait shape. The
+Hansen CMA-ES tutorial stays queued for S8 where the algorithm and
+its constants need a literal reference.
 
 ### S8. CMA-ES (vanilla)
 

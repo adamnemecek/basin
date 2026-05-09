@@ -14,11 +14,20 @@ This section tracks the immediate next session's discrete items.
       `SparseLeastSquares` fixture. See `ROADMAP.md` Phase 1 for
       decisions and deferred follow-ups.
 
-- [ ] **S4: Levenberg-Marquardt (unconstrained).**
-      Gauss-Newton + Marquardt damping with the Nielsen 1999 λ-update.
-      Inherits dense + sparse + both backends from S2b. Read
-      Madsen/Nielsen/Tingleff (2004) + Nielsen (1999) + skim MINPACK
-      `lmder` first.
+- [x] **S7: Wasm-safe RNG abstraction + simple stochastic solver.**
+      *(done)* `RandomSearch` (elitist 1+λ) lands on top of new
+      `BasicPopulationState<V>` / `PopulationState` and a new vector-
+      tier `SampleUniformBox` trait. RNG is `rand 0.9` +
+      `rand_chacha 0.9` (0.10 wants edition2024, blocks MSRV);
+      seeded `ChaCha8Rng` works on `wasm32-unknown-unknown` with no
+      JS shim. See `ROADMAP.md` Phase 2 for decisions and deferrals.
+
+- [ ] **S8: CMA-ES (vanilla).**
+      Second LA-heavy solver: covariance + eigendecomposition. Read
+      Hansen, *The CMA Evolution Strategy: A Tutorial* first; pin
+      `(μ/μ_w, λ)`-CMA-ES with rank-μ + rank-1 updates and tutorial-
+      default constants. The `SampleStandardNormal` trait designed
+      against this caller's needs.
 
 ## Deferred (not now)
 
@@ -30,8 +39,11 @@ This section tracks the immediate next session's discrete items.
       constrained solver is being written (likely projected gradient on box
       bounds).
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
-      provisional-choices section in `AGENTS.md`. Triggered by the first
-      stochastic solver or a real f32 use case.
+      provisional-choices section in `AGENTS.md`. The first stochastic
+      solver (S7 `RandomSearch`) landed without forcing this — the
+      bound-boilerplate cost of preemptive generality still outweighs
+      the refactor. Trigger now reads "a real f32 use case appears" or
+      "the second stochastic solver needs it" (CMA-ES in S8 will tell us).
 - [ ] **Real bench tool (divan / Criterion) when MSRV pressure lifts.**
       Hand-rolled bench works for now; revisit when CRAN's Rust pin moves past
       1.85.

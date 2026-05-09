@@ -1,7 +1,10 @@
+use rand::Rng;
+
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
     BoxAffineScaling,
 };
+use super::sample::SampleUniformBox;
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl ScaledAdd<f64> for Vec<f64> {
@@ -37,6 +40,22 @@ impl NegInPlace for Vec<f64> {
         for x in self.iter_mut() {
             *x = -*x;
         }
+    }
+}
+
+impl SampleUniformBox for Vec<f64> {
+    fn sample_uniform_box<R: Rng + ?Sized>(lower: &Self, upper: &Self, rng: &mut R) -> Self {
+        assert_eq!(
+            lower.len(),
+            upper.len(),
+            "sample_uniform_box: bounds length mismatch"
+        );
+        let n = lower.len();
+        let mut out = Vec::with_capacity(n);
+        for i in 0..n {
+            out.push(rng.random_range(lower[i]..=upper[i]));
+        }
+        out
     }
 }
 
@@ -144,6 +163,41 @@ impl BoxAffineScaling for Vec<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::SeedableRng;
+    use rand_chacha::ChaCha8Rng;
+
+    #[test]
+    fn sample_uniform_box_stays_within_bounds() {
+        let lower = vec![-1.0, 0.5, -10.0];
+        let upper = vec![1.0, 0.5, 10.0]; // Middle component pinned (lo == hi).
+        let mut rng = ChaCha8Rng::seed_from_u64(123);
+        for _ in 0..200 {
+            let x = Vec::<f64>::sample_uniform_box(&lower, &upper, &mut rng);
+            assert_eq!(x.len(), 3);
+            for i in 0..3 {
+                assert!(
+                    x[i] >= lower[i] && x[i] <= upper[i],
+                    "x[{i}] = {} not in [{}, {}]",
+                    x[i],
+                    lower[i],
+                    upper[i]
+                );
+            }
+            // Pinned coordinate is exactly its single bound.
+            assert_eq!(x[1], 0.5);
+        }
+    }
+
+    #[test]
+    fn sample_uniform_box_is_seed_reproducible() {
+        let lower = vec![-1.0, -1.0];
+        let upper = vec![1.0, 1.0];
+        let mut rng_a = ChaCha8Rng::seed_from_u64(7);
+        let mut rng_b = ChaCha8Rng::seed_from_u64(7);
+        let a = Vec::<f64>::sample_uniform_box(&lower, &upper, &mut rng_a);
+        let b = Vec::<f64>::sample_uniform_box(&lower, &upper, &mut rng_b);
+        assert_eq!(a, b);
+    }
 
     #[test]
     fn clamp_inside_box_is_identity() {

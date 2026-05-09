@@ -29,14 +29,15 @@ pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutc
 pub use crate::core::math::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace, Dot, GramMatrix,
     LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal, NegInPlace,
-    NormInfinity, NormSquared, ScaledAdd,
+    NormInfinity, NormSquared, SampleUniformBox, ScaledAdd,
 };
 pub use crate::core::problem::{CostFunction, Gradient, Jacobian, Residual};
 pub use crate::core::solver::Solver;
 #[cfg(feature = "nalgebra")]
 pub use crate::core::state::QuasiNewtonState;
 pub use crate::core::state::{
-    BasicSimplexState, BasicState, GradientState, IntoInitialSimplex, SimplexState, State,
+    BasicPopulationState, BasicSimplexState, BasicState, GradientState, IntoInitialSimplex,
+    PopulationState, SimplexState, State,
 };
 pub use crate::core::termination::{
     CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
@@ -48,5 +49,5 @@ pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResul
 pub use crate::solver::BFGS;
 pub use crate::solver::{
     Brent, GaussNewton, GradientDescent, LevenbergMarquardt, NelderMead, ProjectedGradientDescent,
-    Trf,
+    RandomSearch, Trf,
 };

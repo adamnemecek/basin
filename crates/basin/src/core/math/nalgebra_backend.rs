@@ -1,4 +1,5 @@
 use nalgebra::{DMatrix, DVector, Dim, Matrix, Storage, StorageMut};
+use rand::Rng;
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
@@ -8,6 +9,7 @@ use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
     MatTransposeVec, MatVec, MaxDiagonal,
 };
+use super::sample::SampleUniformBox;
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
@@ -64,6 +66,17 @@ where
 {
     fn neg_in_place(&mut self) {
         self.apply(|x| *x = -*x);
+    }
+}
+
+impl SampleUniformBox for DVector<f64> {
+    fn sample_uniform_box<G: Rng + ?Sized>(lower: &Self, upper: &Self, rng: &mut G) -> Self {
+        assert_eq!(
+            lower.len(),
+            upper.len(),
+            "sample_uniform_box: bounds length mismatch"
+        );
+        DVector::from_fn(lower.len(), |i, _| rng.random_range(lower[i]..=upper[i]))
     }
 }
 

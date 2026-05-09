@@ -63,6 +63,15 @@ generativity = { version = "~1.1", optional = true }
 # `wasm32-unknown-unknown`, so `MaxTime` works on both without feature gating.
 # Tiny crate, MSRV 1.60, no transitive deps on native.
 web-time = "1"
+# Seedable, wasm-safe RNG used by stochastic solvers (`RandomSearch` and,
+# eventually, CMA-ES). `default-features = false` drops `std_rng` /
+# `thread_rng` and the implicit `getrandom` JS-feature pull-in, so a
+# `ChaCha8Rng::seed_from_u64(seed)` works on `wasm32-unknown-unknown` with
+# no JS shim. rand 0.10 / rand_chacha 0.10 require edition2024 (Rust 1.85+),
+# above basin's MSRV 1.84.1 (CRAN constraint — see AGENTS.md). Drop the pin
+# when CRAN's Rust pin moves.
+rand = { version = "0.9", default-features = false }
+rand_chacha = { version = "0.9", default-features = false }
 
 [dev-dependencies]
 # Benches are hand-rolled (no criterion/divan) because their transitive

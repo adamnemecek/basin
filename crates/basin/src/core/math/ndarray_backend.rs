@@ -1,9 +1,11 @@
-use ndarray::{ArrayBase, Data, DataMut, Dimension};
+use ndarray::{Array1, ArrayBase, Data, DataMut, Dimension};
+use rand::Rng;
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
     BoxAffineScaling,
 };
+use super::sample::SampleUniformBox;
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
@@ -55,6 +57,17 @@ where
 {
     fn neg_in_place(&mut self) {
         self.map_inplace(|x| *x = -*x);
+    }
+}
+
+impl SampleUniformBox for Array1<f64> {
+    fn sample_uniform_box<R: Rng + ?Sized>(lower: &Self, upper: &Self, rng: &mut R) -> Self {
+        assert_eq!(
+            lower.len(),
+            upper.len(),
+            "sample_uniform_box: bounds length mismatch"
+        );
+        Array1::from_shape_fn(lower.len(), |i| rng.random_range(lower[i]..=upper[i]))
     }
 }
 

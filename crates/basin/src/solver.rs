@@ -11,6 +11,8 @@ pub mod levenberg_marquardt;
 pub mod nelder_mead;
 /// Projected gradient descent for box-constrained problems.
 pub mod projected_gradient_descent;
+/// Elitist (1+λ) random search over a feasible box.
+pub mod random_search;
 /// Levenberg-Marquardt with box bounds (TRF — trust-region-reflective).
 pub mod trf;
 
@@ -26,4 +28,5 @@ pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
 pub use nelder_mead::NelderMead;
 pub use projected_gradient_descent::ProjectedGradientDescent;
+pub use random_search::RandomSearch;
 pub use trf::Trf;

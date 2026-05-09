@@ -1,6 +1,7 @@
 use faer::linalg::matmul::matmul;
 use faer::linalg::solvers::{Llt, Solve};
 use faer::{Accum, Col, Mat, Par, Side};
+use rand::Rng;
 
 use super::cl_scaling::{
     cl_scaling_pair, max_feasible_step_component, project_strictly_inside_component,
@@ -10,6 +11,7 @@ use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
     MatTransposeVec, MatVec, MaxDiagonal,
 };
+use super::sample::SampleUniformBox;
 use super::{ClampInPlace, Dot, NegInPlace, NormInfinity, NormSquared, ScaledAdd};
 
 impl ScaledAdd<f64> for Col<f64> {
@@ -41,6 +43,17 @@ impl Dot for Col<f64> {
 impl NegInPlace for Col<f64> {
     fn neg_in_place(&mut self) {
         faer::zip!(self.as_mut()).for_each(|faer::unzip!(x)| *x = -*x);
+    }
+}
+
+impl SampleUniformBox for Col<f64> {
+    fn sample_uniform_box<R: Rng + ?Sized>(lower: &Self, upper: &Self, rng: &mut R) -> Self {
+        assert_eq!(
+            lower.nrows(),
+            upper.nrows(),
+            "sample_uniform_box: bounds length mismatch"
+        );
+        Col::<f64>::from_fn(lower.nrows(), |i| rng.random_range(lower[i]..=upper[i]))
     }
 }
 

@@ -51,6 +51,7 @@ pub trait NegInPlace {
 mod cl_scaling;
 mod clamp;
 mod linalg;
+mod sample;
 mod scalar;
 mod vec;
 
@@ -75,3 +76,4 @@ pub use linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
     LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal,
 };
+pub use sample::SampleUniformBox;
