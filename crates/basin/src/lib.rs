@@ -26,6 +26,7 @@ pub mod solver;
 
 pub use crate::core::constraint::BoxConstrained;
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
+pub use crate::core::inner::InnerExecutor;
 pub use crate::core::math::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace, Dot, GramMatrix,
     LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal, NegInPlace,

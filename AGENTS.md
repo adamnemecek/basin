@@ -150,6 +150,58 @@ These shape API decisions and are non-obvious from the code alone:
    doc comments must include a "Backends" note listing supported param types,
    mirroring the wasm compat-note pattern below.
 
+## Solver composition
+
+Some solvers run another solver as a sub-step (memetic CMA-ES + LM, basin
+hopping, multi-start polish, …). The composition primitive is
+`run_loop(&problem, state, &mut solver, &mut criteria, max_iter)` in
+`src/core/executor.rs`; the builder-style adapter `InnerExecutor<S, So>` in
+`src/core/inner.rs` wraps it for the common case where an outer solver
+stores a pre-configured inner and reuses it across outer iters. Three
+contracts every outer solver must follow:
+
+1. **Eval aggregation.** After each `inner.run(&problem, inner_state)`,
+   the outer must roll the inner's `cost_evals()` into the outer state via
+   `increment_cost_evals(...)` (and `gradient_evals()` via
+   `increment_gradient_evals(...)` when both inner and outer are
+   `GradientState`). Skipping this silently corrupts `MaxCostEvals`
+   budgets and the public `result.cost_evals()` read. The contract is
+   spelled out on `Solver::next_iter`'s rustdoc; the POC integration test
+   in `crates/basin/tests/inner_executor.rs` asserts it.
+
+2. **Inner termination criteria must be stateless across calls.** An
+   `InnerExecutor` keeps its `Vec<Box<dyn TerminationCriterion<S>>>` for
+   its whole lifetime and reuses it on every `run()`. This is fine for
+   `MaxIter`, `*Tolerance`, and `MaxCostEvals` (no internal state, or
+   only state that resets meaningfully on each call). It is **not** fine
+   for `MaxTime`, whose internal `start: Option<Instant>` is set on the
+   first `check` call and persists — on the second `run()` it would fire
+   prematurely. Outer solvers that need per-run criteria should call
+   `run_loop` directly with a fresh `Vec` per call rather than reaching
+   for `InnerExecutor`.
+
+3. **Failure routing.** `run()` returns a full `OptimizationResult`
+   carrying a `TerminationReason`. Use `reason.is_failure()` (true only
+   for `SolverFailed`) to decide whether to bubble the failure via the
+   outer's mid-iter `Option<TerminationReason>` return. Everything else
+   — `MaxIter`, the tolerance reasons, `SolverConverged` — is a "clean
+   stop, outer consumes the inner's final iterate and continues". Most
+   composed-solver bugs in this category are forgetting to propagate
+   `SolverFailed` and silently treating an aborted inner run as a
+   successful one.
+
+**`InnerExecutor` vs `run_loop`.** Reach for `InnerExecutor` when the
+outer solver wants to expose `inner_max_iter` / `inner.terminate_on(...)`
+to its own users via builder methods that mirror the framework. Reach
+for raw `run_loop` when the outer needs to reconstruct criteria each
+call (statefulness escape hatch) or when it wants per-call criteria the
+user passes through a different surface.
+
+**Don't grow a `Composed<Outer, Inner>` type or a composition trait
+hierarchy until ≥2 concrete composed solvers exist.** Same spirit as
+tenet 4's "no `Constraint` supertrait until two consumers": one example
+(S11's CMA + LM) doesn't reveal which abstraction wants to be shared.
+
 ## WASM as a hard constraint
 
 basin must build for `wasm32-unknown-unknown` out of the box. This is a

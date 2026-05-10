@@ -76,6 +76,19 @@ pub trait Solver<P, S: State> {
     ///   `state.iter()` reflects the last *fully completed* iteration.
     /// - **Implementor must:** count every cost / gradient call against
     ///   the corresponding eval counter on the state.
+    /// - **Implementor must (composition):** when running an inner solver
+    ///   via [`InnerExecutor`](crate::core::inner::InnerExecutor) or
+    ///   [`run_loop`](crate::core::executor::run_loop), roll the inner
+    ///   result's
+    ///   [`State::cost_evals`](crate::core::state::State::cost_evals)
+    ///   into the outer state via
+    ///   [`State::increment_cost_evals`](crate::core::state::State::increment_cost_evals)
+    ///   (and the gradient analogue when both inner and outer are
+    ///   [`GradientState`](crate::core::state::GradientState)).
+    ///   `MaxCostEvals` budgets and the public `result.cost_evals()`
+    ///   read are wrong otherwise. See `AGENTS.md` "Solver composition"
+    ///   for the full contract (eval aggregation, criteria
+    ///   statelessness, failure routing).
     fn next_iter(&mut self, problem: &P, state: S) -> (S, Option<TerminationReason>);
 
     /// Optional pre-iteration solver-specific termination test.

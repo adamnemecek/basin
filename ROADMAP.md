@@ -1074,16 +1074,62 @@ NOTES.md.
 
 ## Phase 3 — Convergence
 
-### S10. Solver composition design
+### S10. Solver composition design — **done**
 
-- Now that CMA-ES exists and LM-with-bounds exists, design how an
-  outer solver invokes an inner `Executor` on a sub-problem.
-- Open questions: does the outer solver own an `Executor<InnerSolver>`?
-  How are inner termination criteria configured? Is the inner result
-  observable from the outer state?
-- Output: a short design note (probably appended to `AGENTS.md`) plus
-  a minimal proof-of-concept (e.g. warm-restart GD from each
-  Nelder-Mead simplex vertex — silly but tests the pattern).
+The composition primitive `run_loop(&problem, state, &mut solver, &mut
+criteria, max_iter)` was already in `core/executor.rs` (pub-exported,
+zero in-tree callers); S10 is its first real exercise. Lands as a thin
+builder-style adapter `InnerExecutor<S, So>` in `core/inner.rs` that
+wraps `run_loop`, owning the inner solver, its termination criteria,
+and `max_iter`. Outer solvers store one as a field and call
+`inner.run(&problem, state)` once per outer iter.
+
+**Open questions, resolved.**
+- *Does the outer own an `Executor<InnerSolver>`?* No — `Executor` owns
+  its problem; composed inners borrow the outer's `&P` from
+  `next_iter`. `InnerExecutor` deliberately does not own the problem;
+  it's supplied at `.run()` time.
+- *How are inner termination criteria configured?* On the
+  `InnerExecutor` builder, mirroring `Executor`'s `terminate_on`. Reused
+  across calls — see contract 2 below.
+- *Is the inner result observable from the outer state?* The
+  `OptimizationResult` is returned to the outer's `next_iter`, which
+  rolls cost evals (and gradient evals when applicable) into the outer
+  state. Inner termination reasons aren't surfaced as state — they're
+  classified at the call site via `TerminationReason::is_failure()`.
+
+**Three contracts** documented in `AGENTS.md` "Solver composition":
+1. **Eval aggregation.** Inner `cost_evals()` rolls into the outer state
+   via `increment_cost_evals(...)`; same for gradient evals when both
+   inner and outer are `GradientState`. Codified as a clause on
+   `Solver::next_iter`'s rustdoc.
+2. **Inner criteria must be stateless across calls.** `MaxTime` is the
+   load-bearing exception (its internal `start: Option<Instant>` is set
+   on first check and persists). Outer solvers needing per-run criteria
+   call `run_loop` directly with a fresh `Vec`.
+3. **Failure routing.** `TerminationReason::is_failure()` (true only
+   for `SolverFailed`) classifies whether the outer should bubble via
+   mid-iter `Option<TerminationReason>`. Everything else
+   (`MaxIter`, `*Tolerance`, `SolverConverged`) is "clean stop, outer
+   consumes and continues".
+
+**POC.** `crates/basin/tests/inner_executor.rs` defines a private
+`PerVertexRefine<G>` outer solver over a custom `MultiStartState`
+(rather than `BasicSimplexState`, whose vertex/cost fields are
+`pub(crate)` and unreachable from integration tests — using a custom
+state proves composition works through the public `State` / `Solver`
+traits alone). Three tests on Booth: convergence to `(1, 3)`, cost-eval
+aggregation, and `SolverFailed` bubbling via a fake `AlwaysFails` inner
+solver.
+
+**Deliberately not done.** No `Composed<Outer, Inner>` adapter / trait
+hierarchy — same spirit as tenet 4's "no `Constraint` supertrait until
+≥2 consumers." S11's CMA + LM is the only known concrete consumer; one
+example doesn't reveal which abstraction wants to be shared.
+
+**Backends.** `InnerExecutor` is backend-agnostic (parameterised on the
+inner state and solver types); the POC test uses `Vec<f64>`. No new
+math primitives.
 
 ### S11. CMA-ES + LM hybrid (memetic)
 

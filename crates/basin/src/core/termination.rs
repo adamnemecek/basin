@@ -40,6 +40,21 @@ pub enum TerminationReason {
     SolverFailed,
 }
 
+impl TerminationReason {
+    /// Whether this reason represents an unrecoverable failure that an
+    /// outer solver should bubble (rather than consume and continue).
+    ///
+    /// Currently only [`SolverFailed`](Self::SolverFailed) qualifies —
+    /// [`MaxIter`](Self::MaxIter), the `*Tolerance` reasons, and
+    /// [`SolverConverged`](Self::SolverConverged) are all "clean stops"
+    /// that an outer solver running an inner per outer iter should treat
+    /// as "result is fine, move on". See `AGENTS.md` "Solver
+    /// composition" for the failure-routing contract.
+    pub fn is_failure(&self) -> bool {
+        matches!(self, TerminationReason::SolverFailed)
+    }
+}
+
 /// A pluggable termination check evaluated by the executor.
 ///
 /// # Contract

@@ -25,6 +25,10 @@
 //!   [`Stepper`](executor::Stepper) / [`run_loop`](executor::run_loop).
 //!   The canonical iteration ordering is documented on the
 //!   [`executor`] module.
+//! - [`inner`] — the composition adapter:
+//!   [`InnerExecutor`](inner::InnerExecutor) wraps `run_loop` for outer
+//!   solvers that drive an inner solver per outer iteration. See
+//!   `AGENTS.md` "Solver composition" for the contracts.
 //! - [`math`] — the small shared math layer
 //!   ([`ScaledAdd`](math::ScaledAdd), [`NormSquared`](math::NormSquared),
 //!   …) that backend-generic solvers depend on. Per tenet 5, this stays
@@ -33,6 +37,7 @@
 
 pub mod constraint;
 pub mod executor;
+pub mod inner;
 pub mod math;
 pub mod problem;
 pub mod rng;
