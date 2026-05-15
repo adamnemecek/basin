@@ -1124,20 +1124,84 @@ solver.
 
 **Deliberately not done.** No `Composed<Outer, Inner>` adapter / trait
 hierarchy — same spirit as tenet 4's "no `Constraint` supertrait until
-≥2 consumers." S11's CMA + LM is the only known concrete consumer; one
-example doesn't reveal which abstraction wants to be shared.
+≥2 consumers." S11's CMA-ES + injected local search is the only known
+concrete consumer; one example doesn't reveal which abstraction wants
+to be shared. If MA-LS-Chains lands later (separate S-number,
+SSGA outer + CMA inner) that's a second consumer and the shared
+abstraction question can be revisited honestly.
 
 **Backends.** `InnerExecutor` is backend-agnostic (parameterised on the
 inner state and solver types); the POC test uses `Vec<f64>`. No new
 math primitives.
 
-### S11. CMA-ES + LM hybrid (memetic)
+### S11. CMA-ES + local-search polish (memetic, via injection)
 
-- Outer CMA-ES proposes candidates; inner LM refines a subset
-  (often the best-k per generation).
-- **[ingest]** A memetic-CMA-ES paper for the literature anchor —
-  candidates: Auger et al. on LM-CMA hybrids, or whichever has the
-  cleanest pseudocode rather than the highest citation count.
+- Outer CMA-ES proposes λ candidates per generation; inner local solver
+  refines the best `k` (default `k=1`), and the refined points are
+  injected back into the next generation via **Hansen's injection
+  protocol** (RR-7748 / arXiv:1110.4181): the refined `y_i` is clipped
+  in Mahalanobis distance — `y_i ← min(1, c_y/‖C^{-1/2}y_i‖) × y_i`
+  with default `c_y = √n + 2n/(n+2)` — and otherwise plugged into the
+  standard CMA-ES update unchanged. Lamarckian by construction; no
+  Baldwinian mode in the paper.
+- **Why injection instead of Melo & Iacca's sequential shape.** Both
+  are paper-anchored. Per-generation refinement extracts more value
+  from the inner solver and is the foundational primitive Hansen
+  designed for memetic CMA-ES; the sequential pattern is just the
+  `k = λ` / "polish once at the end" degenerate case. We get the
+  general primitive for the same conceptual cost.
+- **Inner choice is paper-validated only — no invention.** Melo & Iacca
+  2014 tested CMA-ES + {Simplex, BOBYQA, L-BFGS-B} and reported
+  Simplex (Nelder-Mead) as the empirical winner on 5 of 9 constrained
+  problems. CMA-ES + LM is *not* in the literature, so it's dropped
+  from S11 scope. First cut: **inner = Nelder-Mead** (already in
+  basin). Follow-up swap-ins for L-BFGS-B once that solver lands.
+  The outer shape stays the same; only the inner type parameter
+  changes.
+- **API shape.** `CmaInject<I: Solver>` where `I` is the inner solver,
+  sitting on top of `InnerExecutor`. Builder knobs:
+  - `k` (how many of the λ to refine per generation, default 1)
+  - inner's own budget / tolerance (passed via `InnerExecutor`)
+  - `c_y` (clip threshold for injected `y_i`, default `√n + 2n/(n+2)`)
+  - the standard `Δσ_max` cap on per-iter step-size change is already
+    in our CMA-ES; no new knob.
+- **Implementation reuses S8 CMA-ES.** The only departure from
+  standard CMA-ES is the per-iteration clipping of injected `y_i`
+  in eq. (4) of Fig. 1. Need to confirm S8's CMA-ES exposes (or can
+  expose) `C^{-1/2}` cheaply — it already does the eigendecomp for
+  sampling, so this is bookkeeping rather than new math.
+- **[ingested]** `references/hansen-2011/` (Hansen 2011 INRIA RR-7748)
+  — the injection protocol + clipping; `references/melo-iacca-2014/`
+  (Melo & Iacca 2014, IEEE SSCI) — empirical justification for picking
+  Nelder-Mead as the first inner. Both have NOTES.md.
+
+### S12. MA-LS-Chains (memetic with persistent local-search state)
+
+- A *different* memetic shape that's worth its own solver, not a
+  variant of S11: **steady-state GA outer** (BLX-α crossover, negative
+  assortative mating, replace-worst), with an inner local search that
+  **stores its state per individual** so re-selecting an individual
+  resumes its LS chain rather than restarting. The canonical inner is
+  CMA-ES (giving MA-LSCh-CMA), with Solis-Wets / Subgrouping
+  Solis-Wets as alternatives for high-dimensional problems.
+- **Why a separate solver, not an S11 mode.** The chains mechanism
+  *requires* persistent individual identity, which SSGA has (population
+  carries across generations) and CMA-ES doesn't (the population is
+  resampled each generation). Trying to graft chains onto S11 means
+  inventing an elite archive — that's research. Doing it as its own
+  outer (SSGA) is the honest path and matches the published algorithm.
+- **What basin needs to add.** An SSGA solver (probably its own
+  preceding session — BLX-α / NAM / RW is a self-contained piece). The
+  inner solvers (CMA-ES, possibly Solis-Wets) already exist or can be
+  added cheaply.
+- **Once S12 lands, revisit S10's "no `Composed` abstraction" note.**
+  S11 + S12 are the two concrete composed solvers tenet 4-style logic
+  needs to design the shared abstraction (if any) honestly.
+- **[ingested]** `references/bergmeir-2016/` (JSS paper on the
+  Rmalschains R package) — cleanest pseudocode and parameter table.
+  `references/Memetic_Algorithms_for_Continuous_Optimisation_Bas.pdf`
+  is the underlying Molina et al. 2010 EC paper; promote to its own
+  `references/molina-2010/` slug + ingest before starting S12.
 
 ## Cross-cutting (slot in opportunistically)
 
@@ -1159,7 +1223,16 @@ math primitives.
 4. Before **S6**: Branch/Coleman/Li 1999 (TRF).
 5. Before **S8**: Hansen CMA-ES tutorial.
 6. Before **S9**: pycma bound-handling reference.
-7. Before **S11**: memetic-CMA-ES paper TBD.
+7. Before **S11**: Hansen 2011 (RR-7748 / arXiv:1110.4181) for the
+   injection protocol + Melo & Iacca 2014 for empirical inner choice
+   — both **done**, see `references/hansen-2011/NOTES.md` and
+   `references/melo-iacca-2014/NOTES.md`.
+8. Before **S12**: Bergmeir et al. 2016 (JSS, Rmalschains) — **done**,
+   see `references/bergmeir-2016/source.md`. Promote the loose
+   `references/Memetic_Algorithms_for_Continuous_Optimisation_Bas.pdf`
+   into `references/molina-2010/` and run `ingest-paper` on it; the
+   underlying methods paper has details the JSS software paper
+   summarizes.
 
 Use the `ingest-paper` skill before each session to pull the PDF into
 `references/<name>/`.
