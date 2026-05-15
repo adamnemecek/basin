@@ -129,9 +129,15 @@ pub struct CmaEs<V, M> {
 
 /// Solver-internal mutable state, populated in [`Solver::init`] and
 /// updated each [`Solver::next_iter`].
-struct Working<V, M> {
+///
+/// `pub(crate)` (not public) so sibling solvers in `crate::solver` can
+/// read the post-update `m`, `σ`, `B`, `D^{-1}` they need for
+/// injection-style composition (`CmaInject` uses these to clip injected
+/// `y_i` in Mahalanobis distance per Hansen 2011 eq. 4). Not a stable
+/// public surface.
+pub(crate) struct Working<V, M> {
     // --- constants (computed once at init) ---
-    n: usize,
+    pub(crate) n: usize,
     lambda: usize,
     mu: usize,
     /// All λ recombination weights (sum of positives = 1; negatives
@@ -158,18 +164,18 @@ struct Working<V, M> {
     tol_x: f64,
 
     // --- mutable iterate ---
-    m: V,
-    sigma: f64,
+    pub(crate) m: V,
+    pub(crate) sigma: f64,
     p_sigma: V,
     p_c: V,
     c: M,
     /// Eigenvectors of `c` from the most recent eigendecomposition.
-    b: M,
+    pub(crate) b: M,
     /// Square roots of eigenvalues (the diagonal `D` in Hansen's
     /// `B D Bᵀ` factorization).
     d: V,
     /// Reciprocals of `d`, used for `C^{−1/2} = B D^{−1} Bᵀ`.
-    d_inv: V,
+    pub(crate) d_inv: V,
 
     rng: ChaCha8Rng,
     /// Generation counter for the h_σ formula (Hansen 2016 p. 31:
@@ -241,6 +247,15 @@ impl<V, M> CmaEs<V, M> {
     /// internal default without re-deriving the formula.
     pub fn default_lambda(n: usize) -> usize {
         4 + (3.0 * (n as f64).ln()).floor() as usize
+    }
+
+    /// Read-only access to the post-update CMA-ES iterate (`m`, `σ`,
+    /// `B`, `D^{-1}`, `n`), used by sibling solvers that compose with
+    /// CMA-ES — currently only `CmaInject`, which needs `C^{-1/2} =
+    /// B D^{-1} Bᵀ` to clip injected `y_i` per Hansen 2011 eq. 4.
+    /// `None` before [`Solver::init`] has run.
+    pub(crate) fn working(&self) -> Option<&Working<V, M>> {
+        self.state.as_ref()
     }
 }
 

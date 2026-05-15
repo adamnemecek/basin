@@ -1134,46 +1134,82 @@ abstraction question can be revisited honestly.
 inner state and solver types); the POC test uses `Vec<f64>`. No new
 math primitives.
 
-### S11. CMA-ES + local-search polish (memetic, via injection)
+### S11. CMA-ES + local-search polish (memetic, via injection) — **done**
 
-- Outer CMA-ES proposes λ candidates per generation; inner local solver
-  refines the best `k` (default `k=1`), and the refined points are
-  injected back into the next generation via **Hansen's injection
-  protocol** (RR-7748 / arXiv:1110.4181): the refined `y_i` is clipped
-  in Mahalanobis distance — `y_i ← min(1, c_y/‖C^{-1/2}y_i‖) × y_i`
-  with default `c_y = √n + 2n/(n+2)` — and otherwise plugged into the
-  standard CMA-ES update unchanged. Lamarckian by construction; no
-  Baldwinian mode in the paper.
+`CmaInject` lands in `solver/cma_inject.rs` wrapping `CmaEs` plus an
+`InnerExecutor<BasicSimplexState<V>, NelderMead>` for the inner polish.
+Each `next_iter` runs vanilla CMA-ES (sample λ candidates, evaluate,
+update m/σ/C), refines the best `k` (default 1) via inner NM, clips
+each refined point's normalised step `y_i = (x_i − m)/σ` in Mahalanobis
+distance — `y_i ← min(1, c_y/‖C^{-1/2}y_i‖) × y_i` with default
+`c_y = √n + 2n/(n+2)` (Hansen 2011 Table 1) — re-evaluates the cost at
+the clipped point, and re-sorts. The CMA update on the next iter reads
+the modified candidates through the standard equations unchanged
+(Hansen 2011 §3: *"All update equations starting from (5) are
+formulated relative to the original sample distribution. This means we
+are, in principle, free to change the distribution before each
+iteration step."*). Lamarckian; no Baldwinian mode.
+
+**Implementation notes.**
+- **First cut specialises to NelderMead inner.** The struct is
+  `CmaInject<V, M>` with the inner solver hard-wired to
+  `InnerExecutor<BasicSimplexState<V>, NelderMead>`. Genericity over
+  the inner type (`CmaInject<I: Solver>`) is deferred to §S13 (LM and
+  L-BFGS-B inners) — designing the "seed inner state from a
+  candidate" abstraction against one consumer is premature, same
+  spirit as tenet 4's "no `Constraint` supertrait until ≥2 consumers."
+  The long-term anchor pair (CMA-ES + LM, per goal #2 at top of file)
+  is what motivates keeping the inner-generic refactor in scope.
+- **Re-evaluation after clipping is mandatory.** Both inner refinement
+  and Mahalanobis clipping move the point in original-`x` space, so
+  the cost field has to match the geometry — otherwise the next CMA
+  update ranks the wrong point. The extra `+1` eval per refined
+  candidate is unavoidable and is documented in
+  `solver/cma_inject.rs` next to the call.
+- **Inner simplex seed uses absolute σ-scaled edges.** Vertices are
+  `x_i + scale·σ·e_j` for `j = 1..=n` (scale defaults to `1.0`), not
+  the FMINSEARCH/SciPy relative 5% step. Absolute scaling tracks
+  CMA's shrinking distribution so the inner stops exploring outside
+  the current generation's spread as σ decays.
+- **`Working` bumped to `pub(crate)` to expose `m`, `σ`, `B`,
+  `D^{-1}`, `n` to the sibling solver module.** No public API
+  change; mirrors the existing `pub(crate)` exposure of helpers
+  like `sort_population_ascending` and `compute_weights` that
+  `bounded_cma_es.rs` already consumes.
+
+**Skipped in this PR.** Injection at iter 0 (Hansen's preliminary
+experiments inject from iter 1 onward; cheap to add later). Mean-shift
+injection mode (Hansen 2011 eq. 5 right-hand branch + the discussion
+at §3) — not needed for per-point Lamarckian injection. The
+`SolverFailed`-bubbling integration test is deferred to the
+inner-generic follow-up; the inner-bubble path is short and visually
+reviewable, and `tests/inner_executor.rs` exercises the contract
+end-to-end against a fake `AlwaysFails` inner.
+
+**Rationale carried over from the pre-implementation plan.**
 - **Why injection instead of Melo & Iacca's sequential shape.** Both
   are paper-anchored. Per-generation refinement extracts more value
   from the inner solver and is the foundational primitive Hansen
   designed for memetic CMA-ES; the sequential pattern is just the
   `k = λ` / "polish once at the end" degenerate case. We get the
   general primitive for the same conceptual cost.
-- **Inner choice is paper-validated only — no invention.** Melo & Iacca
-  2014 tested CMA-ES + {Simplex, BOBYQA, L-BFGS-B} and reported
-  Simplex (Nelder-Mead) as the empirical winner on 5 of 9 constrained
-  problems. CMA-ES + LM is *not* in the literature, so it's dropped
-  from S11 scope. First cut: **inner = Nelder-Mead** (already in
-  basin). Follow-up swap-ins for L-BFGS-B once that solver lands.
-  The outer shape stays the same; only the inner type parameter
-  changes.
-- **API shape.** `CmaInject<I: Solver>` where `I` is the inner solver,
-  sitting on top of `InnerExecutor`. Builder knobs:
-  - `k` (how many of the λ to refine per generation, default 1)
-  - inner's own budget / tolerance (passed via `InnerExecutor`)
-  - `c_y` (clip threshold for injected `y_i`, default `√n + 2n/(n+2)`)
-  - the standard `Δσ_max` cap on per-iter step-size change is already
-    in our CMA-ES; no new knob.
-- **Implementation reuses S8 CMA-ES.** The only departure from
-  standard CMA-ES is the per-iteration clipping of injected `y_i`
-  in eq. (4) of Fig. 1. Need to confirm S8's CMA-ES exposes (or can
-  expose) `C^{-1/2}` cheaply — it already does the eigendecomp for
-  sampling, so this is bookkeeping rather than new math.
-- **[ingested]** `references/hansen-2011/` (Hansen 2011 INRIA RR-7748)
-  — the injection protocol + clipping; `references/melo-iacca-2014/`
-  (Melo & Iacca 2014, IEEE SSCI) — empirical justification for picking
-  Nelder-Mead as the first inner. Both have NOTES.md.
+- **Inner choice is paper-anchored — Hansen 2011 anchors the
+  injection *mechanism* for arbitrary inners.** From the paper's use
+  cases (§1, line 232 of `RR-7748.tex`): "An improved solution from a
+  local search started from a CMA-ES sample (Lamarckian) — explicitly
+  named as the memetic-algorithm use case." Hansen does not advocate
+  for a specific inner solver — it makes CMA-ES injection-tolerant so
+  any local solver can plug in. Melo & Iacca 2014 supplies *empirical*
+  justification for one specific choice (Nelder-Mead won 5/9 of their
+  constrained problems against {BOBYQA, L-BFGS-B}); that's why we
+  start there, but it does not constrain what *other* inners are
+  legitimate under the same mechanism. Additional inners (LM,
+  L-BFGS-B) land in §S13.
+
+**[ingested]** `references/hansen-2011/` (Hansen 2011 INRIA RR-7748)
+— the injection protocol + clipping; `references/melo-iacca-2014/`
+(Melo & Iacca 2014, IEEE SSCI) — empirical justification for picking
+Nelder-Mead as the first inner. Both have NOTES.md.
 
 ### S12. MA-LS-Chains (memetic with persistent local-search state)
 
@@ -1202,6 +1238,67 @@ math primitives.
   `references/Memetic_Algorithms_for_Continuous_Optimisation_Bas.pdf`
   is the underlying Molina et al. 2010 EC paper; promote to its own
   `references/molina-2010/` slug + ingest before starting S12.
+
+### S13. CMA-ES injection — additional inners (LM, L-BFGS-B)
+
+Direct follow-up on §S11. Same injection mechanism (Hansen 2011 eq. 4,
+clip `y_i ← min(1, c_y/‖C^{-1/2}y_i‖) × y_i` and plug back into the
+standard CMA update); only the inner solver and its state-seeding
+change. Hansen 2011's framework is inner-agnostic, so this is
+*mechanism reuse*, not new algorithm design.
+
+**Refactor first: inner-generic `CmaInject`.** S11 specialised to
+`CmaInject<V, M>` with NelderMead + `BasicSimplexState<V>` hard-wired
+because designing the seed-inner-state abstraction against one
+consumer is premature. With two more consumers in scope, the right
+shape becomes visible. Plan: `CmaInject<I, S, V, M>` parametric on
+inner solver `I` and inner state `S`, plus a seeder
+`Box<dyn Fn(&V, f64) -> S>` builder method (the `f64` is the current
+`σ`, so seeders that scale with the CMA distribution — like the
+σ-scaled simplex from S11 — port directly). Move the NM-specific
+seed-simplex constructor behind a free function /
+`CmaInject::with_nelder_mead(...)` convenience builder so existing
+S11 callers keep their ergonomics.
+
+**S13a. CMA-ES + LM (the long-term anchor — top-of-file goal #2).**
+LM is intrinsically a least-squares solver: it requires
+`Residual + Jacobian` on the problem, and its inner cost is
+`½‖r‖²` (S4 convention). So the *outer* `CmaInject<LM, …>` variant
+requires the outer problem to be a residual problem too — the user
+hands in a `P: CostFunction + Residual + Jacobian`, CMA-ES uses the
+scalar cost, and the inner LM uses the residual + jacobian. Eval
+aggregation extends to `gradient_evals` and (newly) `jacobian_evals`
+if/when LM exposes that counter; per the existing composition
+contracts in AGENTS.md, both inner and outer state must be
+`GradientState`-ish for the gradient-eval roll-up to apply, so
+either we extend the contract to a `JacobianState` tier or we just
+roll jacobian evals into `cost_evals` honestly. Inner-state seeder
+is trivial: `|x_i, _sigma| BasicState::new(x_i.clone())`.
+
+Tests: a nonlinear-least-squares testbed where CMA's global stage
+gets near a basin and LM polishes to high precision — e.g.
+Rosenbrock-as-residuals (`r(x) = [10·(x₂−x₁²), 1−x₁]`, basin's
+existing `RosenbrockResiduals`) or another residual problem from the
+S3/S4/S6 test corpus. The point is to validate that the composition
+delivers higher-precision basin convergence than vanilla CMA-ES at
+the same outer-iter budget — LM's superlinear convergence inside the
+basin is what justifies the pair.
+
+**S13b. CMA-ES + L-BFGS-B.** Melo & Iacca 2014's other tested inner.
+Blocked on L-BFGS-B itself landing (no S-number yet — L-BFGS is
+mentioned in AGENTS.md "WASM as a hard constraint" as preferring a
+pure-Rust impl). Once L-BFGS-B lands and the inner-generic refactor
+from S13a is in, this is a small follow-up: outer `P: CostFunction +
+Gradient`, inner state `BasicState<V>`, seeder
+`|x_i, _sigma| BasicState::new(x_i.clone())` (same as LM). Box
+bounds on the outer become interesting — L-BFGS-B is itself a
+bounded solver, so the outer can be `BoxConstrained` and the bound
+flows to both `BoundedCmaEs` *and* the inner L-BFGS-B. Probably want
+a `BoundedCmaInject` variant to mirror the S8 → S9 pattern.
+
+**Ingestion.** No new papers for S13a — Hansen 2011 already anchors
+the mechanism; S4's MNT + Nielsen anchor LM. S13b waits for whichever
+L-BFGS-B reference paper that session ingests.
 
 ## Cross-cutting (slot in opportunistically)
 

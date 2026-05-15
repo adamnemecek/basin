@@ -5,6 +5,8 @@ pub mod bounded_cma_es;
 pub mod brent;
 /// Hansen 2016 (µ/µ_W, λ)-CMA-ES with negative weights.
 pub mod cma_es;
+/// Memetic CMA-ES with Hansen-2011 injection (inner: Nelder-Mead).
+pub mod cma_inject;
 /// Pure Gauss-Newton solver for nonlinear least squares.
 pub mod gauss_newton;
 /// Steepest-descent solver with a pluggable line search.
@@ -30,6 +32,7 @@ pub use bfgs::BFGS;
 pub use bounded_cma_es::BoundedCmaEs;
 pub use brent::Brent;
 pub use cma_es::CmaEs;
+pub use cma_inject::CmaInject;
 pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
