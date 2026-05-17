@@ -503,6 +503,13 @@ where
         + Clone,
 {
     fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+        // Idempotent: a paused BoundedCmaEs re-entered via `run_loop`
+        // must not have its evolution state rebuilt. Mirrors the
+        // CmaEs::init early-return; see that solver's docs for the
+        // chain-resumption use case.
+        if self.state.is_some() {
+            return state;
+        }
         let mut w = self.build_working();
         w.p_sigma.scale_in_place(0.0);
         w.p_c.scale_in_place(0.0);

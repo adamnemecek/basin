@@ -1211,7 +1211,17 @@ end-to-end against a fake `AlwaysFails` inner.
 (Melo & Iacca 2014, IEEE SSCI) — empirical justification for picking
 Nelder-Mead as the first inner. Both have NOTES.md.
 
-### S12. MA-LS-Chains (memetic with persistent local-search state)
+### S12. MA-LS-Chains (memetic with persistent local-search state) ✓
+
+**Status.** Shipped as `Ssga` (`crates/basin/src/solver/ssga.rs`,
+standalone — BLX-α + NAM + BGA + replace-worst, backend-generic incl.
+`Vec<f64>`) and `MaLsChCma` (`crates/basin/src/solver/ma_ls_ch_cma.rs`,
+composes SSGA outer + per-individual CMA-ES inner; nalgebra/faer
+backends inheriting CMA-ES's matrix requirement). `CmaEs::init` /
+`BoundedCmaEs::init` made idempotent so a paused CMA-ES re-entered via
+`run_loop` keeps its evolution state. `MaLsChState<V, M>` is
+solver-private (not promoted to `core::state`) per tenet 4 — one
+consumer so far.
 
 - A *different* memetic shape that's worth its own solver, not a
   variant of S11: **steady-state GA outer** (BLX-α crossover, negative
@@ -1226,18 +1236,16 @@ Nelder-Mead as the first inner. Both have NOTES.md.
   resampled each generation). Trying to graft chains onto S11 means
   inventing an elite archive — that's research. Doing it as its own
   outer (SSGA) is the honest path and matches the published algorithm.
-- **What basin needs to add.** An SSGA solver (probably its own
-  preceding session — BLX-α / NAM / RW is a self-contained piece). The
-  inner solvers (CMA-ES, possibly Solis-Wets) already exist or can be
-  added cheaply.
 - **Once S12 lands, revisit S10's "no `Composed` abstraction" note.**
   S11 + S12 are the two concrete composed solvers tenet 4-style logic
-  needs to design the shared abstraction (if any) honestly.
+  needs to design the shared abstraction (if any) honestly. Open for
+  the next session.
 - **[ingested]** `references/bergmeir-2016/` (JSS paper on the
   Rmalschains R package) — cleanest pseudocode and parameter table.
-  `references/Memetic_Algorithms_for_Continuous_Optimisation_Bas.pdf`
-  is the underlying Molina et al. 2010 EC paper; promote to its own
-  `references/molina-2010/` slug + ingest before starting S12.
+  `references/molina-2010/` (the underlying EC-journal paper) —
+  ingested as part of this session; provides BGA formula, exact S_LS
+  fallback rule, and the full per-individual CMA-ES state list
+  (m, σ, C, B, BD, D, p_c, p_σ).
 
 ### S13. CMA-ES injection — additional inners (LM, L-BFGS-B)
 

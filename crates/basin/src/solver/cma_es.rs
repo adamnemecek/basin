@@ -466,6 +466,16 @@ where
         + Clone,
 {
     fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+        // Idempotent: if a previous init already seeded the internal
+        // state, return the caller-provided state untouched. This lets
+        // chain-style outer solvers (e.g. MaLsChCma) call `run_loop`
+        // repeatedly on a paused CmaEs without clobbering its evolution
+        // state on every entry. For non-resumption use this is a no-op:
+        // a freshly constructed CmaEs has `self.state == None` and
+        // proceeds through the full setup below.
+        if self.state.is_some() {
+            return state;
+        }
         let mut w = self.build_working();
         // Zero the path vectors and seed (d, d_inv) = (1, 1, …, 1) since C = I.
         w.p_sigma.scale_in_place(0.0);

@@ -50,5 +50,5 @@ pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResul
 pub use crate::solver::BFGS;
 pub use crate::solver::{
     BoundedCmaEs, Brent, CmaEs, CmaInject, GaussNewton, GradientDescent, LevenbergMarquardt,
-    NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
+    MaLsChCma, MaLsChState, NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
 };

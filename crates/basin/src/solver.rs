@@ -14,6 +14,8 @@ pub mod gradient_descent;
 /// Levenberg-Marquardt solver for nonlinear least squares with
 /// Nielsen 1999 damping update.
 pub mod levenberg_marquardt;
+/// MA-LSCh-CMA — memetic algorithm with LS chains (inner: CMA-ES).
+pub mod ma_ls_ch_cma;
 /// Nelder-Mead derivative-free simplex solver.
 pub mod nelder_mead;
 /// Projected gradient descent for box-constrained problems.
@@ -38,6 +40,7 @@ pub use cma_inject::CmaInject;
 pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
+pub use ma_ls_ch_cma::{MaLsChCma, MaLsChState};
 pub use nelder_mead::NelderMead;
 pub use projected_gradient_descent::ProjectedGradientDescent;
 pub use random_search::RandomSearch;
