@@ -3,10 +3,13 @@
 
 /// Backtracking line search (Armijo-only).
 pub mod backtracking;
+/// Moré–Thuente line search (MINPACK-2 `dcsrch` + `dcstep`).
+pub mod more_thuente;
 /// Strong-Wolfe line search (Nocedal & Wright algorithms 3.5/3.6).
 pub mod wolfe;
 
 pub use backtracking::Backtracking;
+pub use more_thuente::MoreThuente;
 pub use wolfe::Wolfe;
 
 /// Compute a step size `α` along a caller-supplied descent direction `d`.

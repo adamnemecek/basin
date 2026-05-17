@@ -1,0 +1,651 @@
+use crate::core::math::{Dot, ScaledAdd};
+use crate::core::problem::{CostFunction, Gradient};
+use crate::line_search::{LineSearch, LineSearchResult};
+
+/// Moré–Thuente line search — port of MINPACK-2's `dcsrch` + `dcstep`.
+///
+/// Finds an `α > 0` along the caller-supplied descent direction `d`
+/// satisfying both the strong-Wolfe conditions:
+///
+/// * Armijo (sufficient decrease): `f(x + α d) ≤ f(x) + ftol · α · ∇f(x)ᵀd`
+/// * Strong curvature: `|∇f(x + α d)ᵀd| ≤ gtol · |∇f(x)ᵀd|`
+///
+/// Same exit criteria as the strong-Wolfe `Wolfe` line search, but the
+/// stepping strategy is different: rather than bisection, this uses
+/// the safeguarded cubic/quadratic interpolation of Moré & Thuente
+/// 1994 (ACM TOMS 20(3)). The algorithm maintains a bracketing
+/// interval `[stx, sty]` containing a Wolfe-satisfying step, computes
+/// a cubic-interpolation trial step from the function and derivative
+/// values at the bracket endpoints, and safeguards against bad
+/// extrapolations.
+///
+/// **Why this exists alongside `Wolfe`.** L-BFGS-B v3.0's iteration
+/// trajectory is locked to this specific line search. Strong-Wolfe via
+/// bisection (basin's `Wolfe`) selects different valid Wolfe steps, so
+/// iterates diverge from the Fortran reference after the first line
+/// search. `MoreThuente` is what unlocks bit-for-bit comparison with
+/// `references/lbfgsb-v3.0/`.
+///
+/// **Conventions.** Parameter names (`ftol`, `gtol`, `xtol`) match the
+/// Moré–Thuente paper and the Fortran source. The strong-Wolfe `c1`
+/// and `c2` correspond to `ftol` and `gtol` respectively.
+///
+/// **Defaults match L-BFGS-B's `lnsrlb` caller** (`ftol = 1e-3`,
+/// `gtol = 0.9`, `xtol = 0.1`, `stpmin = 0`, `stpmax = 1e10`) rather
+/// than the looser MINPACK-2 standalone defaults. This is the
+/// load-bearing choice for L-BFGS-B parity.
+///
+/// **Reference.** `references/lbfgsb-v3.0/lbfgsb.f` lines 3347–3948
+/// (`dcsrch` and `dcstep`). MINPACK-1 1983, MINPACK-2 1993; J. J. Moré
+/// and D. J. Thuente, *Line search algorithms with guaranteed
+/// sufficient decrease*, ACM TOMS 20(3), 1994.
+pub struct MoreThuente {
+    /// Sufficient-decrease (Armijo) coefficient. Default `1e-3`
+    /// (Fortran `lnsrlb` constant). Strong-Wolfe `c1` analog.
+    pub ftol: f64,
+    /// Curvature coefficient. Default `0.9` (Fortran `lnsrlb`
+    /// constant). Strong-Wolfe `c2` analog.
+    pub gtol: f64,
+    /// Relative tolerance on the bracket width — exits with
+    /// `xtol`-warning if the bracket has collapsed to relative size
+    /// `≤ xtol`. Default `0.1` (Fortran `lnsrlb` constant).
+    pub xtol: f64,
+    /// Initial trial step. Default `1.0` (the quasi-Newton unit step).
+    pub alpha_init: f64,
+    /// Hard lower bound on the step. Default `0.0`.
+    pub stpmin: f64,
+    /// Hard upper bound on the step. Default `1e10` (Fortran `big`).
+    /// L-BFGS-B overrides this per-iteration via direct field
+    /// mutation, with `stpmax = max α s.t. x + α·d ∈ [l, u]`.
+    pub stpmax: f64,
+    /// Safety cap on function evaluations. Default `20`. The Moré–
+    /// Thuente warning conditions normally terminate well before
+    /// this; the cap exists to bound pathological inputs.
+    pub maxfev: u32,
+}
+
+impl Default for MoreThuente {
+    fn default() -> Self {
+        Self {
+            ftol: 1.0e-3,
+            gtol: 0.9,
+            xtol: 0.1,
+            alpha_init: 1.0,
+            stpmin: 0.0,
+            stpmax: 1.0e10,
+            maxfev: 20,
+        }
+    }
+}
+
+impl MoreThuente {
+    /// Moré–Thuente with L-BFGS-B's `lnsrlb` defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Override the Armijo coefficient. Panics if not in `(0, 1)`.
+    pub fn ftol(mut self, ftol: f64) -> Self {
+        assert!(0.0 < ftol && ftol < 1.0, "ftol must be in (0, 1)");
+        self.ftol = ftol;
+        self
+    }
+
+    /// Override the curvature coefficient. Panics if not in `(0, 1)`.
+    pub fn gtol(mut self, gtol: f64) -> Self {
+        assert!(0.0 < gtol && gtol < 1.0, "gtol must be in (0, 1)");
+        self.gtol = gtol;
+        self
+    }
+
+    /// Override the bracket-width relative tolerance. Panics if `< 0`.
+    pub fn xtol(mut self, xtol: f64) -> Self {
+        assert!(xtol >= 0.0, "xtol must be ≥ 0");
+        self.xtol = xtol;
+        self
+    }
+
+    /// Override the initial trial step. Panics if not strictly positive.
+    pub fn alpha_init(mut self, alpha_init: f64) -> Self {
+        assert!(alpha_init > 0.0, "alpha_init must be > 0");
+        self.alpha_init = alpha_init;
+        self
+    }
+
+    /// Override the step lower bound. Panics if `< 0`.
+    pub fn stpmin(mut self, stpmin: f64) -> Self {
+        assert!(stpmin >= 0.0, "stpmin must be ≥ 0");
+        self.stpmin = stpmin;
+        self
+    }
+
+    /// Override the step upper bound. Panics if `< stpmin`.
+    pub fn stpmax(mut self, stpmax: f64) -> Self {
+        assert!(stpmax > 0.0, "stpmax must be > 0");
+        self.stpmax = stpmax;
+        self
+    }
+
+    /// Override the function-evaluation cap.
+    pub fn maxfev(mut self, maxfev: u32) -> Self {
+        self.maxfev = maxfev;
+        self
+    }
+}
+
+impl<P, V> LineSearch<P, V> for MoreThuente
+where
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    V: ScaledAdd<f64> + Dot + Clone,
+{
+    fn next(
+        &mut self,
+        problem: &P,
+        param: &V,
+        cost: f64,
+        gradient: &V,
+        direction: &V,
+    ) -> LineSearchResult {
+        let finit = cost;
+        let ginit = gradient.dot(direction);
+
+        // Initial-derivative checks (Fortran START block, lines 3497–3512).
+        // Defensive: catch ascent direction or non-finite slope. The
+        // `!is_finite()` guard routes NaN here too.
+        if !ginit.is_finite() || ginit >= 0.0 {
+            return LineSearchResult {
+                alpha: 0.0,
+                cost_evals: 0,
+                gradient_evals: 0,
+            };
+        }
+        if !(self.alpha_init >= self.stpmin && self.alpha_init <= self.stpmax) {
+            return LineSearchResult {
+                alpha: 0.0,
+                cost_evals: 0,
+                gradient_evals: 0,
+            };
+        }
+
+        // Initialization (Fortran lines 3514–3541).
+        let mut brackt = false;
+        let mut stage: u8 = 1;
+        let gtest = self.ftol * ginit;
+        let mut width = self.stpmax - self.stpmin;
+        let mut width1 = width / P5;
+
+        let mut stx = 0.0;
+        let mut fx = finit;
+        let mut gx = ginit;
+        let mut sty = 0.0;
+        let mut fy = finit;
+        let mut gy = ginit;
+        let mut stmin = 0.0;
+        let mut stmax = self.alpha_init + XTRAPU * self.alpha_init;
+
+        let mut stp = self.alpha_init;
+
+        let mut cost_evals: u64 = 0;
+        let mut gradient_evals: u64 = 0;
+
+        for _ in 0..self.maxfev {
+            // Evaluate f(stp), g(stp) — Fortran `task = 'FG'` callback.
+            let mut trial = param.clone();
+            trial.scaled_add(stp, direction);
+            let f = problem.cost(&trial);
+            cost_evals += 1;
+            let g_full = problem.gradient(&trial);
+            gradient_evals += 1;
+            let g = g_full.dot(direction);
+
+            // Stage transition (Fortran lines 3572–3574).
+            let ftest = finit + stp * gtest;
+            if stage == 1 && f <= ftest && g >= 0.0 {
+                stage = 2;
+            }
+
+            // Warning / convergence tests (Fortran lines 3578–3594).
+            //
+            // All four warning conditions and the convergence
+            // condition terminate the search. Treated identically
+            // here: return the current `stp` as the chosen step.
+            // L-BFGS-B's `lnsrlb` routes `WARN`/`CONV` to its
+            // `NEW_X` path, so a warning is not a failure.
+            let warn_rounding = brackt && (stp <= stmin || stp >= stmax);
+            let warn_xtol = brackt && stmax - stmin <= self.xtol * stmax;
+            let warn_stpmax = stp == self.stpmax && f <= ftest && g <= gtest;
+            let warn_stpmin = stp == self.stpmin && (f > ftest || g >= gtest);
+            let converged = f <= ftest && g.abs() <= self.gtol * (-ginit);
+
+            if warn_rounding || warn_xtol || warn_stpmax || warn_stpmin || converged {
+                return LineSearchResult {
+                    alpha: stp,
+                    cost_evals,
+                    gradient_evals,
+                };
+            }
+
+            // Step update via `dcstep`, with optional modified-function
+            // path in stage 1 (Fortran lines 3600–3630).
+            if stage == 1 && f <= fx && f > ftest {
+                let fm = f - stp * gtest;
+                let mut fxm = fx - stx * gtest;
+                let mut fym = fy - sty * gtest;
+                let gm = g - gtest;
+                let mut gxm = gx - gtest;
+                let mut gym = gy - gtest;
+
+                dcstep(
+                    &mut stx,
+                    &mut fxm,
+                    &mut gxm,
+                    &mut sty,
+                    &mut fym,
+                    &mut gym,
+                    &mut stp,
+                    fm,
+                    gm,
+                    &mut brackt,
+                    stmin,
+                    stmax,
+                );
+
+                fx = fxm + stx * gtest;
+                fy = fym + sty * gtest;
+                gx = gxm + gtest;
+                gy = gym + gtest;
+            } else {
+                dcstep(
+                    &mut stx,
+                    &mut fx,
+                    &mut gx,
+                    &mut sty,
+                    &mut fy,
+                    &mut gy,
+                    &mut stp,
+                    f,
+                    g,
+                    &mut brackt,
+                    stmin,
+                    stmax,
+                );
+            }
+
+            // Bisection if bracket width isn't shrinking (Fortran 3634–3638).
+            if brackt {
+                if (sty - stx).abs() >= P66 * width1 {
+                    stp = stx + P5 * (sty - stx);
+                }
+                width1 = width;
+                width = (sty - stx).abs();
+            }
+
+            // Recompute (stmin, stmax) bounds for the next trial step
+            // (Fortran 3642–3648).
+            if brackt {
+                stmin = stx.min(sty);
+                stmax = stx.max(sty);
+            } else {
+                stmin = stp + XTRAPL * (stp - stx);
+                stmax = stp + XTRAPU * (stp - stx);
+            }
+
+            // Clamp stp to user-supplied (stpmin, stpmax) (Fortran 3652–3653).
+            stp = stp.max(self.stpmin).min(self.stpmax);
+
+            // If further progress impossible, fall back to stx
+            // (Fortran 3658–3659). The Fortran is
+            // `(brackt ∧ (A ∨ B)) ∨ (brackt ∧ C)` ≡
+            // `brackt ∧ (A ∨ B ∨ C)`.
+            if brackt && (stp <= stmin || stp >= stmax || stmax - stmin <= self.xtol * stmax) {
+                stp = stx;
+            }
+        }
+
+        // maxfev exhausted: return current best step (Armijo holds
+        // at stx by invariant of dcstep, so this is a usable step).
+        LineSearchResult {
+            alpha: stx,
+            cost_evals,
+            gradient_evals,
+        }
+    }
+}
+
+// Fortran constants (lines 3486–3488).
+const P5: f64 = 0.5;
+const P66: f64 = 0.66;
+const XTRAPL: f64 = 1.1;
+const XTRAPU: f64 = 4.0;
+
+/// Safeguarded cubic/quadratic step interpolation.
+///
+/// Direct port of `dcstep.f` (Fortran lines 3694–3948). Updates
+/// `(stx, fx, dx)` and `(sty, fy, dy)` — the bracketing interval
+/// endpoints — and computes the next trial step `stp`. The
+/// four-case structure of Moré & Thuente §3:
+///
+/// 1. `fp > fx`: minimum bracketed. Take cubic step or average of
+///    cubic and quadratic, whichever is closer to stx.
+/// 2. `sgn(dp) ≠ sgn(dx)`: minimum bracketed on the other side.
+///    Take cubic or secant, whichever is farther from stp.
+/// 3. `|dp| < |dx|`: same-sign derivative shrinking. Cubic with
+///    safeguards.
+/// 4. Otherwise: cubic if bracketed, else hit a step bound.
+#[allow(clippy::too_many_arguments)]
+fn dcstep(
+    stx: &mut f64,
+    fx: &mut f64,
+    dx: &mut f64,
+    sty: &mut f64,
+    fy: &mut f64,
+    dy: &mut f64,
+    stp: &mut f64,
+    fp: f64,
+    dp: f64,
+    brackt: &mut bool,
+    stpmin: f64,
+    stpmax: f64,
+) {
+    let sgnd = dp * (*dx / dx.abs());
+    let stpf;
+
+    if fp > *fx {
+        // Case 1.
+        let theta = 3.0 * (*fx - fp) / (*stp - *stx) + *dx + dp;
+        let s = theta.abs().max(dx.abs()).max(dp.abs());
+        let mut gamma = s * ((theta / s).powi(2) - (*dx / s) * (dp / s)).sqrt();
+        if *stp < *stx {
+            gamma = -gamma;
+        }
+        let p = (gamma - *dx) + theta;
+        let q = ((gamma - *dx) + gamma) + dp;
+        let r = p / q;
+        let stpc = *stx + r * (*stp - *stx);
+        let stpq = *stx + ((*dx / ((*fx - fp) / (*stp - *stx) + *dx)) / 2.0) * (*stp - *stx);
+        stpf = if (stpc - *stx).abs() < (stpq - *stx).abs() {
+            stpc
+        } else {
+            stpc + (stpq - stpc) / 2.0
+        };
+        *brackt = true;
+    } else if sgnd < 0.0 {
+        // Case 2.
+        let theta = 3.0 * (*fx - fp) / (*stp - *stx) + *dx + dp;
+        let s = theta.abs().max(dx.abs()).max(dp.abs());
+        let mut gamma = s * ((theta / s).powi(2) - (*dx / s) * (dp / s)).sqrt();
+        if *stp > *stx {
+            gamma = -gamma;
+        }
+        let p = (gamma - dp) + theta;
+        let q = ((gamma - dp) + gamma) + *dx;
+        let r = p / q;
+        let stpc = *stp + r * (*stx - *stp);
+        let stpq = *stp + (dp / (dp - *dx)) * (*stx - *stp);
+        stpf = if (stpc - *stp).abs() > (stpq - *stp).abs() {
+            stpc
+        } else {
+            stpq
+        };
+        *brackt = true;
+    } else if dp.abs() < dx.abs() {
+        // Case 3.
+        let theta = 3.0 * (*fx - fp) / (*stp - *stx) + *dx + dp;
+        let s = theta.abs().max(dx.abs()).max(dp.abs());
+        // `gamma = 0` only arises if the cubic does not tend to infinity
+        // in the direction of the step. The `max(0, ·)` guards a
+        // negative argument to sqrt from rounding.
+        let mut gamma = s
+            * (0.0_f64)
+                .max((theta / s).powi(2) - (*dx / s) * (dp / s))
+                .sqrt();
+        if *stp > *stx {
+            gamma = -gamma;
+        }
+        let p = (gamma - dp) + theta;
+        let q = (gamma + (*dx - dp)) + gamma;
+        let r = p / q;
+        let stpc = if r < 0.0 && gamma != 0.0 {
+            *stp + r * (*stx - *stp)
+        } else if *stp > *stx {
+            stpmax
+        } else {
+            stpmin
+        };
+        let stpq = *stp + (dp / (dp - *dx)) * (*stx - *stp);
+
+        stpf = if *brackt {
+            let cand = if (stpc - *stp).abs() < (stpq - *stp).abs() {
+                stpc
+            } else {
+                stpq
+            };
+            if *stp > *stx {
+                (*stp + P66 * (*sty - *stp)).min(cand)
+            } else {
+                (*stp + P66 * (*sty - *stp)).max(cand)
+            }
+        } else {
+            let cand = if (stpc - *stp).abs() > (stpq - *stp).abs() {
+                stpc
+            } else {
+                stpq
+            };
+            cand.min(stpmax).max(stpmin)
+        };
+    } else {
+        // Case 4.
+        stpf = if *brackt {
+            let theta = 3.0 * (fp - *fy) / (*sty - *stp) + *dy + dp;
+            let s = theta.abs().max(dy.abs()).max(dp.abs());
+            let mut gamma = s * ((theta / s).powi(2) - (*dy / s) * (dp / s)).sqrt();
+            if *stp > *sty {
+                gamma = -gamma;
+            }
+            let p = (gamma - dp) + theta;
+            let q = ((gamma - dp) + gamma) + *dy;
+            let r = p / q;
+            *stp + r * (*sty - *stp)
+        } else if *stp > *stx {
+            stpmax
+        } else {
+            stpmin
+        };
+    }
+
+    // Update the bracket (Fortran 3928–3941).
+    if fp > *fx {
+        *sty = *stp;
+        *fy = fp;
+        *dy = dp;
+    } else {
+        if sgnd < 0.0 {
+            *sty = *stx;
+            *fy = *fx;
+            *dy = *dx;
+        }
+        *stx = *stp;
+        *fx = fp;
+        *dx = dp;
+    }
+
+    *stp = stpf;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 1D quadratic via Vec<f64>: f(x) = (x[0] - 3)^2. Min at x = 3.
+    struct Quadratic;
+
+    impl CostFunction for Quadratic {
+        type Param = Vec<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Vec<f64>) -> f64 {
+            (x[0] - 3.0).powi(2)
+        }
+    }
+
+    impl Gradient for Quadratic {
+        type Param = Vec<f64>;
+        type Gradient = Vec<f64>;
+        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+            vec![2.0 * (x[0] - 3.0)]
+        }
+    }
+
+    /// 1D cubic with non-trivial bracketing: f(x) = (x-2)^3 - 3(x-2),
+    /// has a local min at x = 3 (f = -2) and a local max at x = 1
+    /// (f = 2). Starting at x = 0 with d = +1, the initial slope is
+    /// f'(0) = 3·(0-2)^2 - 3 = 9, NOT a descent direction. Going the
+    /// other way: d = -1 at x = 5, f'(5) = 3·9 - 3 = 24, f'·d = -24 < 0,
+    /// descends toward x = 3.
+    struct Cubic;
+
+    impl CostFunction for Cubic {
+        type Param = Vec<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Vec<f64>) -> f64 {
+            let t = x[0] - 2.0;
+            t.powi(3) - 3.0 * t
+        }
+    }
+
+    impl Gradient for Cubic {
+        type Param = Vec<f64>;
+        type Gradient = Vec<f64>;
+        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+            let t = x[0] - 2.0;
+            vec![3.0 * t.powi(2) - 3.0]
+        }
+    }
+
+    #[test]
+    fn satisfies_strong_wolfe_on_quadratic() {
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![-g[0]]; // = +6
+        let mut ls = MoreThuente::new();
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        assert!(r.alpha > 0.0);
+
+        let mut x_new = x.clone();
+        x_new[0] += r.alpha * d[0];
+        let f_new = p.cost(&x_new);
+        let g_new = p.gradient(&x_new);
+        let g0_dot_d = g[0] * d[0];
+        let gnew_dot_d = g_new[0] * d[0];
+
+        // Armijo and strong curvature at returned α (with the MT defaults).
+        assert!(
+            f_new <= f0 + ls.ftol * r.alpha * g0_dot_d + 1e-12,
+            "Armijo failed",
+        );
+        assert!(
+            gnew_dot_d.abs() <= -ls.gtol * g0_dot_d + 1e-12,
+            "Strong curvature failed",
+        );
+    }
+
+    #[test]
+    fn unit_step_accepted_when_quadratic_minimum_within_initial_step() {
+        // 1D quadratic min at x=3, start x=0, d=6. Line min at α* = 0.5.
+        // MT should land close to α = 0.5.
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![6.0];
+        let mut ls = MoreThuente::new();
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        // gtol = 0.9 admits a wide range; check a sane proximity.
+        assert!(
+            (r.alpha - 0.5).abs() < 0.5,
+            "expected α near 0.5, got {}",
+            r.alpha
+        );
+        // Verify Armijo holds at returned α.
+        let mut x_new = x.clone();
+        x_new[0] += r.alpha * d[0];
+        let f_new = p.cost(&x_new);
+        assert!(f_new <= f0 + ls.ftol * r.alpha * (g[0] * d[0]) + 1e-12);
+    }
+
+    #[test]
+    fn ascent_direction_returns_zero_step() {
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x); // g = -6 at x=0
+        let d = vec![g[0]]; // d = -6 → gᵀd = +36 > 0 (ascent)
+        let mut ls = MoreThuente::new();
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        assert_eq!(r.alpha, 0.0);
+        assert_eq!(r.cost_evals, 0);
+        assert_eq!(r.gradient_evals, 0);
+    }
+
+    #[test]
+    fn cubic_satisfies_wolfe_on_nontrivial_function() {
+        // Cubic f(x) = (x-2)^3 - 3(x-2): local min at x=3, max at x=1.
+        // Start at x=5, descend along d=-1. The descent slope is
+        // f'(5) · d = 24 · (-1) = -24. Moré–Thuente should return an
+        // α satisfying both Wolfe conditions — *not necessarily* the
+        // line minimum.
+        let p = Cubic;
+        let x = vec![5.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![-1.0];
+        let mut ls = MoreThuente::new().alpha_init(3.0);
+        let r = LineSearch::<Cubic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        assert!(r.alpha > 0.0);
+        let mut x_new = x.clone();
+        x_new[0] += r.alpha * d[0];
+        let f_new = p.cost(&x_new);
+        let g_new = p.gradient(&x_new);
+        let g0_dot_d = g[0] * d[0];
+        let gnew_dot_d = g_new[0] * d[0];
+
+        assert!(
+            f_new <= f0 + ls.ftol * r.alpha * g0_dot_d + 1e-12,
+            "Armijo failed at α={}: f_new={f_new}, threshold={}",
+            r.alpha,
+            f0 + ls.ftol * r.alpha * g0_dot_d,
+        );
+        assert!(
+            gnew_dot_d.abs() <= -ls.gtol * g0_dot_d + 1e-12,
+            "Strong curvature failed at α={}: |g·d|={}, threshold={}",
+            r.alpha,
+            gnew_dot_d.abs(),
+            -ls.gtol * g0_dot_d,
+        );
+    }
+
+    #[test]
+    fn respects_stpmax_when_minimum_is_beyond() {
+        // 1D quadratic min at x=3, start x=0, d=6 — line min α* = 0.5.
+        // Cap stpmax = 0.1: MT should return α near 0.1 with the
+        // `WARNING: STP = STPMAX` warning (treated as success here).
+        let p = Quadratic;
+        let x = vec![0.0];
+        let f0 = p.cost(&x);
+        let g = p.gradient(&x);
+        let d = vec![6.0];
+        let mut ls = MoreThuente::new().stpmax(0.1).alpha_init(0.1);
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+
+        assert!(
+            (r.alpha - 0.1).abs() < 1e-12,
+            "expected α=0.1, got {}",
+            r.alpha
+        );
+    }
+}
