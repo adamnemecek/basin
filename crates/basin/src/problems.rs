@@ -25,6 +25,7 @@ pub mod goldstein_price;
 pub mod matyas;
 pub mod mccormick;
 pub mod powell_singular;
+pub mod rastrigin;
 pub mod rosenbrock;
 pub mod sparse_least_squares;
 pub mod spec;
@@ -44,6 +45,7 @@ pub use powell_singular::{
     powell_singular, powell_singular_jacobian, powell_singular_residuals, PowellSingular,
     POWELL_SINGULAR_SPEC,
 };
+pub use rastrigin::{rastrigin, Rastrigin, RastriginBoxed, RASTRIGIN_SPEC};
 pub use rosenbrock::{
     rosenbrock, rosenbrock_gradient, rosenbrock_residuals, rosenbrock_residuals_jacobian,
     Rosenbrock, RosenbrockResiduals, ROSENBROCK_SPEC,
@@ -65,5 +67,6 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &MCCORMICK_SPEC,
     &GOLDSTEIN_PRICE_SPEC,
     &POWELL_SINGULAR_SPEC,
+    &RASTRIGIN_SPEC,
     &SPARSE_LEAST_SQUARES_SPEC,
 ];

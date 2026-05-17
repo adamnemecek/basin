@@ -82,7 +82,7 @@ multimodal functions until SA / CMA-ES / a global solver lands — defer those.
 - [ ] **Himmelblau** — 2D, four equal minima. Defer until a global solver
       makes "which minimum?" interesting.
 - [ ] **Ackley** — N-D, multimodal (exp + cos). Defer (global).
-- [ ] **Rastrigin** — N-D, highly multimodal (cosine ripple). Defer (global).
+- [x] **Rastrigin** — N-D, highly multimodal (cosine ripple). *(done)*
 - [ ] **Levy** — N-D, multimodal. Defer (global).
 - [ ] **Styblinski-Tang** — N-D, multimodal. Defer (global).
 - [ ] **Schaffer (N.2 / N.4)** — 2D, multimodal. Defer (global).
