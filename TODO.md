@@ -22,7 +22,7 @@ This section tracks the immediate next session's discrete items.
       seeded `ChaCha8Rng` works on `wasm32-unknown-unknown` with no
       JS shim. See `ROADMAP.md` Phase 2 for decisions and deferrals.
 
-- [ ] **S8: CMA-ES (vanilla).**
+- [x] **S8: CMA-ES (vanilla).**
       Second LA-heavy solver: covariance + eigendecomposition. Read
       Hansen, *The CMA Evolution Strategy: A Tutorial* first; pin
       `(μ/μ_w, λ)`-CMA-ES with rank-μ + rank-1 updates and tutorial-
@@ -33,8 +33,28 @@ This section tracks the immediate next session's discrete items.
 
 - [ ] **README and rustdoc.** Wait until the public API stops churning ---
       premature docs rot fast.
-- [ ] **L-BFGS or Adam.** Too big a chunk for now; needs the termination layer +
-      state-with-history first.
+- [x] **L-BFGS-B.** *(done)* Faithful port of Nocedal's Fortran v3.0
+      with iteration-wise parity verified. Landed:
+      `references/lbfgsb-v3.0/` (BSD-3 vendored source + `NOTES.md`);
+      `MoreThuente` line search (`line_search/more_thuente.rs`, port
+      of `dcsrch` + `dcstep`); `LbfgsState` with `(s, y)` history +
+      compact-form Gram blocks (`core/state/lbfgs.rs`); generalized
+      Cauchy point + compact-form helpers
+      (`solver/lbfgsb/{cauchy,compact}.rs` — `formt`, `bmv`, pure-Rust
+      Cholesky / triangular solves, `hpsolb` min-heap, full `cauchy`
+      port); subspace minimization (`solver/lbfgsb/subsm.rs` — `WᵀZd`,
+      `L·E·Lᵀ` middle-system solve via paired triangular solves with
+      sign-flip, projected Newton + uniform-α bound-backtracking);
+      `formk` (`solver/lbfgsb/formk.rs` — incremental `wn1` Gram cache,
+      block-Cholesky `L·E·Lᵀ` factor of indefinite `K`); top-level
+      `LBFGSB` solver (`solver/lbfgsb.rs`) wired through cauchy +
+      freev + formk + cmprlb + subsm + Moré–Thuente + matupd/formt
+      with the Fortran `goto 222` history-clear restart path.
+      Validation: convergence on Rosenbrock 2D, BoothBoxed (slack +
+      tight corner), and a 5-D quadratic across Vec / nalgebra / faer
+      backends; iteration-wise parity to ≤ 1e-10 against the Fortran
+      reference (`tests/lbfgsb_iter_parity.rs` reading a fixture
+      dumped from gfortran-built `references/lbfgsb-v3.0/`).
 - [ ] **Constraints (tenet 4).** Trait design deferred until the first
       constrained solver is being written (likely projected gradient on box
       bounds).

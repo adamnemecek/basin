@@ -38,14 +38,17 @@ pub use crate::core::solver::Solver;
 pub use crate::core::state::QuasiNewtonState;
 pub use crate::core::state::{
     BasicPopulationState, BasicSimplexState, BasicState, GradientState, IntoInitialSimplex,
-    PopulationState, SimplexState, State,
+    LbfgsState, PopulationState, SimplexState, State,
 };
 pub use crate::core::termination::{
     CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
     ParamTolerance, ProjectedGradientTolerance, SimplexTolerance, TerminationCriterion,
     TerminationReason,
 };
-pub use crate::line_search::{Backtracking, Constant, LineSearch, LineSearchResult, Wolfe};
+pub use crate::line_search::{
+    Backtracking, Constant, LineSearch, LineSearchResult, MoreThuente, Wolfe,
+};
+pub use crate::solver::lbfgsb::LBFGSB;
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{

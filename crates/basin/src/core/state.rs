@@ -13,6 +13,11 @@
 //! `AGENTS.md` — switching to `F: num_traits::Float` is planned but
 //! deferred until the first stochastic solver lands.
 
+/// Limited-memory BFGS / L-BFGS-B state (`LbfgsState`).
+pub mod lbfgs;
+
+pub use lbfgs::LbfgsState;
+
 /// Minimum information the executor and generic termination criteria
 /// need to read from a solver's iterate.
 ///

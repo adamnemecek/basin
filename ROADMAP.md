@@ -1293,20 +1293,98 @@ the same outer-iter budget — LM's superlinear convergence inside the
 basin is what justifies the pair.
 
 **S13b. CMA-ES + L-BFGS-B.** Melo & Iacca 2014's other tested inner.
-Blocked on L-BFGS-B itself landing (no S-number yet — L-BFGS is
-mentioned in AGENTS.md "WASM as a hard constraint" as preferring a
-pure-Rust impl). Once L-BFGS-B lands and the inner-generic refactor
-from S13a is in, this is a small follow-up: outer `P: CostFunction +
-Gradient`, inner state `BasicState<V>`, seeder
-`|x_i, _sigma| BasicState::new(x_i.clone())` (same as LM). Box
-bounds on the outer become interesting — L-BFGS-B is itself a
+Blocked on L-BFGS-B itself landing (S14, see below). Once L-BFGS-B
+lands and the inner-generic refactor from S13a is in, this is a
+small follow-up: outer `P: CostFunction + Gradient`, inner state
+`LbfgsState<V>`, seeder
+`|x_i, _sigma| LbfgsState::new(x_i.clone(), m)` (analogous to LM).
+Box bounds on the outer become interesting — L-BFGS-B is itself a
 bounded solver, so the outer can be `BoxConstrained` and the bound
 flows to both `BoundedCmaEs` *and* the inner L-BFGS-B. Probably want
 a `BoundedCmaInject` variant to mirror the S8 → S9 pattern.
 
 **Ingestion.** No new papers for S13a — Hansen 2011 already anchors
-the mechanism; S4's MNT + Nielsen anchor LM. S13b waits for whichever
-L-BFGS-B reference paper that session ingests.
+the mechanism; S4's MNT + Nielsen anchor LM. S13b's L-BFGS-B
+reference is ingested in S14 (`references/lbfgsb-v3.0/`).
+
+### S14. L-BFGS-B (faithful port of Nocedal v3.0)
+
+Box-constrained quasi-Newton, anchored on Byrd–Lu–Nocedal 1995 and
+Zhu–Byrd–Lu–Nocedal 1997 (the bundled `algorithm.pdf` and `code.pdf`
+in `references/lbfgsb-v3.0/`). Targets iteration-wise parity with
+the Fortran reference (≤ ~1e-11 ‖x_k − x_k_ref‖_∞ per iter on a
+5D-Rosenbrock-with-bounds fixture). Backends: nalgebra + faer
+(LA-tier per tenet 5; needs `LinearSolveSpd<V>` for the compact-form
+middle-matrix solve). Plan checked in at
+`~/.claude/plans/i-want-to-add-ticklish-breeze.md`.
+
+Staged delivery; first five stages have landed:
+
+- **S14.1 [done]** Ingest Fortran v3.0 source (`references/lbfgsb-v3.0/`)
+  with NOTES.md mapping every subroutine we port to its upstream
+  line range.
+- **S14.2 [done]** Port Moré–Thuente line search
+  (`dcsrch` + `dcstep`) as `MoreThuente` in
+  `line_search/more_thuente.rs`. Defaults match Fortran `lnsrlb`
+  (`ftol = 1e-3`, `gtol = 0.9`, `xtol = 0.1`) for parity. Available
+  to `BFGS::with_line_search` for cross-validation.
+- **S14.3 [done]** `LbfgsState<V>` in `core/state/lbfgs.rs`:
+  chronological `(s, y)` history with capacity-bounded ring
+  semantics; compact-form `SᵀY` / `SᵀS` Gram blocks; `theta`
+  scaling; curvature-guarded `append_pair`.
+- **S14.4 [done]** Port `cauchy.f` (generalized Cauchy point) in
+  `solver/lbfgsb/cauchy.rs`, with compact-form helpers (`formt`,
+  `bmv`, pure-Rust Cholesky / triangular solves, `hpsolb` min-heap)
+  in `solver/lbfgsb/compact.rs`. Sidestepped the planned
+  `AsFloatSlice` trait by giving the routines a slice-based API
+  (`&[f64]` / `&mut [f64]`) and having the solver-level layer
+  source slices per-backend at call time
+  (nalgebra `as_slice`, faer `try_as_col_major().unwrap().as_slice`,
+  `Vec` direct). Triangular solves on `wt` go straight to scalar
+  Rust loops, preserving the Fortran two-step structured solve
+  rather than collapsing to a generic SPD solve — matters for
+  iteration-wise parity in S14.7.
+- **S14.5 [done]** Port `subsm.f` (subspace minimization) in
+  `solver/lbfgsb/subsm.rs`, including the uniform-α
+  bound-backtracking path (`iword = 1` in Fortran) and the v3.0
+  directional-derivative check at the original iterate. Consumes a
+  precomputed `wn` (the `L·E·Lᵀ` factor of `K`), reusing the
+  existing `solve_upper_tri{,_transposed}` helpers from
+  `solver/lbfgsb/compact.rs` with the sign-flip on the top half
+  between the two solves. `formk` (which builds `wn`) lands in
+  S14.6 — until then `wn` is constructed by hand in the unit tests.
+- **S14.6 [done]** `LBFGSB<S = MoreThuente>` solver wiring all of
+  the above, with builder API mirroring `BFGS`. Lives in
+  `solver/lbfgsb.rs`; the `formk` port (`solver/lbfgsb/formk.rs`)
+  builds `wn` incrementally from the persistent `wn1` Gram cache.
+  Per-backend slice extraction sits behind `backend::AsFloatSliceMut`
+  with impls for `Vec<f64>`, `nalgebra::DVector<f64>`, and
+  `faer::Col<f64>` (the planned external `AsFloatSlice` math trait
+  was kept private to the L-BFGS-B module — the rest of the solver
+  doesn't need it). Per-iter scratch lives in a lazy
+  `LbfgsbWork` on `LbfgsState`, allocated once at `init`. The
+  Fortran `goto 222` history-clear restart path is preserved as a
+  single-shot restart in `next_iter`. Smoke convergence verified on
+  a shifted-quadratic-in-box and unbounded Rosenbrock 2D; the
+  full iteration-wise parity battery is S14.7.
+- **S14.7 [done]** Validation tests. Convergence: across Vec /
+  nalgebra / faer in `tests/lbfgsb_{vec,nalgebra,faer}.rs` —
+  unbounded Rosenbrock 2D, BoothBoxed at the tight `[-1, 1]²`
+  corner (optimum at `(1, 1)`, both bounds active), BoothBoxed with
+  slack bounds (unconstrained recovery), and a strictly convex
+  5-D quadratic with slack bounds. Iteration-wise parity:
+  `tests/lbfgsb_iter_parity.rs` steps `LBFGSB` for 30 iters on
+  Rosenbrock 5D with bounds `[0, 5]⁵` from infeasible start
+  `(-1, 2, -1, 2, -1)` and asserts `≤ 1e-10` agreement with the
+  Fortran reference (`m = 5`, `factr = 0`, `pgtol = 0`). The
+  fixture is text-format `iter f x g` per line, dumped by
+  `tests/fixtures/lbfgsb_driver.f` linked against
+  `references/lbfgsb-v3.0/`; regeneration instructions in
+  `tests/fixtures/README.md`. No `serde_json` dep — parse is
+  whitespace `split_whitespace`. Plus a sanity comparator: BFGS
+  with `MoreThuente` line search vs. `LBFGSB` on unbounded
+  Rosenbrock — iteration counts comparable, confirming the
+  limited-memory ≈ full-memory regime for `m ≥ 2` here.
 
 ## Cross-cutting (slot in opportunistically)
 

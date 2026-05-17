@@ -11,6 +11,9 @@ pub mod cma_inject;
 pub mod gauss_newton;
 /// Steepest-descent solver with a pluggable line search.
 pub mod gradient_descent;
+/// L-BFGS-B (faithful port of Nocedal v3.0). Box-constrained
+/// limited-memory quasi-Newton solver.
+pub mod lbfgsb;
 /// Levenberg-Marquardt solver for nonlinear least squares with
 /// Nielsen 1999 damping update.
 pub mod levenberg_marquardt;

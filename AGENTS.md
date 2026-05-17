@@ -22,8 +22,7 @@ layer, math abstraction) is in place along with two concrete solvers
 - `cargo build`: build the library.
 - `cargo test`: run tests.
 - `cargo test <name>`: run a single test by name.
-- `cargo clippy --all-features`: lint (matches the pre-commit hook; always pass
-  `--all-features`).
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings`: lint
 - `cargo fmt`: format (also enforced by pre-commit).
 
 The dev environment is provided by `devenv.nix` (loaded automatically via

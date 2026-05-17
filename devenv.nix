@@ -16,7 +16,6 @@
     samply
     pprof
     wasm-pack
-    bashInteractive
     perf
     go-task
     quartoMinimal
