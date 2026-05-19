@@ -113,6 +113,16 @@ impl<S: State, So> InnerExecutor<S, So> {
         self
     }
 
+    /// Read-only access to the inner solver. Lets composed outer
+    /// solvers dispatch on the inner before / after `run` (e.g. to
+    /// construct an inner state via a `MemeticInner::seed` call, or to
+    /// read a `MemeticInner::work_units` total off the result).
+    /// Mutable access goes through `run`, which already takes
+    /// `&mut self`.
+    pub fn solver(&self) -> &So {
+        &self.solver
+    }
+
     /// Drive the inner solver against `&problem` from `state`, returning
     /// the final inner state and termination reason. Reusable: call once
     /// per outer iter.

@@ -1,25 +1,20 @@
-//! Integration tests for [`CmaInject`] on the nalgebra backend.
+//! Integration tests for [`CmaInject`] with Nelder-Mead inner on the
+//! nalgebra backend.
 //!
 //! Two tests below: convergence on Rosenbrock 2-D (the canonical
 //! memetic-CMA-ES showcase — Hansen 2011 §4 reports `n×` speedup from
 //! injection on this function), and cost-eval aggregation across the
 //! outer/inner composition boundary.
 //!
-//! **Not tested here:** the `SolverFailed`-bubbling path inside
-//! `next_iter` (AGENTS.md "Solver composition" rule 3). The standard
-//! `AlwaysFails` harness from
-//! `tests/inner_executor.rs:bubbles_inner_solver_failed_via_outer`
-//! needs to substitute a fake inner solver, which the specialised
-//! `CmaInject<V, M>` doesn't allow — `NelderMead` never returns
-//! `SolverFailed`. The bubbling logic is ~3 lines and visually
-//! reviewable; the contract is exercised end-to-end against
-//! `InnerExecutor` in `tests/inner_executor.rs`. Promote a real
-//! test once the inner-generic follow-up lands.
+//! For the LM-inner variant see `cma_inject_lm_nalgebra.rs`; for
+//! L-BFGS-B inner see `bounded_cma_inject_lbfgsb_nalgebra.rs`; for the
+//! `SolverFailed`-bubbling contract test (AGENTS.md "Solver composition"
+//! rule 3) see `cma_inject_solver_failed_bubbles.rs`.
 
 #![cfg(feature = "nalgebra")]
 
 use basin::problems::{Rosenbrock, Sphere};
-use basin::{BasicPopulationState, CmaEs, CmaInject, Executor};
+use basin::{BasicPopulationState, CmaEs, CmaInject, Executor, NelderMead};
 use nalgebra::{DMatrix, DVector};
 
 /// Rosenbrock 2-D from `(-1, 1)` — the canonical non-convex banana
@@ -43,7 +38,9 @@ fn converges_on_rosenbrock_2d() {
     let lambda = CmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(2);
 
     let cma = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 17);
-    let solver = CmaInject::new(cma).with_k(1).with_inner_max_iter(30);
+    let solver = CmaInject::with_inner_solver(cma, NelderMead::adaptive())
+        .with_k(1)
+        .with_inner_max_iter(30);
 
     let result = Executor::new(
         Rosenbrock::<DVector<f64>>::new(),
@@ -91,7 +88,7 @@ fn aggregates_inner_cost_evals_into_outer() {
 
     // Memetic variant on the same seed and outer budget.
     let cma = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 7);
-    let solver = CmaInject::new(cma)
+    let solver = CmaInject::with_inner_solver(cma, NelderMead::adaptive())
         .with_k(k)
         .with_inner_max_iter(inner_iters);
 

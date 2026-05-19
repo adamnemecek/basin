@@ -52,6 +52,7 @@ pub use crate::solver::lbfgsb::LBFGSB;
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{
-    BoundedCmaEs, Brent, CmaEs, CmaInject, GaussNewton, GradientDescent, LevenbergMarquardt,
-    MaLsChCma, MaLsChState, NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
+    BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner, CmaEs, CmaInject, GaussNewton,
+    GradientDescent, LevenbergMarquardt, MaLsChCma, MaLsChState, MemeticInner, NelderMead,
+    ProjectedGradientDescent, RandomSearch, Ssga, Trf,
 };

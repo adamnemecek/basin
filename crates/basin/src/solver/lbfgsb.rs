@@ -103,6 +103,25 @@ pub struct LBFGSB<S = MoreThuente> {
     /// Fortran `dr ≤ epsmch · ddum` curvature-skip threshold
     /// (`lbfgsb.f:875`). Defaults to `f64::EPSILON`.
     epsilon: f64,
+    /// Built-in projected-gradient convergence tolerance. Emits
+    /// [`TerminationReason::SolverConverged`] at the top of an
+    /// iteration when `‖projgr(x, g, l, u)‖_∞ ≤ tol_pg`. Default
+    /// `1e-10`. Set to `0.0` to disable (matches Fortran `pgtol = 0`
+    /// — required for the iteration-wise parity test against the
+    /// reference, which doesn't terminate on the projected gradient).
+    tol_pg: f64,
+    /// Default limited-memory history capacity (Fortran `m`,
+    /// `references/lbfgsb-v3.0/`). Default `10`. Only consulted when
+    /// the solver constructs the state itself — e.g. as a
+    /// [`MemeticInner`](crate::solver::MemeticInner) seeding a fresh
+    /// [`LbfgsState`] for a CMA-ES injection refinement. Standalone
+    /// users supply `m_capacity` directly to `LbfgsState::new(x, m)`,
+    /// in which case `LBFGSB::init` reads it off the state and this
+    /// field is unused.
+    ///
+    /// `pub(crate)` so the `MemeticInner` impl in
+    /// `solver/cma_inject.rs` can read it.
+    pub(crate) m_capacity: usize,
 }
 
 impl Default for LBFGSB<MoreThuente> {
@@ -113,11 +132,16 @@ impl Default for LBFGSB<MoreThuente> {
 
 impl LBFGSB<MoreThuente> {
     /// L-BFGS-B with Moré–Thuente line search and Fortran v3.0
-    /// defaults (`ftol = 1e-3`, `gtol = 0.9`, `xtol = 0.1`).
+    /// defaults (`ftol = 1e-3`, `gtol = 0.9`, `xtol = 0.1`). Built-in
+    /// projected-gradient tolerance is `1e-10`; the seed history
+    /// capacity (used only when the solver constructs the state, e.g.
+    /// for memetic injection) is `10`.
     pub fn new() -> Self {
         Self {
             line_search: MoreThuente::new(),
             epsilon: f64::EPSILON,
+            tol_pg: 1e-10,
+            m_capacity: 10,
         }
     }
 }
@@ -130,6 +154,8 @@ impl<S> LBFGSB<S> {
         Self {
             line_search,
             epsilon: f64::EPSILON,
+            tol_pg: 1e-10,
+            m_capacity: 10,
         }
     }
 
@@ -138,6 +164,29 @@ impl<S> LBFGSB<S> {
     pub fn epsilon(mut self, epsilon: f64) -> Self {
         assert!(epsilon >= 0.0, "epsilon must be ≥ 0");
         self.epsilon = epsilon;
+        self
+    }
+
+    /// Override the built-in projected-gradient convergence tolerance.
+    /// Default `1e-10`; pass `0.0` to disable (Fortran-`pgtol=0`
+    /// semantics, used by the iteration-wise parity test).
+    pub fn tol_pg(mut self, tol_pg: f64) -> Self {
+        assert!(tol_pg >= 0.0, "tol_pg must be ≥ 0");
+        self.tol_pg = tol_pg;
+        self
+    }
+
+    /// Override the default limited-memory history capacity used when
+    /// the solver constructs its own [`LbfgsState`] (memetic seeding).
+    /// Standalone usage that hands in a state via `LbfgsState::new(x, m)`
+    /// is unaffected. Default `10`; Nocedal recommends `[3, 20]`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `m_capacity == 0`.
+    pub fn m_capacity(mut self, m_capacity: usize) -> Self {
+        assert!(m_capacity >= 1, "m_capacity must be ≥ 1");
+        self.m_capacity = m_capacity;
         self
     }
 }
@@ -200,10 +249,14 @@ where
             let work = state.work.as_mut().expect("work missing");
 
             // -------------------------------------------------------
-            // Phase A — projected gradient norm. The
-            // `ProjectedGradientTolerance` termination criterion does
-            // the same calculation framework-side, but we need
-            // `sbgnrm` here for the cauchy short-circuit.
+            // Phase A — projected gradient norm. Drives both the
+            // built-in convergence check below and the cauchy
+            // short-circuit further down. The framework-side
+            // `ProjectedGradientTolerance` criterion does the same
+            // calculation, but checking it inline here lets a memetic
+            // wrapper (CMA-ES injection, `BoundedCmaInject`) skip
+            // having to register an external criterion against bounds
+            // it can't see at solver-build time.
             // -------------------------------------------------------
             let sbgnrm = projected_gradient_norm(
                 state.param.as_float_slice(),
@@ -211,6 +264,18 @@ where
                 problem.lower().as_float_slice(),
                 problem.upper().as_float_slice(),
             );
+
+            // Built-in convergence: emit `SolverConverged` when the
+            // projected-gradient infinity-norm sits at the tolerance.
+            // Restore the borrowed cost/gradient so callers reading
+            // `state.gradient()` / `state.cost()` on the final result
+            // see the values at the converged iterate. Set
+            // `tol_pg = 0.0` (Fortran `pgtol = 0`) to disable.
+            if sbgnrm <= self.tol_pg {
+                state.gradient = Some(g_v);
+                state.cost = Some(f_old);
+                return (state, Some(TerminationReason::SolverConverged));
+            }
 
             let col = state.ws.len();
             let theta = state.theta;

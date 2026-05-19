@@ -6,15 +6,194 @@ use crate::core::math::{
 };
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
-use crate::core::state::{BasicPopulationState, BasicSimplexState, State};
+use crate::core::state::{
+    BasicPopulationState, BasicSimplexState, BasicState, GradientState, LbfgsState, State,
+};
 use crate::core::termination::{TerminationCriterion, TerminationReason};
 use crate::solver::cma_es::{sort_population_ascending, CmaEs};
+use crate::solver::lbfgsb::LBFGSB;
+use crate::solver::levenberg_marquardt::LevenbergMarquardt;
 use crate::solver::nelder_mead::NelderMead;
 
+/// An inner solver eligible to plug into a CMA-ES injection wrapper
+/// ([`CmaInject`] / [`BoundedCmaInject`](crate::solver::BoundedCmaInject)).
+///
+/// The trait is the contract between the outer memetic glue and the
+/// inner local solver: it says "given a CMA-ES candidate `x` and the
+/// current step-size `σ`, build a fresh inner state; given a final
+/// inner state, report the total work units accumulated."
+///
+/// # Implementations
+///
+/// Shipped impls for [`NelderMead`], [`LevenbergMarquardt`], and
+/// [`LBFGSB`]. To plug in something else, either impl this trait on
+/// your solver, or wrap a `Solver<P, S>` in [`ClosureInner`] with
+/// inline seeder/work closures (escape hatch for one-off experiments
+/// and the `AlwaysFails`-style failure-bubbling tests).
+///
+/// # Why an associated state type
+///
+/// Each inner has a natural state shape: NM wants a simplex (`n + 1`
+/// vertices), LM wants a single iterate with cached residual / Jacobian,
+/// L-BFGS-B wants the limited-memory history. Tying `State` to the
+/// trait lets the memetic factory write
+/// `BoundedCmaInject::with_inner_solver(cma, LBFGSB::new())` without
+/// the caller having to spell out `LbfgsState<V>` in turbofish — `I`
+/// determines it.
+///
+/// # Eval aggregation
+///
+/// `work_units(&self, state)` is what the outer rolls into its
+/// `cost_evals` counter (AGENTS.md "Solver composition" rule 1). For
+/// gradient/Jacobian inners it should sum `state.cost_evals() +
+/// state.gradient_evals()` — CMA-ES outer state has no separate
+/// derivative-eval counter, so derivative work collapses into
+/// `cost_evals` honestly.
+pub trait MemeticInner<V> {
+    /// State shape this inner iterates against.
+    type State: State<Param = V>;
+
+    /// Build a fresh inner state seeded at CMA-ES candidate `x` with
+    /// the current step-size `sigma`. Called once per refined
+    /// candidate per outer generation.
+    fn seed(&self, x: &V, sigma: f64) -> Self::State;
+
+    /// Total inner work units to roll into the outer's `cost_evals`.
+    /// Typically `state.cost_evals() + state.gradient_evals()` for
+    /// derivative-based inners, `state.cost_evals()` alone for
+    /// derivative-free inners. Takes `&self` so closure-based inners
+    /// ([`ClosureInner`]) can dispatch through captured state.
+    fn work_units(&self, state: &Self::State) -> u64;
+}
+
+/// Closure type for `ClosureInner`'s state seeder.
+type ClosureSeedFn<V, S> = Box<dyn Fn(&V, f64) -> S>;
+/// Closure type for `ClosureInner`'s work-unit aggregator.
+type ClosureWorkFn<S> = Box<dyn Fn(&S) -> u64>;
+
+/// Closure-based [`MemeticInner`] wrapper for custom inners that don't
+/// have a native impl. Holds an inner solver plus the two closures
+/// `MemeticInner` would otherwise express directly.
+///
+/// Intended use is one-off experiments and contract tests (e.g. the
+/// `AlwaysFails` harness verifying `SolverFailed` bubbling). For
+/// shipping configurations, prefer impl-ing `MemeticInner` on your
+/// solver type — it's a five-line trait.
+pub struct ClosureInner<I, S, V> {
+    inner: I,
+    seed_fn: ClosureSeedFn<V, S>,
+    work_fn: ClosureWorkFn<S>,
+}
+
+impl<I, S, V> ClosureInner<I, S, V> {
+    /// Wrap `inner` with explicit seeder and work-unit closures.
+    pub fn new(
+        inner: I,
+        seed_fn: impl Fn(&V, f64) -> S + 'static,
+        work_fn: impl Fn(&S) -> u64 + 'static,
+    ) -> Self {
+        Self {
+            inner,
+            seed_fn: Box::new(seed_fn),
+            work_fn: Box::new(work_fn),
+        }
+    }
+}
+
+impl<P, I, S, V> Solver<P, S> for ClosureInner<I, S, V>
+where
+    I: Solver<P, S>,
+    S: State,
+{
+    fn init(&mut self, problem: &P, state: S) -> S {
+        self.inner.init(problem, state)
+    }
+    fn next_iter(&mut self, problem: &P, state: S) -> (S, Option<TerminationReason>) {
+        self.inner.next_iter(problem, state)
+    }
+    fn terminate(&self, state: &S) -> Option<TerminationReason> {
+        self.inner.terminate(state)
+    }
+}
+
+impl<I, S, V> MemeticInner<V> for ClosureInner<I, S, V>
+where
+    S: State<Param = V>,
+{
+    type State = S;
+    fn seed(&self, x: &V, sigma: f64) -> S {
+        (self.seed_fn)(x, sigma)
+    }
+    fn work_units(&self, state: &S) -> u64 {
+        (self.work_fn)(state)
+    }
+}
+
+// -----------------------------------------------------------------------
+// MemeticInner impls for the three shipped inners.
+// -----------------------------------------------------------------------
+
+impl<V> MemeticInner<V> for NelderMead
+where
+    V: VectorLen + Clone + std::ops::IndexMut<usize, Output = f64>,
+{
+    type State = BasicSimplexState<V>;
+    fn seed(&self, x: &V, sigma: f64) -> BasicSimplexState<V> {
+        // σ-scaled axis-aligned simplex: edge = current CMA step-size,
+        // so the inner's exploration tracks the outer distribution's
+        // spread and shrinks with σ. Hansen 2011 doesn't prescribe a
+        // specific simplex; this matches the S11 default that the
+        // existing tests validate against.
+        let n = x.vec_len();
+        let mut vertices = Vec::with_capacity(n + 1);
+        vertices.push(x.clone());
+        for j in 0..n {
+            let mut v = x.clone();
+            v[j] += sigma;
+            vertices.push(v);
+        }
+        BasicSimplexState::from_simplex(vertices)
+    }
+    fn work_units(&self, state: &BasicSimplexState<V>) -> u64 {
+        state.cost_evals()
+    }
+}
+
+impl<V> MemeticInner<V> for LevenbergMarquardt
+where
+    V: Clone,
+{
+    type State = BasicState<V>;
+    fn seed(&self, x: &V, _sigma: f64) -> BasicState<V> {
+        BasicState::new(x.clone())
+    }
+    fn work_units(&self, state: &BasicState<V>) -> u64 {
+        state.cost_evals() + state.gradient_evals()
+    }
+}
+
+impl<V, LS> MemeticInner<V> for LBFGSB<LS>
+where
+    V: Clone,
+{
+    type State = LbfgsState<V>;
+    fn seed(&self, x: &V, _sigma: f64) -> LbfgsState<V> {
+        LbfgsState::new(x.clone(), self.m_capacity)
+    }
+    fn work_units(&self, state: &LbfgsState<V>) -> u64 {
+        state.cost_evals() + state.gradient_evals()
+    }
+}
+
+// -----------------------------------------------------------------------
+// CmaInject — memetic CMA-ES with Hansen-2011 injection.
+// -----------------------------------------------------------------------
+
 /// Memetic CMA-ES with Hansen (2011) injection: outer CMA-ES proposes
-/// `λ` candidates per generation, an inner Nelder-Mead refines the best
-/// `k`, and the refined points are injected back into the population
-/// for the *next* CMA update.
+/// `λ` candidates per generation, an inner local solver
+/// ([`MemeticInner`]) refines the best `k`, and the refined points are
+/// Mahalanobis-clipped and injected back into the population for the
+/// next CMA update.
 ///
 /// The only departure from the standard
 /// [`CmaEs`](crate::solver::cma_es::CmaEs) update is clipping each
@@ -34,45 +213,51 @@ use crate::solver::nelder_mead::NelderMead;
 ///
 /// # Inner solver
 ///
-/// This first cut hard-wires the inner to [`NelderMead`] over
-/// [`BasicSimplexState<V>`], the empirical winner from
-/// Melo & Iacca 2014 on 5/9 of their constrained problems. Genericity
-/// over the inner solver type (`CmaInject<I: Solver>`) is deferred to
-/// the second concrete inner (e.g. L-BFGS-B once that solver lands) —
-/// designing the "seed inner state from a candidate" abstraction
-/// against a single consumer is premature (AGENTS.md tenet 4 spirit).
+/// Generic over any `I: MemeticInner<V>`. The associated `I::State`
+/// determines the inner state shape. Shipped impls cover
+/// [`NelderMead`], [`LevenbergMarquardt`], and [`LBFGSB`]. For
+/// L-BFGS-B inner with consistent bound flow, use the bounded sibling
+/// [`BoundedCmaInject`](crate::solver::BoundedCmaInject) over
+/// [`BoundedCmaEs`](crate::solver::BoundedCmaEs).
+///
+/// # Eval aggregation
+///
+/// The outer's `state.cost_evals` aggregates total inner work units
+/// per `I::work_units(state)`. For derivative-based inners (LM,
+/// L-BFGS-B) the impl sums `cost_evals + gradient_evals`; CMA-ES
+/// outer state has no `gradient_evals` field
+/// (`BasicPopulationState` extends `State`, not `GradientState`), so
+/// derivative-eval counts collapse into `cost_evals` honestly per
+/// AGENTS.md "Solver composition" rule 1.
 ///
 /// # Backends
 ///
 /// Same coverage as [`CmaEs`]: nalgebra (`DVector` / `DMatrix`) and
 /// faer (`Col` / `Mat`). `Vec<f64>` and `ndarray` produce a
-/// compile-time error per tenet 5 (no honest matrix type or no
-/// pure-Rust eigendecomposition).
-pub struct CmaInject<V, M> {
+/// compile-time error per tenet 5.
+pub struct CmaInject<I, V, M>
+where
+    I: MemeticInner<V>,
+{
     cma: CmaEs<V, M>,
-    inner: InnerExecutor<BasicSimplexState<V>, NelderMead>,
+    inner: InnerExecutor<I::State, I>,
     k: usize,
     c_y_override: Option<f64>,
-    /// Edge length of the seed simplex is `inner_simplex_scale · σ`.
-    /// Default `1.0` ties the inner's exploration scale to the CMA
-    /// distribution's current spread, so it shrinks with `σ`.
-    inner_simplex_scale: f64,
 }
 
-impl<V, M> CmaInject<V, M> {
-    /// Wrap a configured [`CmaEs`] with Hansen-2011 injection.
-    ///
-    /// Defaults: `k = 1` (one refined point per generation, matching
-    /// Hansen's preliminary experiments — RR-7748 §4), inner
-    /// `max_iter = 50`, `c_y = √n + 2n/(n+2)` (Hansen 2011 Table 1),
-    /// `inner_simplex_scale = 1.0` (inner simplex edge = current σ).
-    pub fn new(cma: CmaEs<V, M>) -> Self {
+impl<I, V, M> CmaInject<I, V, M>
+where
+    I: MemeticInner<V>,
+{
+    /// Wrap a configured [`CmaEs`] with `inner` as the local
+    /// refinement step. Defaults: `k = 1` refinement per generation,
+    /// inner `max_iter = 50`, `c_y` = Hansen-2011 Table 1 default.
+    pub fn with_inner_solver(cma: CmaEs<V, M>, inner: I) -> Self {
         Self {
             cma,
-            inner: InnerExecutor::new(NelderMead::adaptive()).max_iter(50),
+            inner: InnerExecutor::new(inner).max_iter(50),
             k: 1,
             c_y_override: None,
-            inner_simplex_scale: 1.0,
         }
     }
 
@@ -81,9 +266,7 @@ impl<V, M> CmaInject<V, M> {
     ///
     /// # Panics
     ///
-    /// Panics if `k == 0` (nothing to inject) or `k > λ` is not
-    /// caught here — exceeding `λ` is silently clamped at runtime to
-    /// the population size.
+    /// Panics if `k == 0`. `k > λ` is silently clamped at runtime.
     pub fn with_k(mut self, k: usize) -> Self {
         assert!(k >= 1, "CmaInject requires k >= 1, got {}", k);
         self.k = k;
@@ -91,8 +274,7 @@ impl<V, M> CmaInject<V, M> {
     }
 
     /// Override the Hansen-2011 clipping threshold `c_y` (default
-    /// `√n + 2n/(n+2)`). Larger values disable clipping for further
-    /// injected points; `c_y = ∞` recovers the no-clipping limit.
+    /// `√n + 2n/(n+2)`).
     ///
     /// # Panics
     ///
@@ -103,62 +285,63 @@ impl<V, M> CmaInject<V, M> {
         self
     }
 
-    /// Inner Nelder-Mead iteration budget per outer generation
-    /// (default `50`).
-    pub fn with_inner_max_iter(mut self, n: u64) -> Self {
-        // `InnerExecutor::max_iter` is a consuming builder; swap
-        // through a throwaway placeholder so any criteria already
-        // registered via `inner_terminate_on` carry through.
-        let prior = std::mem::replace(&mut self.inner, InnerExecutor::new(NelderMead::adaptive()));
-        self.inner = prior.max_iter(n);
-        self
+    /// Inner solver iteration budget per outer generation (default `50`).
+    pub fn with_inner_max_iter(self, n: u64) -> Self {
+        let Self {
+            cma,
+            inner,
+            k,
+            c_y_override,
+        } = self;
+        Self {
+            cma,
+            inner: inner.max_iter(n),
+            k,
+            c_y_override,
+        }
     }
 
-    /// Edge length of the inner Nelder-Mead seed simplex as a multiple
-    /// of the current CMA step size `σ` (default `1.0`). The simplex
-    /// vertices are `x_i + scale · σ · e_j` for `j = 1..=n`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if `scale <= 0`.
-    pub fn with_inner_simplex_scale(mut self, scale: f64) -> Self {
-        assert!(
-            scale > 0.0,
-            "CmaInject requires inner_simplex_scale > 0, got {}",
-            scale
-        );
-        self.inner_simplex_scale = scale;
-        self
-    }
-
-    /// Register a termination criterion on the inner Nelder-Mead loop.
+    /// Register a stateless termination criterion on the inner loop.
     /// Criteria are reused across every outer iteration's inner run,
-    /// so they MUST be stateless across calls
-    /// — `MaxIter`, `CostTolerance`, `ParamTolerance`, and
-    /// `SimplexTolerance` are safe;
-    /// [`MaxTime`](crate::core::termination::MaxTime) is **not** (its
-    /// internal `start` instant carries over and fires prematurely on
-    /// later runs). See `AGENTS.md` "Solver composition" rule 2.
-    pub fn inner_terminate_on<C>(mut self, criterion: C) -> Self
+    /// so they MUST be stateless across calls — `MaxIter`, the
+    /// `*Tolerance` family, and `MaxCostEvals` are safe;
+    /// [`MaxTime`](crate::core::termination::MaxTime) is **not**.
+    /// See AGENTS.md "Solver composition" rule 2.
+    pub fn inner_terminate_on<C>(self, criterion: C) -> Self
     where
-        C: TerminationCriterion<BasicSimplexState<V>> + 'static,
+        C: TerminationCriterion<I::State> + 'static,
     {
-        let prior = std::mem::replace(&mut self.inner, InnerExecutor::new(NelderMead::adaptive()));
-        self.inner = prior.terminate_on(criterion);
-        self
+        let Self {
+            cma,
+            inner,
+            k,
+            c_y_override,
+        } = self;
+        Self {
+            cma,
+            inner: inner.terminate_on(criterion),
+            k,
+            c_y_override,
+        }
     }
 }
 
 /// Hansen 2011 Table 1: `c_y = √n + 2n/(n+2)`, chosen so <10% of
 /// regular `y_i` would be clipped at typical `n` and <1% for `n > 10`.
-fn default_c_y(n: usize) -> f64 {
+///
+/// `pub(crate)` so the sibling
+/// [`BoundedCmaInject`](crate::solver::BoundedCmaInject) can share
+/// this default without re-deriving it.
+pub(crate) fn default_c_y(n: usize) -> f64 {
     let n = n as f64;
     n.sqrt() + 2.0 * n / (n + 2.0)
 }
 
-impl<P, V, M> Solver<P, BasicPopulationState<V>> for CmaInject<V, M>
+impl<P, I, V, M> Solver<P, BasicPopulationState<V>> for CmaInject<I, V, M>
 where
     P: CostFunction<Param = V, Output = f64>,
+    I: MemeticInner<V> + Solver<P, <I as MemeticInner<V>>::State>,
+    I::State: State<Param = V, Float = f64>,
     V: VectorLen
         + Clone
         + ScaledAdd<f64>
@@ -177,9 +360,8 @@ where
         + Clone,
 {
     fn init(&mut self, problem: &P, state: BasicPopulationState<V>) -> BasicPopulationState<V> {
-        // Delegate: CmaEs::init samples & evaluates the first
-        // generation. Hansen's preliminary experiments inject from
-        // iter 1 onward, so we don't refine the initial population.
+        // Hansen's preliminary experiments inject from iter 1 onward,
+        // so we delegate the initial population to vanilla CMA-ES.
         self.cma.init(problem, state)
     }
 
@@ -188,17 +370,15 @@ where
         problem: &P,
         state: BasicPopulationState<V>,
     ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
-        // 1. Standard CMA-ES iteration first: update m, σ, C from
-        //    the previous generation and sample a fresh one. `state`
-        //    on return has λ candidates, sorted ascending by cost.
+        // 1. Vanilla CMA-ES iteration: update m, σ, C from the
+        //    previous generation, sample λ fresh candidates sorted by
+        //    cost ascending.
         let (mut state, reason) = self.cma.next_iter(problem, state);
         if let Some(r) = reason {
             return (state, Some(r));
         }
 
-        // Snapshot the CMA-ES internals we need for clipping. Clone
-        // m / d_inv so we can mutate `state` and call problem.cost
-        // without aliasing the &CmaEs borrow.
+        // Snapshot internals for clipping.
         let (n, m, sigma) = {
             let w = self
                 .cma
@@ -207,50 +387,36 @@ where
             (w.n, w.m.clone(), w.sigma)
         };
         let c_y = self.c_y_override.unwrap_or_else(|| default_c_y(n));
-        let edge = self.inner_simplex_scale * sigma;
         let refine = self.k.min(state.candidates.len());
 
         for i in 0..refine {
-            // 2. Seed inner simplex around x_i with absolute,
-            //    axis-aligned perturbations of size `edge = scale · σ`.
-            //    Matches the CMA distribution's current spread and
-            //    shrinks with σ.
-            let x_i = state.candidates[i].clone();
-            let mut vertices = Vec::with_capacity(n + 1);
-            vertices.push(x_i.clone());
-            for j in 0..n {
-                let mut v = x_i.clone();
-                v[j] += edge;
-                vertices.push(v);
-            }
-            let inner_state = BasicSimplexState::from_simplex(vertices);
+            // 2. Seed the inner state via the trait. The σ argument
+            //    lets seeders that scale with the CMA distribution
+            //    (NM's σ-scaled simplex) track the current spread.
+            let inner_state = self.inner.solver().seed(&state.candidates[i], sigma);
 
-            // 3. Drive the inner solver. NelderMead::init evaluates
-            //    all n+1 simplex vertices; subsequent iters add 1–n+1
-            //    more evaluations each. cost_evals roll up in
-            //    inner_state.cost_evals.
-            let inner_result: OptimizationResult<BasicSimplexState<V>> =
-                self.inner.run(problem, inner_state);
+            // 3. Drive the inner.
+            let inner_result: OptimizationResult<I::State> = self.inner.run(problem, inner_state);
 
-            // 4. Eval aggregation (AGENTS.md "Solver composition" rule 1).
-            state.cost_evals += inner_result.state.cost_evals();
+            // 4. Eval aggregation: roll inner total-work into outer
+            //    cost_evals via the trait (AGENTS.md "Solver
+            //    composition" rule 1).
+            state.cost_evals += self.inner.solver().work_units(&inner_result.state);
 
-            // 5. Failure routing (rule 3): bubble SolverFailed only.
+            // 5. Failure routing: bubble SolverFailed only (rule 3).
             if inner_result.reason.is_failure() {
                 return (state, Some(inner_result.reason));
             }
 
-            // 6. Extract the inner's best vertex.
+            // 6. Extract refined point.
             let x_refined = inner_result.state.param().clone();
 
-            // 7. Compute y = (x_refined − m) / σ.
+            // 7. y = (x_refined − m) / σ.
             let mut y = x_refined;
             y.scaled_add(-1.0, &m);
             y.scale_in_place(1.0 / sigma);
 
-            // 8. ‖C^{-1/2} y‖ = ‖D^{-1} ⊙ Bᵀ y‖ (orthogonal B).
-            //    Mirrors the negative-weight rescaling pattern in
-            //    cma_es.rs (rank-µ update).
+            // 8. ‖C^{-1/2} y‖ = ‖D^{-1} ⊙ Bᵀ y‖.
             let inv_sqrt_norm = {
                 let w = self.cma.working().expect("working still populated");
                 let mut bt_y = w.b.mat_transpose_vec(&y);
@@ -258,9 +424,7 @@ where
                 bt_y.norm_squared().sqrt()
             };
 
-            // 9. Clipping factor α = min(1, c_y / ‖C^{-1/2} y‖)
-            //    (Hansen 2011 eq. 4 + eq. 10). y = 0 (refined point
-            //    landed exactly at the mean) leaves the point as-is.
+            // 9. Clipping factor α (Hansen 2011 eq. 4 + eq. 10).
             if inv_sqrt_norm > 0.0 {
                 let alpha = (c_y / inv_sqrt_norm).min(1.0);
                 if alpha < 1.0 {
@@ -268,14 +432,12 @@ where
                 }
             }
 
-            // 10. Reconstruct x_inj = m + σ · y_clipped.
+            // 10. x_inj = m + σ · y_clipped.
             let mut x_inj = m.clone();
             x_inj.scaled_add(sigma, &y);
 
-            // 11. Re-evaluate cost: the inner moved x_i, and clipping
-            //     may have moved it further. The cost field MUST
-            //     match the geometry, otherwise the next CMA update
-            //     ranks the wrong point.
+            // 11. Re-evaluate: clipping moves the point in original
+            //     space, so the cost field has to match.
             let cost_new = problem.cost(&x_inj);
             state.cost_evals += 1;
 
@@ -283,9 +445,7 @@ where
             state.costs[i] = cost_new;
         }
 
-        // 12. Re-sort: a clipped point can rank worse than its
-        //     original sibling, and the rank-µ update depends on the
-        //     order.
+        // 12. Re-sort: rank-µ update depends on the order.
         if refine > 0 {
             sort_population_ascending(&mut state.candidates, &mut state.costs);
         }
@@ -294,11 +454,6 @@ where
     }
 
     fn terminate(&self, state: &BasicPopulationState<V>) -> Option<TerminationReason> {
-        // TolX inherits from CmaEs unchanged — injection doesn't
-        // change the convergence criterion. CmaEs's Solver impl is
-        // generic over the problem `P`, but `terminate` only reads
-        // solver-internal state, so we disambiguate via the outer
-        // impl's `P`.
         <CmaEs<V, M> as Solver<P, BasicPopulationState<V>>>::terminate(&self.cma, state)
     }
 }

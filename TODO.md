@@ -5,14 +5,14 @@ the previous lands.
 
 ## Next up
 
-See `ROADMAP.md` for the long-arc plan toward LM-with-bounds and CMA-ES.
 This section tracks the immediate next session's discrete items.
+The long-arc plan toward LM-with-bounds and CMA-ES is done as of
+S13 — see git history for the per-session prose if needed.
 
 - [x] **S2b: sparse `Jacobian::Output` + sparse `LinearSolve`.**
       *(done)* CSC sparse Jacobian + sparse Cholesky/QR landed for
       both backends; sparse Gauss-Newton works on the new
-      `SparseLeastSquares` fixture. See `ROADMAP.md` Phase 1 for
-      decisions and deferred follow-ups.
+      `SparseLeastSquares` fixture.
 
 - [x] **S7: Wasm-safe RNG abstraction + simple stochastic solver.**
       *(done)* `RandomSearch` (elitist 1+λ) lands on top of new
@@ -20,7 +20,7 @@ This section tracks the immediate next session's discrete items.
       tier `SampleUniformBox` trait. RNG is `rand 0.9` +
       `rand_chacha 0.9` (0.10 wants edition2024, blocks MSRV);
       seeded `ChaCha8Rng` works on `wasm32-unknown-unknown` with no
-      JS shim. See `ROADMAP.md` Phase 2 for decisions and deferrals.
+      JS shim.
 
 - [x] **S8: CMA-ES (vanilla).**
       Second LA-heavy solver: covariance + eigendecomposition. Read
@@ -121,7 +121,7 @@ Surfaced while implementing the termination layer. Not blocking, but each
 gets harder to fix as more code piles on.
 
 - [x] **Rustdoc the load-bearing invariants on public traits.** Done in
-      S0 — see `ROADMAP.md`. `# Contract` heading + `**Caller must:**` /
+      S0. `# Contract` heading + `**Caller must:**` /
       `**Implementor must:**` bullets are the established convention;
       `#![warn(missing_docs)]` and `#![warn(rustdoc::broken_intra_doc_links)]`
       are on at the crate root. Filling in docs on items that hold no
@@ -134,5 +134,18 @@ gets harder to fix as more code piles on.
       blanket-impl marker like
       `trait ParamVec<F>: Clone + ScaledAdd<F> + NormSquared {}` once the
       third solver wants it — premature with only two users.
+- [ ] **Unified `Composed<Outer, Inner>` abstraction (or honest "no").**
+      Two concrete memetic shapes now exist: `CmaInject` / `BoundedCmaInject`
+      (per-generation top-k polish via `MemeticInner`, S11 + S13) and
+      `MaLsChCma` (per-individual persistent LS chains, S12). The
+      `MemeticInner` trait covers CMA-injection-style composition but
+      doesn't model MA-LSCh's persistent-state shape. Question: is there
+      a shared `Composed` abstraction (probably *not* `MemeticInner` —
+      something coarser like a "composed solver" marker), or do these
+      two memetic shapes genuinely have nothing in common worth
+      extracting? Resolve by either writing the trait or writing the
+      honest "no, these two don't share more than the AGENTS.md
+      composition contracts" comment in `core/inner.rs`.
+
 See `AGENTS.md` for the design tenets and constraints that shape these
 decisions.

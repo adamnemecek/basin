@@ -1,11 +1,17 @@
 /// Box-constrained CMA-ES with adaptive quadratic boundary penalty
 /// (Hansen `BoundPenalty`, the default in pycma).
 pub mod bounded_cma_es;
+/// Memetic [`BoundedCmaEs`](bounded_cma_es::BoundedCmaEs) with
+/// Hansen-2011 injection — sibling of [`cma_inject`] over the bounded
+/// outer. Inners: Nelder-Mead, Levenberg-Marquardt, L-BFGS-B.
+pub mod bounded_cma_inject;
 /// Brent's method (1D root / minimum bracketing).
 pub mod brent;
 /// Hansen 2016 (µ/µ_W, λ)-CMA-ES with negative weights.
 pub mod cma_es;
-/// Memetic CMA-ES with Hansen-2011 injection (inner: Nelder-Mead).
+/// Memetic CMA-ES with Hansen-2011 injection. Inners: Nelder-Mead,
+/// Levenberg-Marquardt. For L-BFGS-B inner with consistent bound
+/// handling, see [`bounded_cma_inject`].
 pub mod cma_inject;
 /// Pure Gauss-Newton solver for nonlinear least squares.
 pub mod gauss_newton;
@@ -37,9 +43,10 @@ pub mod bfgs;
 #[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;
 pub use bounded_cma_es::BoundedCmaEs;
+pub use bounded_cma_inject::BoundedCmaInject;
 pub use brent::Brent;
 pub use cma_es::CmaEs;
-pub use cma_inject::CmaInject;
+pub use cma_inject::{ClosureInner, CmaInject, MemeticInner};
 pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;

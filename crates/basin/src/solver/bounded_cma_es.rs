@@ -131,9 +131,15 @@ pub struct BoundedCmaEs<V, M> {
 /// Solver-internal mutable state, populated in [`Solver::init`] and
 /// updated each [`Solver::next_iter`]. Mirrors `cma_es::Working` and
 /// adds the BoundPenalty fields (`gamma`, `hist`, `raw_costs`, …).
-struct Working<V, M> {
+///
+/// `pub(crate)` so sibling solvers in `crate::solver` can read the
+/// post-update `m`, `σ`, `B`, `D^{-1}` they need for injection-style
+/// composition. `BoundedCmaInject` uses these to clip injected `y_i`
+/// in Mahalanobis distance per Hansen 2011 eq. 4, mirroring how
+/// `CmaInject` reads from `CmaEs::Working`. Not a stable public surface.
+pub(crate) struct Working<V, M> {
     // --- CMA-ES constants (computed once at init) ---
-    n: usize,
+    pub(crate) n: usize,
     lambda: usize,
     mu: usize,
     weights: Vec<f64>,
@@ -160,14 +166,17 @@ struct Working<V, M> {
     hist_cap: usize,
 
     // --- CMA-ES mutable iterate ---
-    m: V,
-    sigma: f64,
+    pub(crate) m: V,
+    pub(crate) sigma: f64,
     p_sigma: V,
     p_c: V,
     c: M,
-    b: M,
+    /// Eigenvectors of `c` from the most recent eigendecomposition.
+    pub(crate) b: M,
     d: V,
-    d_inv: V,
+    /// Reciprocals of square-roots of `c`'s eigenvalues, used for
+    /// `C^{-1/2} = B D^{-1} Bᵀ`.
+    pub(crate) d_inv: V,
     rng: ChaCha8Rng,
     generation: u64,
 
@@ -175,8 +184,10 @@ struct Working<V, M> {
     /// Per-coordinate quadratic-penalty weights `γ ∈ R^n`. Initialized
     /// to all-ones (pycma's scalar-1 default, broadcast); upgraded to
     /// `2 · dfit` per coordinate the first generation a γ update sees
-    /// the mean violating any bound.
-    gamma: V,
+    /// the mean violating any bound. `pub(crate)` so the sibling
+    /// `BoundedCmaInject` can apply the same penalty to injected
+    /// candidates (consistent ranking with regular samples).
+    pub(crate) gamma: V,
     /// True once `gamma` has been calibrated from the fitness history.
     /// Until then `gamma` stays at the conservative initial 1; the
     /// penalty is still applied during this period (just with a tiny
@@ -250,6 +261,16 @@ impl<V, M> BoundedCmaEs<V, M> {
     /// [`CmaEs::default_lambda`](super::cma_es::CmaEs::default_lambda).
     pub fn default_lambda(n: usize) -> usize {
         4 + (3.0 * (n as f64).ln()).floor() as usize
+    }
+
+    /// Read-only access to the post-update CMA-ES iterate (`m`, `σ`,
+    /// `B`, `D^{-1}`, `n`), used by sibling solvers that compose with
+    /// bounded CMA-ES — currently only `BoundedCmaInject`, which needs
+    /// `C^{-1/2} = B D^{-1} Bᵀ` to clip injected `y_i` per Hansen 2011
+    /// eq. 4. Mirrors [`CmaEs::working`](super::cma_es::CmaEs::working).
+    /// `None` before [`Solver::init`] has run.
+    pub(crate) fn working(&self) -> Option<&Working<V, M>> {
+        self.state.as_ref()
     }
 }
 
@@ -355,7 +376,13 @@ where
 /// `f` is evaluated at the *clamped* point; the penalty is the mean of
 /// `γ_i · (x[i] − clamp(x)[i])²` over coordinates (matches
 /// pycma `boundary_handler.py:655`'s `/ N` divisor).
-fn evaluate_with_penalty<P, V>(
+///
+/// `pub(crate)` so [`BoundedCmaInject`](crate::solver::BoundedCmaInject)
+/// can rank injected candidates by the same penalized fitness regular
+/// samples are sorted on — using raw cost on injection would let an
+/// out-of-box LM/L-BFGS-B refinement (e.g. landing at the unconstrained
+/// minimum) skip the penalty and pollute `state.costs`.
+pub(crate) fn evaluate_with_penalty<P, V>(
     problem: &P,
     x: &V,
     lower: &V,
