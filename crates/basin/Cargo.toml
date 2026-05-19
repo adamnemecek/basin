@@ -29,6 +29,13 @@ ndarray = ["dep:ndarray"]
 # `generativity` is a transitive dep of faer, surfaced here so it only enters
 # the graph when `faer` is enabled.
 faer = ["dep:faer", "dep:generativity"]
+# Opt-in parallel evaluation (currently faer's rayon-backed linalg). Off by
+# default because basin is typically embedded inside a caller that already
+# manages parallelism (multi-start sweeps, R/Python schedulers, outer rayon
+# loops) — a default-on thread pool causes oversubscription and fights the
+# caller. WASM-incompatible: enabling this on wasm32-unknown-unknown will
+# fail to compile. No-op unless a backend that hooks into it is also enabled.
+parallel = ["faer?/rayon"]
 # Standard test-problem corpus (Rosenbrock, ...). Pure-Rust, no extra deps;
 # default-on so plain `cargo test` keeps working without `--features problems`
 # (integration tests can't see `cfg(test)` lib gating). Downstream can drop
@@ -44,6 +51,7 @@ ndarray = { version = "0.17", optional = true, default-features = false }
 # default-features off because faer's defaults pull in rayon (breaks wasm,
 # tenet: no parallelism in default features) and npy (file I/O). We enable
 # only `std` + `linalg` so the core dense types work on native and wasm.
+# Rayon is reachable via the opt-in `parallel` feature above.
 faer = { version = "0.24", optional = true, default-features = false, features = ["std", "linalg"] }
 # Transitive dep of faer, surfaced as an optional dep so it only enters the
 # graph behind the `faer` feature. basin doesn't use this crate directly.
