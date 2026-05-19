@@ -26,6 +26,15 @@ default = ["problems"]
 # Cholesky). Folding it in keeps the manifest to one nalgebra feature.
 nalgebra = ["dep:nalgebra", "dep:nalgebra-sparse"]
 ndarray = ["dep:ndarray"]
+# Opt-in BLAS-backed ndarray. Off by default per the WASM hard constraint
+# (cblas-sys is not wasm-compatible) and because BLAS wiring is a heavy
+# toolchain story most basin users don't need. This feature only flips
+# ndarray's `blas` switch; the consumer is still responsible for picking
+# a BLAS source crate (`openblas-src`, `netlib-src`, `intel-mkl-src`,
+# `accelerate-src`, ...) and adding it as a direct dependency. No analogue
+# exists for nalgebra (0.34 has no `blas` feature; its BLAS path lives in
+# the separate `nalgebra-lapack` crate) or for faer (pure-Rust by design).
+ndarray-blas = ["ndarray", "ndarray/blas"]
 # `generativity` is a transitive dep of faer, surfaced here so it only enters
 # the graph when `faer` is enabled.
 faer = ["dep:faer", "dep:generativity"]
