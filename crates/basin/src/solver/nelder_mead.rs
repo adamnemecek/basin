@@ -1,4 +1,7 @@
-use crate::core::math::ScaledAdd;
+use core::marker::PhantomData;
+
+use crate::core::constraint::BoxConstrained;
+use crate::core::math::{ClampInPlace, ScaledAdd};
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
 use crate::core::state::BasicSimplexState;
@@ -11,6 +14,18 @@ use crate::core::termination::TerminationReason;
 /// `α` (reflection), `β` (expansion), `γ` (contraction), `δ` (shrink), with
 /// the constraints `α > 0`, `β > 1`, `0 < γ < 1`, `0 < δ < 1`.
 ///
+/// # Bounds
+///
+/// `NelderMead` is generic over a type-state [`Mode`](Unbounded) marker
+/// that switches between the unconstrained algorithm ([`Unbounded`], the
+/// default) and the projection-style box-constrained variant
+/// ([`Projected`]). Construct unbounded NM with [`standard`](Self::standard),
+/// [`adaptive`](Self::adaptive), or [`with_params`](Self::with_params), then
+/// transition with [`projected`](Self::projected) when the problem carries
+/// box bounds. The projected `Solver` impl requires `P: BoxConstrained`
+/// and `V: ClampInPlace`, so handing a non-bounded problem to a projected
+/// `NelderMead` is a compile-time error per AGENTS.md tenet 4.
+///
 /// # Backends
 ///
 /// Backend-generic — works with any `V` implementing
@@ -18,12 +33,50 @@ use crate::core::termination::TerminationReason;
 /// with a [`BasicSimplexState<V>`]. That covers `Vec<f64>`,
 /// `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
-/// (feature `faer`).
-pub struct NelderMead {
+/// (feature `faer`). The projected variant additionally requires
+/// [`ClampInPlace`] on `V`, which every shipped backend implements.
+pub struct NelderMead<Mode = Unbounded> {
     config: ParamConfig,
     /// Resolved parameters; populated by `init` once the dimension is known.
     params: Option<Params>,
+    /// Type-state marker; carries the mode at the type level only.
+    _mode: PhantomData<fn() -> Mode>,
 }
+
+/// Type-state marker for unconstrained Nelder-Mead (the default).
+/// Constructors live on `NelderMead<Unbounded>`; the `Solver` impl
+/// makes no constraint requirements on the problem.
+pub struct Unbounded;
+
+/// Type-state marker for the projection-style box-constrained
+/// Nelder-Mead variant. Obtain via
+/// [`NelderMead::projected`](NelderMead::projected). The `Solver` impl
+/// requires `P: BoxConstrained` and `V: ClampInPlace`.
+///
+/// # Algorithm
+///
+/// Standard Nelder-Mead with an element-wise clamp into `[lower, upper]`
+/// applied to every trial vertex (reflection, expansion, both
+/// contractions, and each shrunk vertex) before the cost evaluation.
+/// This is the same approach scipy uses for
+/// `scipy.optimize.minimize(method='Nelder-Mead', bounds=...)`.
+///
+/// At [`init`](Solver::init) every vertex of the initial simplex is
+/// projected once, so an infeasible starting simplex is silently
+/// corrected (and downstream termination criteria see a feasible
+/// simplex at iter 0). Subsequent iterations preserve feasibility by
+/// construction.
+///
+/// # Known limitation
+///
+/// The simple projection approach can stall when many vertices collapse
+/// onto the same boundary face — the simplex becomes degenerate and the
+/// reflection step loses descent direction. This is a known weakness of
+/// the projection variant; scipy ships it anyway because it works well
+/// enough in practice. For tighter behavior near active bounds consider
+/// a Globalized-and-Bounded Nelder-Mead variant (Luersen & Le Riche
+/// 2004), which adds a restart heuristic on degeneracy.
+pub struct Projected;
 
 #[derive(Clone, Copy)]
 struct Params {
@@ -40,12 +93,13 @@ enum ParamConfig {
     Fixed(Params),
 }
 
-impl NelderMead {
+impl NelderMead<Unbounded> {
     /// Standard parameters (Nelder & Mead 1965): α=1, β=2, γ=0.5, δ=0.5.
     pub fn standard() -> Self {
         Self {
             config: ParamConfig::Standard,
             params: None,
+            _mode: PhantomData,
         }
     }
 
@@ -57,6 +111,7 @@ impl NelderMead {
         Self {
             config: ParamConfig::Adaptive,
             params: None,
+            _mode: PhantomData,
         }
     }
 
@@ -76,9 +131,26 @@ impl NelderMead {
                 delta,
             }),
             params: None,
+            _mode: PhantomData,
         }
     }
 
+    /// Switch to the projection-style box-constrained variant
+    /// ([`Projected`]). The algorithm parameters configured on this
+    /// builder are preserved; the resulting solver requires the problem
+    /// to implement [`BoxConstrained`] and projects every trial vertex
+    /// element-wise into `[lower, upper]`. See the type-level rustdoc on
+    /// [`Projected`] for the algorithm contract and limitations.
+    pub fn projected(self) -> NelderMead<Projected> {
+        NelderMead {
+            config: self.config,
+            params: self.params,
+            _mode: PhantomData,
+        }
+    }
+}
+
+impl<Mode> NelderMead<Mode> {
     fn resolve(config: ParamConfig, n: usize) -> Params {
         assert!(n >= 1, "NelderMead requires at least a 1-D problem");
         match config {
@@ -157,7 +229,123 @@ fn apply_permutation<T>(slice: &mut [T], idx: &[usize]) {
     }
 }
 
-impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead
+/// Evaluate every vertex's cost and sort the simplex ascending. Shared
+/// between the `Unbounded` and `Projected` `Solver::init` paths after
+/// any projection of the initial vertices.
+fn init_costs_and_sort<P, V>(problem: &P, state: &mut BasicSimplexState<V>)
+where
+    P: CostFunction<Param = V, Output = f64>,
+{
+    for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
+        *c = problem.cost(v);
+    }
+    state.cost_evals += state.vertices.len() as u64;
+    sort_simplex(&mut state.vertices, &mut state.costs);
+}
+
+/// One Nelder-Mead iteration, parameterised by a projection closure.
+///
+/// The `Unbounded` `Solver` impl passes a no-op closure; the `Projected`
+/// impl passes one that clamps into `[lower, upper]`. Vertices are
+/// sorted (best at index 0) on entry; the invariant is restored before
+/// returning. The simplex has `n + 1` vertices in `n`-D.
+fn next_iter_inner<P, V, F>(
+    problem: &P,
+    mut state: BasicSimplexState<V>,
+    p: Params,
+    project: &F,
+) -> (BasicSimplexState<V>, Option<TerminationReason>)
+where
+    P: CostFunction<Param = V, Output = f64>,
+    V: Clone + ScaledAdd<f64>,
+    F: Fn(&mut V),
+{
+    let m = state.vertices.len();
+    let n = m - 1;
+    let worst = m - 1;
+
+    let x_bar = centroid(&state.vertices[..n]);
+
+    let f1 = state.costs[0];
+    let fn_ = state.costs[n - 1];
+    let fnp1 = state.costs[worst];
+
+    // Reflection: x_r = x_bar + α(x_bar − x_{n+1}) = (1+α)·x_bar − α·x_{n+1}
+    let mut x_r = affine(&x_bar, &state.vertices[worst], -p.alpha);
+    project(&mut x_r);
+    let fr = problem.cost(&x_r);
+    state.cost_evals += 1;
+
+    if f1 <= fr && fr < fn_ {
+        // Accept reflection.
+        state.vertices[worst] = x_r;
+        state.costs[worst] = fr;
+    } else if fr < f1 {
+        // Try expansion: x_e = x_bar + β(x_r − x_bar).
+        let mut x_e = affine(&x_bar, &x_r, p.beta);
+        project(&mut x_e);
+        let fe = problem.cost(&x_e);
+        state.cost_evals += 1;
+        if fe < fr {
+            state.vertices[worst] = x_e;
+            state.costs[worst] = fe;
+        } else {
+            state.vertices[worst] = x_r;
+            state.costs[worst] = fr;
+        }
+    } else if fr < fnp1 {
+        // fn ≤ fr < f_{n+1}: outside contraction.
+        // x_oc = x_bar + γ(x_r − x_bar).
+        let mut x_oc = affine(&x_bar, &x_r, p.gamma);
+        project(&mut x_oc);
+        let foc = problem.cost(&x_oc);
+        state.cost_evals += 1;
+        if foc <= fr {
+            state.vertices[worst] = x_oc;
+            state.costs[worst] = foc;
+        } else {
+            shrink_inner(problem, &mut state, p.delta, project);
+        }
+    } else {
+        // fr ≥ f_{n+1}: inside contraction.
+        // x_ic = x_bar − γ(x_bar − x_{n+1}) = (1−γ)·x_bar + γ·x_{n+1}.
+        let mut x_ic = affine(&x_bar, &state.vertices[worst], p.gamma);
+        project(&mut x_ic);
+        let fic = problem.cost(&x_ic);
+        state.cost_evals += 1;
+        if fic < fnp1 {
+            state.vertices[worst] = x_ic;
+            state.costs[worst] = fic;
+        } else {
+            shrink_inner(problem, &mut state, p.delta, project);
+        }
+    }
+
+    sort_simplex(&mut state.vertices, &mut state.costs);
+    (state, None)
+}
+
+fn shrink_inner<P, V, F>(problem: &P, state: &mut BasicSimplexState<V>, delta: f64, project: &F)
+where
+    P: CostFunction<Param = V, Output = f64>,
+    V: Clone + ScaledAdd<f64>,
+    F: Fn(&mut V),
+{
+    // Best vertex is fixed at index 0; shrink every other vertex toward it.
+    // Split-borrow lets us read x[0] while mutating x[i].
+    let (best_slice, rest) = state.vertices.split_at_mut(1);
+    let best = &best_slice[0];
+    let n_shrunk = rest.len() as u64;
+    for (v, c) in rest.iter_mut().zip(&mut state.costs[1..]) {
+        let mut new_v = affine(best, v, delta);
+        project(&mut new_v);
+        *v = new_v;
+        *c = problem.cost(v);
+    }
+    state.cost_evals += n_shrunk;
+}
+
+impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead<Unbounded>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ScaledAdd<f64>,
@@ -165,101 +353,53 @@ where
     fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
         let n = state.vertices.len() - 1;
         self.params = Some(Self::resolve(self.config, n));
-        for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
-            *c = problem.cost(v);
-        }
-        state.cost_evals += state.vertices.len() as u64;
-        sort_simplex(&mut state.vertices, &mut state.costs);
+        init_costs_and_sort(problem, &mut state);
         state
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
-        mut state: BasicSimplexState<V>,
+        state: BasicSimplexState<V>,
     ) -> (BasicSimplexState<V>, Option<TerminationReason>) {
-        // Vertices are sorted (best at index 0) on entry; we restore that
-        // invariant before returning. The simplex has n+1 vertices in n-D.
         let p = self
             .params
             .expect("NelderMead::init must run before next_iter");
-        let m = state.vertices.len();
-        let n = m - 1;
-        let worst = m - 1;
-
-        let x_bar = centroid(&state.vertices[..n]);
-
-        let f1 = state.costs[0];
-        let fn_ = state.costs[n - 1];
-        let fnp1 = state.costs[worst];
-
-        // Reflection: x_r = x_bar + α(x_bar − x_{n+1}) = (1+α)·x_bar − α·x_{n+1}
-        let x_r = affine(&x_bar, &state.vertices[worst], -p.alpha);
-        let fr = problem.cost(&x_r);
-        state.cost_evals += 1;
-
-        if f1 <= fr && fr < fn_ {
-            // Accept reflection.
-            state.vertices[worst] = x_r;
-            state.costs[worst] = fr;
-        } else if fr < f1 {
-            // Try expansion: x_e = x_bar + β(x_r − x_bar).
-            let x_e = affine(&x_bar, &x_r, p.beta);
-            let fe = problem.cost(&x_e);
-            state.cost_evals += 1;
-            if fe < fr {
-                state.vertices[worst] = x_e;
-                state.costs[worst] = fe;
-            } else {
-                state.vertices[worst] = x_r;
-                state.costs[worst] = fr;
-            }
-        } else if fr < fnp1 {
-            // fn ≤ fr < f_{n+1}: outside contraction.
-            // x_oc = x_bar + γ(x_r − x_bar).
-            let x_oc = affine(&x_bar, &x_r, p.gamma);
-            let foc = problem.cost(&x_oc);
-            state.cost_evals += 1;
-            if foc <= fr {
-                state.vertices[worst] = x_oc;
-                state.costs[worst] = foc;
-            } else {
-                self.shrink(problem, &mut state, p.delta);
-            }
-        } else {
-            // fr ≥ f_{n+1}: inside contraction.
-            // x_ic = x_bar − γ(x_bar − x_{n+1}) = (1−γ)·x_bar + γ·x_{n+1}.
-            let x_ic = affine(&x_bar, &state.vertices[worst], p.gamma);
-            let fic = problem.cost(&x_ic);
-            state.cost_evals += 1;
-            if fic < fnp1 {
-                state.vertices[worst] = x_ic;
-                state.costs[worst] = fic;
-            } else {
-                self.shrink(problem, &mut state, p.delta);
-            }
-        }
-
-        sort_simplex(&mut state.vertices, &mut state.costs);
-        (state, None)
+        next_iter_inner(problem, state, p, &|_: &mut V| {})
     }
 }
 
-impl NelderMead {
-    fn shrink<P, V>(&self, problem: &P, state: &mut BasicSimplexState<V>, delta: f64)
-    where
-        P: CostFunction<Param = V, Output = f64>,
-        V: Clone + ScaledAdd<f64>,
-    {
-        // Best vertex is fixed at index 0; shrink every other vertex toward it.
-        // Split-borrow lets us read x[0] while mutating x[i].
-        let (best_slice, rest) = state.vertices.split_at_mut(1);
-        let best = &best_slice[0];
-        let n_shrunk = rest.len() as u64;
-        for (v, c) in rest.iter_mut().zip(&mut state.costs[1..]) {
-            *v = affine(best, v, delta);
-            *c = problem.cost(v);
+impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead<Projected>
+where
+    P: CostFunction<Param = V, Output = f64> + BoxConstrained,
+    V: Clone + ScaledAdd<f64> + ClampInPlace,
+{
+    fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
+        let n = state.vertices.len() - 1;
+        self.params = Some(Self::resolve(self.config, n));
+        // Project every initial vertex once so iter-0 termination
+        // checks see a feasible simplex (mirrors
+        // ProjectedGradientDescent::init's project-an-infeasible-start
+        // pattern).
+        let lo = problem.lower();
+        let hi = problem.upper();
+        for v in state.vertices.iter_mut() {
+            v.clamp_in_place(lo, hi);
         }
-        state.cost_evals += n_shrunk;
+        init_costs_and_sort(problem, &mut state);
+        state
+    }
+
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        state: BasicSimplexState<V>,
+    ) -> (BasicSimplexState<V>, Option<TerminationReason>) {
+        let p = self
+            .params
+            .expect("NelderMead::init must run before next_iter");
+        let lo = problem.lower();
+        let hi = problem.upper();
+        next_iter_inner(problem, state, p, &|v: &mut V| v.clamp_in_place(lo, hi))
     }
 }

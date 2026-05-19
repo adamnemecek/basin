@@ -51,7 +51,7 @@ pub use gauss_newton::GaussNewton;
 pub use gradient_descent::GradientDescent;
 pub use levenberg_marquardt::LevenbergMarquardt;
 pub use ma_ls_ch_cma::{MaLsChCma, MaLsChState};
-pub use nelder_mead::NelderMead;
+pub use nelder_mead::{NelderMead, Projected, Unbounded};
 pub use projected_gradient_descent::ProjectedGradientDescent;
 pub use random_search::RandomSearch;
 pub use ssga::Ssga;
