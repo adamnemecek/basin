@@ -68,21 +68,33 @@ use crate::core::termination::TerminationReason;
 /// (e.g. Rosenbrock-as-residuals) will see `state.cost()` differ from
 /// `problem.cost(state.param())` by a factor of two. Both go to zero
 /// at the optimum, so cost-based termination criteria are unaffected.
-pub struct GaussNewton {
+pub struct GaussNewton<V, M> {
     tol_grad: f64,
+
+    // Residual and Jacobian caches across iterations. `r_cache` is set
+    // to `r(x_new)` after the full GN step and reused at the top of the
+    // next iter. `j_cache` is set only by `init` (init's `J(x₀)` is
+    // reused for iter 0); after a step `J` is at the old iterate and
+    // is dropped.
+    r_cache: Option<V>,
+    j_cache: Option<M>,
 }
 
-impl Default for GaussNewton {
+impl<V, M> Default for GaussNewton<V, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl GaussNewton {
+impl<V, M> GaussNewton<V, M> {
     /// Pure Gauss-Newton with the default first-order optimality
     /// tolerance (`tol_grad = 1e-8`).
     pub fn new() -> Self {
-        Self { tol_grad: 1e-8 }
+        Self {
+            tol_grad: 1e-8,
+            r_cache: None,
+            j_cache: None,
+        }
     }
 
     /// First-order optimality tolerance: emit
@@ -96,19 +108,23 @@ impl GaussNewton {
     }
 }
 
-impl<P, V, M> Solver<P, BasicState<V>> for GaussNewton
+impl<P, V, M> Solver<P, BasicState<V>> for GaussNewton<V, M>
 where
     P: Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
     V: ScaledAdd<f64> + NormSquared + NormInfinity + NegInPlace + Clone,
     M: GramMatrix + MatTransposeVec<V> + LinearSolveSpd<V>,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
-        // Seed cost so iter-0 termination criteria see a populated state.
-        // Jacobian is recomputed in next_iter — caching it across iterates
-        // would bloat BasicState for one eval saved at iter 0.
+        // Seed cost so iter-0 termination criteria see a populated
+        // state. Both `r(x₀)` and `J(x₀)` are stashed so the first
+        // `next_iter` doesn't re-evaluate them at the same point.
         let r = problem.residual(&state.param);
+        let j = problem.jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
+        state.gradient_evals += 1;
+        self.r_cache = Some(r);
+        self.j_cache = Some(j);
         state
     }
 
@@ -117,16 +133,28 @@ where
         problem: &P,
         mut state: BasicState<V>,
     ) -> (BasicState<V>, Option<TerminationReason>) {
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
-        state.cost_evals += 1;
-        state.gradient_evals += 1;
+        let r = match self.r_cache.take() {
+            Some(r) => r,
+            None => {
+                state.cost_evals += 1;
+                problem.residual(&state.param)
+            }
+        };
+        let j = match self.j_cache.take() {
+            Some(j) => j,
+            None => {
+                state.gradient_evals += 1;
+                problem.jacobian(&state.param)
+            }
+        };
 
         // g = Jᵀr is the gradient of ½‖r‖². First-order optimality
         // (Madsen/Nielsen/Tingleff eq. 3.3a) is the canonical NLLS
         // convergence test.
         let g = j.mat_transpose_vec(&r);
         if self.tol_grad > 0.0 && g.norm_infinity() <= self.tol_grad {
+            self.r_cache = Some(r);
+            self.j_cache = Some(j);
             return (state, Some(TerminationReason::SolverConverged));
         }
 
@@ -138,15 +166,25 @@ where
         neg_g.neg_in_place();
         let delta = match gram.solve_spd(&neg_g) {
             Ok(d) => d,
-            Err(_) => return (state, Some(TerminationReason::SolverFailed)),
+            Err(_) => {
+                // State unchanged on Cholesky failure; restore caches
+                // for any subsequent reuse (e.g. via `InnerExecutor`).
+                self.r_cache = Some(r);
+                self.j_cache = Some(j);
+                return (state, Some(TerminationReason::SolverFailed));
+            }
         };
 
         // Full GN step. Refresh state.cost from a fresh residual so the
-        // post-iteration state is consistent (Solver contract).
+        // post-iteration state is consistent (Solver contract); stash
+        // that residual so the next iter reuses it without re-eval.
+        // `J(x_new)` is not computed, so `j_cache` stays empty.
         state.param.scaled_add(1.0, &delta);
         let r_new = problem.residual(&state.param);
         state.cost = Some(0.5 * r_new.norm_squared());
         state.cost_evals += 1;
+        self.r_cache = Some(r_new);
+        self.j_cache = None;
 
         (state, None)
     }

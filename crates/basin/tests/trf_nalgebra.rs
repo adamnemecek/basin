@@ -1,7 +1,7 @@
 #![cfg(feature = "nalgebra")]
 
 use basin::problems::BoothBoxedResiduals;
-use basin::{BasicState, Executor, MaxIter, TerminationReason, Trf};
+use basin::{BasicState, Executor, GradientState, MaxIter, TerminationReason, Trf};
 use nalgebra::DVector;
 
 #[test]
@@ -118,4 +118,44 @@ fn trf_emits_solver_converged_via_scaled_first_order_optimality() {
         .run();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
+}
+
+#[test]
+fn trf_caches_residual_and_jacobian_across_iterations() {
+    // Regression test for TRF's caching contract — symmetric to LM
+    // (BCL §4 reuses the Madsen-Nielsen accept/reject shape, so the
+    // cache logic is identical: stash r at the new iterate on accept,
+    // keep both r and J on reject, drop J on accept since J(x_trial)
+    // wasn't computed for the gain-ratio test).
+    //
+    // Disable the internal `‖D·Jᵀr‖_∞ ≤ tol_grad` check so termination
+    // is purely MaxIter — the early-exit path otherwise causes an
+    // extra (uncounted-against-iter) J evaluation that muddies the
+    // count. Run on slack-bounded Booth so no face binds and the
+    // dynamics reduce to LM's.
+    let problem = BoothBoxedResiduals::<DVector<f64>>::new(
+        DVector::from_vec(vec![-5.0, -5.0]),
+        DVector::from_vec(vec![5.0, 5.0]),
+    );
+    let initial = DVector::from_vec(vec![0.0, 0.0]);
+
+    let result = Executor::new(problem, Trf::new().tol_grad(0.0), BasicState::new(initial))
+        .max_iter(3)
+        .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxIter);
+    assert_eq!(result.iter(), 3);
+    assert_eq!(
+        result.cost_evals(),
+        4,
+        "expected init (1) + one trial per iter (3) = 4 — uncached TRF would also \
+         re-evaluate the start-of-iter residual and produce 1 + 2·iters = 7"
+    );
+    assert!(
+        result.state.gradient_evals() <= 3,
+        "gradient_evals = {} should be ≤ iters (3): init's J carries iter 1, and \
+         rejected steps reuse J at the unchanged iterate. Uncached TRF produces \
+         1 + iters = 4.",
+        result.state.gradient_evals()
+    );
 }

@@ -159,7 +159,7 @@ where
     }
 }
 
-impl<V> MemeticInner<V> for LevenbergMarquardt
+impl<V, M> MemeticInner<V> for LevenbergMarquardt<V, M>
 where
     V: Clone,
 {

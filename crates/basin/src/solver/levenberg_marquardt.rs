@@ -94,7 +94,7 @@ use crate::core::termination::TerminationReason;
 /// `state.cost()` differ from `problem.cost(state.param())` by a
 /// factor of two. Both go to zero at the optimum, so cost-based
 /// termination criteria are unaffected.
-pub struct LevenbergMarquardt {
+pub struct LevenbergMarquardt<V, M> {
     tol_grad: f64,
     tau: f64,
     max_inner_attempts: u32,
@@ -103,15 +103,25 @@ pub struct LevenbergMarquardt {
     // through `&mut self`.
     mu: Option<f64>,
     nu: f64,
+
+    // Residual and Jacobian caches across iterations. `r_cache` is
+    // refreshed whenever the iterate moves (to `r(x_trial)` on accept,
+    // to the unchanged old `r` on reject); `j_cache` is preserved on
+    // reject but cleared on accept, since `J(x_trial)` wasn't computed
+    // in the gain-ratio test. Skipping these caches re-evaluates the
+    // same `(r, J)` pair at the same point — Madsen-Nielsen Algorithm
+    // 3.16 assigns `J` only after acceptance (line 13).
+    r_cache: Option<V>,
+    j_cache: Option<M>,
 }
 
-impl Default for LevenbergMarquardt {
+impl<V, M> Default for LevenbergMarquardt<V, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LevenbergMarquardt {
+impl<V, M> LevenbergMarquardt<V, M> {
     /// Levenberg-Marquardt with Nielsen's defaults: `tol_grad = 1e-8`,
     /// `tau = 1e-3`, `max_inner_attempts = 50`.
     pub fn new() -> Self {
@@ -121,6 +131,8 @@ impl LevenbergMarquardt {
             max_inner_attempts: 50,
             mu: None,
             nu: 2.0,
+            r_cache: None,
+            j_cache: None,
         }
     }
 
@@ -156,7 +168,7 @@ impl LevenbergMarquardt {
     }
 }
 
-impl<P, V, M> Solver<P, BasicState<V>> for LevenbergMarquardt
+impl<P, V, M> Solver<P, BasicState<V>> for LevenbergMarquardt<V, M>
 where
     P: Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
     V: ScaledAdd<f64> + NormSquared + NormInfinity + NegInPlace + Dot + Clone,
@@ -170,10 +182,9 @@ where
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
         // Seed cost so iter-0 termination criteria see a populated
         // state. Also evaluate J(x₀) once to seed μ₀ via Nielsen eq.
-        // 1.10. The Jacobian is recomputed in the first next_iter —
-        // caching it across the init/iter-0 boundary would add an
-        // Option<M> cache field that's not worth its complexity for
-        // one saved evaluation.
+        // 1.10. `r` and `J(x₀)` are stashed into the caches so the
+        // first `next_iter` reuses them — no redundant evaluation at
+        // the init/iter-0 boundary.
         let r = problem.residual(&state.param);
         let j = problem.jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
@@ -189,6 +200,8 @@ where
         let max_diag = gram.max_diagonal().max(1.0);
         self.mu = Some(self.tau * max_diag);
         self.nu = 2.0;
+        self.r_cache = Some(r);
+        self.j_cache = Some(j);
         state
     }
 
@@ -197,15 +210,36 @@ where
         problem: &P,
         mut state: BasicState<V>,
     ) -> (BasicState<V>, Option<TerminationReason>) {
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
-        state.cost_evals += 1;
-        state.gradient_evals += 1;
+        // Use cached `r` / `J` when available — they're at the current
+        // `state.param` after either init (initial point) or the
+        // previous iteration's bookkeeping (post-accept: r at the new
+        // iterate; post-reject: both unchanged). Only count an eval
+        // when the cache misses, so `cost_evals` / `gradient_evals`
+        // grow with *actual* problem invocations.
+        let r = match self.r_cache.take() {
+            Some(r) => r,
+            None => {
+                state.cost_evals += 1;
+                problem.residual(&state.param)
+            }
+        };
+        let j = match self.j_cache.take() {
+            Some(j) => j,
+            None => {
+                state.gradient_evals += 1;
+                problem.jacobian(&state.param)
+            }
+        };
 
         // g = Jᵀr is the gradient of ½‖r‖². First-order optimality
         // (Madsen et al. eq. 3.3a) is the canonical NLLS test.
         let g = j.mat_transpose_vec(&r);
         if self.tol_grad > 0.0 && g.norm_infinity() <= self.tol_grad {
+            // Restore the caches so a subsequent `run()` (e.g. via
+            // `InnerExecutor`) doesn't see corrupted state — though
+            // in practice `init` resets them on each reuse.
+            self.r_cache = Some(r);
+            self.j_cache = Some(j);
             return (state, Some(TerminationReason::SolverConverged));
         }
 
@@ -238,6 +272,10 @@ where
                     if attempts >= self.max_inner_attempts || !mu.is_finite() {
                         self.mu = Some(mu);
                         self.nu = nu;
+                        // State unchanged; both caches still valid at
+                        // the current iterate.
+                        self.r_cache = Some(r);
+                        self.j_cache = Some(j);
                         return (state, Some(TerminationReason::SolverFailed));
                     }
                     mu *= nu;
@@ -272,17 +310,24 @@ where
 
         if rho > 0.0 {
             // Accept. Update x and cost; adapt μ via Nielsen eq. 2.5
-            // with β=2, γ=3, p=3.
+            // with β=2, γ=3, p=3. The trial residual is at the new
+            // iterate — stash it; the Jacobian at the new iterate
+            // hasn't been computed, so leave `j_cache` empty.
             state.param = x_trial;
             state.cost = Some(f_trial);
             let factor = 1.0 - (2.0 * rho - 1.0).powi(3);
             mu *= factor.max(1.0 / 3.0);
             nu = 2.0;
+            self.r_cache = Some(r_trial);
+            self.j_cache = None;
         } else {
             // Reject. Keep state; bump μ geometrically and double ν so
-            // consecutive failures escalate damping faster.
+            // consecutive failures escalate damping faster. Both r and
+            // J remain valid at the unchanged iterate.
             mu *= nu;
             nu *= 2.0;
+            self.r_cache = Some(r);
+            self.j_cache = Some(j);
         }
 
         self.mu = Some(mu);

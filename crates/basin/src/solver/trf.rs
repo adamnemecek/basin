@@ -145,7 +145,7 @@ use crate::core::termination::TerminationReason;
 /// [`BoothBoxedResiduals`](crate::problems::BoothBoxedResiduals)) will
 /// see `state.cost()` differ from `problem.cost(state.param())` by a
 /// factor of two; both go to zero at the optimum.
-pub struct Trf {
+pub struct Trf<V, M> {
     tol_grad: f64,
     tau: f64,
     rstep: f64,
@@ -156,15 +156,23 @@ pub struct Trf {
     // through `&mut self`.
     mu: Option<f64>,
     nu: f64,
+
+    // Residual and Jacobian caches across iterations — same shape as
+    // [`LevenbergMarquardt`](super::LevenbergMarquardt). On accept the
+    // trial residual is at the new iterate (so it's stashed) but the
+    // Jacobian there is unknown (so it's cleared); on reject both are
+    // unchanged at the current iterate (both stashed).
+    r_cache: Option<V>,
+    j_cache: Option<M>,
 }
 
-impl Default for Trf {
+impl<V, M> Default for Trf<V, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Trf {
+impl<V, M> Trf<V, M> {
     /// `Trf` with the canonical defaults: `tol_grad = 1e-8`,
     /// `tau = 1e-3`, `rstep = 1e-10`, `theta = 0.99995`,
     /// `max_inner_attempts = 50`.
@@ -177,6 +185,8 @@ impl Trf {
             max_inner_attempts: 50,
             mu: None,
             nu: 2.0,
+            r_cache: None,
+            j_cache: None,
         }
     }
 
@@ -232,7 +242,7 @@ impl Trf {
     }
 }
 
-impl<P, V, M> Solver<P, BasicState<V>> for Trf
+impl<P, V, M> Solver<P, BasicState<V>> for Trf<V, M>
 where
     P: Residual<Param = V, Output = V>
         + Jacobian<Param = V, Output = M>
@@ -278,6 +288,8 @@ where
         let max_diag = a.max_diagonal().max(1.0);
         self.mu = Some(self.tau * max_diag);
         self.nu = 2.0;
+        self.r_cache = Some(r);
+        self.j_cache = Some(j);
         state
     }
 
@@ -286,10 +298,23 @@ where
         problem: &P,
         mut state: BasicState<V>,
     ) -> (BasicState<V>, Option<TerminationReason>) {
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
-        state.cost_evals += 1;
-        state.gradient_evals += 1;
+        // Use cached `r` / `J` when available (set by init or by the
+        // previous accept/reject branch). Only count an eval when the
+        // cache misses.
+        let r = match self.r_cache.take() {
+            Some(r) => r,
+            None => {
+                state.cost_evals += 1;
+                problem.residual(&state.param)
+            }
+        };
+        let j = match self.j_cache.take() {
+            Some(j) => j,
+            None => {
+                state.gradient_evals += 1;
+                problem.jacobian(&state.param)
+            }
+        };
 
         let g = j.mat_transpose_vec(&r);
 
@@ -312,6 +337,10 @@ where
         // *or* face-active. Collapses to LM's `‖Jᵀr‖_∞` when bounds are
         // infinite (then `|v_i| = 1`, `d_sq = 1`, division is identity).
         if self.tol_grad > 0.0 && g.cl_kkt_inf_norm(&d_sq) <= self.tol_grad {
+            // Restore caches; init resets them on each reuse, but
+            // mirroring LM's pattern keeps the contract uniform.
+            self.r_cache = Some(r);
+            self.j_cache = Some(j);
             return (state, Some(TerminationReason::SolverConverged));
         }
 
@@ -347,6 +376,9 @@ where
                     if attempts >= self.max_inner_attempts || !mu.is_finite() {
                         self.mu = Some(mu);
                         self.nu = nu;
+                        // State unchanged; restore both caches.
+                        self.r_cache = Some(r);
+                        self.j_cache = Some(j);
                         return (state, Some(TerminationReason::SolverFailed));
                     }
                     mu *= nu;
@@ -404,16 +436,23 @@ where
         if rho > 0.0 {
             // Accept. Update x and cost; adapt μ via Nielsen smooth
             // cubic with β=2, γ=3, p=3 (matches LevenbergMarquardt).
+            // Stash the trial residual (now at the new iterate); clear
+            // the Jacobian cache since J(x_trial) was not computed.
             state.param = x_trial;
             state.cost = Some(f_trial);
             let factor = 1.0 - (2.0 * rho - 1.0).powi(3);
             mu *= factor.max(1.0 / 3.0);
             nu = 2.0;
+            self.r_cache = Some(r_trial);
+            self.j_cache = None;
         } else {
             // Reject. Bump μ geometrically; double ν so consecutive
-            // rejections escalate damping faster.
+            // rejections escalate damping faster. Both r and J remain
+            // valid at the unchanged iterate.
             mu *= nu;
             nu *= 2.0;
+            self.r_cache = Some(r);
+            self.j_cache = Some(j);
         }
 
         self.mu = Some(mu);

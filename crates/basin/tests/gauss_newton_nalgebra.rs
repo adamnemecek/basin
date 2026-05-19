@@ -1,7 +1,7 @@
 #![cfg(feature = "nalgebra")]
 
 use basin::problems::{PowellSingular, RosenbrockResiduals};
-use basin::{BasicState, Executor, GaussNewton, TerminationReason};
+use basin::{BasicState, Executor, GaussNewton, GradientState, TerminationReason};
 use nalgebra::DVector;
 
 #[test]
@@ -92,4 +92,46 @@ fn gauss_newton_fails_on_rank_deficient_powell_singular_jacobian() {
         .run();
 
     assert_eq!(result.reason, TerminationReason::SolverFailed);
+}
+
+#[test]
+fn gauss_newton_caches_residual_and_jacobian_across_iterations() {
+    // Regression test for the GN caching contract. Every iter accepts
+    // a full Newton step, so:
+    //   - the post-step residual `r(x_new)` is stashed and reused as
+    //     the start-of-iter `r` next time (no re-eval at the same x);
+    //   - `init` seeds `J(x₀)` which carries iter 1; afterwards the
+    //     Jacobian is recomputed on each iter (x moves every step).
+    // For K completed iters with the run terminating on MaxIter
+    // (avoiding the in-`next_iter` convergence check that also evaluates
+    // J on the early-exit path):
+    //   - cost_evals = 1 + K
+    //   - gradient_evals = K
+    // Disable the internal tol_grad check so termination is purely by
+    // MaxIter — keeps the assertion deterministic regardless of how
+    // close Rosenbrock has driven `‖Jᵀr‖_∞` to zero.
+    let problem = RosenbrockResiduals::<DVector<f64>>::new();
+    let initial = DVector::from_vec(vec![-1.2, 1.0]);
+
+    let result = Executor::new(
+        problem,
+        GaussNewton::new().tol_grad(0.0),
+        BasicState::new(initial),
+    )
+    .max_iter(3)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxIter);
+    assert_eq!(result.iter(), 3);
+    assert_eq!(
+        result.cost_evals(),
+        4,
+        "expected init (1) + one post-step residual per iter (3) = 4"
+    );
+    assert_eq!(
+        result.state.gradient_evals(),
+        3,
+        "expected init's J reused for iter 1, then one J recompute per subsequent iter \
+         (3 total)"
+    );
 }
