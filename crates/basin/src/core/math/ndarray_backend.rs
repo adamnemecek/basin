@@ -1,5 +1,5 @@
 use ndarray::{Array1, ArrayBase, Data, DataMut, Dimension};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{

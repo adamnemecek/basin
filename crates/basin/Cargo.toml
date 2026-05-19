@@ -26,9 +26,8 @@ default = ["problems"]
 # Cholesky). Folding it in keeps the manifest to one nalgebra feature.
 nalgebra = ["dep:nalgebra", "dep:nalgebra-sparse"]
 ndarray = ["dep:ndarray"]
-# `generativity` is pulled in transitively by faer; we force the older 1.1
-# line because 1.2.1 requires edition2024 (Rust 1.85+), above basin's MSRV.
-# Listed here so it only enters the dep graph when `faer` is enabled.
+# `generativity` is a transitive dep of faer, surfaced here so it only enters
+# the graph when `faer` is enabled.
 faer = ["dep:faer", "dep:generativity"]
 # Standard test-problem corpus (Rosenbrock, ...). Pure-Rust, no extra deps;
 # default-on so plain `cargo test` keeps working without `--features problems`
@@ -37,49 +36,34 @@ faer = ["dep:faer", "dep:generativity"]
 problems = []
 
 [dependencies]
-# Pinned to 0.33 because nalgebra 0.34 sets rust-version = 1.87, above basin's
-# MSRV of 1.84.1 (CRAN constraint — see AGENTS.md). Revisit when CRAN's pin moves.
-nalgebra = { version = "0.33", optional = true }
-# Pinned to 0.10 because 0.11 requires edition2024 (Rust 1.85+), above basin's
-# MSRV 1.84.1 (CRAN constraint). 0.10 tracks nalgebra 0.33 cleanly. Drop the
-# pin when CRAN's Rust pin moves.
-nalgebra-sparse = { version = "0.10", optional = true }
+nalgebra = { version = "0.34", optional = true }
+nalgebra-sparse = { version = "0.11", optional = true }
 # Pure-Rust (no BLAS feature) so it stays wasm-compatible per the WASM hard
-# constraint in AGENTS.md. 0.16's MSRV is well below basin's 1.84.1.
-ndarray = { version = "0.16", optional = true, default-features = false }
+# constraint in AGENTS.md.
+ndarray = { version = "0.17", optional = true, default-features = false }
 # default-features off because faer's defaults pull in rayon (breaks wasm,
 # tenet: no parallelism in default features) and npy (file I/O). We enable
 # only `std` + `linalg` so the core dense types work on native and wasm.
-# faer 0.24 has rust-version = 1.84.0, exactly at basin's MSRV.
 faer = { version = "0.24", optional = true, default-features = false, features = ["std", "linalg"] }
-# Transitive dep of faer. Pinned to the 1.1.x line because 1.2.0+ requires
-# edition2024 (Rust 1.85+), above basin's MSRV 1.84.1 (CRAN constraint — see
-# AGENTS.md). `~1.1` (= >=1.1.0, <1.2.0) is required; bare `"1.1"` is `^1.1`
-# and lets Cargo resolve to 1.2.x when the lockfile is regenerated (e.g. in
-# the release job). basin doesn't use this crate directly. Drop the pin once
-# CRAN's pin moves.
-generativity = { version = "~1.1", optional = true }
+# Transitive dep of faer, surfaced as an optional dep so it only enters the
+# graph behind the `faer` feature. basin doesn't use this crate directly.
+generativity = { version = "1", optional = true }
 # Re-exports `std::time::Instant` on native and a wasm-compatible shim on
 # `wasm32-unknown-unknown`, so `MaxTime` works on both without feature gating.
 # Tiny crate, MSRV 1.60, no transitive deps on native.
 web-time = "1"
-# Seedable, wasm-safe RNG used by stochastic solvers (`RandomSearch` and,
-# eventually, CMA-ES). `default-features = false` drops `std_rng` /
-# `thread_rng` and the implicit `getrandom` JS-feature pull-in, so a
+# Seedable, wasm-safe RNG used by stochastic solvers (`RandomSearch`, CMA-ES,
+# ...). `default-features = false` drops `std_rng` / `thread_rng` and the
+# implicit `getrandom` JS-feature pull-in, so a
 # `ChaCha8Rng::seed_from_u64(seed)` works on `wasm32-unknown-unknown` with
-# no JS shim. rand 0.10 / rand_chacha 0.10 require edition2024 (Rust 1.85+),
-# above basin's MSRV 1.84.1 (CRAN constraint — see AGENTS.md). Drop the pin
-# when CRAN's Rust pin moves.
-rand = { version = "0.9", default-features = false }
-rand_chacha = { version = "0.9", default-features = false }
-# Standard-normal sampling for CMA-ES. rand_distr 0.5 pairs with rand 0.9.
+# no JS shim.
+rand = { version = "0.10", default-features = false }
+rand_chacha = { version = "0.10", default-features = false }
+# Standard-normal sampling for CMA-ES. rand_distr 0.6 pairs with rand 0.10.
 # default-features off to stay consistent with the wasm-safe rand setup.
-rand_distr = { version = "0.5", default-features = false }
+rand_distr = { version = "0.6", default-features = false }
 
 [dev-dependencies]
-# Benches are hand-rolled (no criterion/divan) because their transitive
-# clap dep tree requires edition2024 (Rust 1.85+), above basin's MSRV 1.84.1
-# (CRAN constraint — see AGENTS.md). Revisit when CRAN's Rust pin moves.
 
 [[bench]]
 name = "rosenbrock"

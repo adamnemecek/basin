@@ -261,7 +261,7 @@ impl<V, M> CmaEs<V, M> {
 
 /// Asymptotic expansion of `E‖N(0, I_n)‖ = √2 Γ((n+1)/2) / Γ(n/2)`.
 /// Accurate to ~10 digits for `n ≥ 1`; avoids needing `lgamma` (which
-/// is not in stable `std` on basin's MSRV).
+/// is not in stable `std`).
 pub(crate) fn expected_norm_n01(n: usize) -> f64 {
     let n = n as f64;
     n.sqrt() * (1.0 - 1.0 / (4.0 * n) + 1.0 / (21.0 * n * n))

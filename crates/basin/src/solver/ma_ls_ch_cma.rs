@@ -7,7 +7,7 @@ use crate::core::math::{
     SampleStandardNormal, SampleUniformBox, ScaleInPlace, ScaledAdd, SymmetricEigen, VectorLen,
 };
 use crate::core::problem::CostFunction;
-use crate::core::rng::{ChaCha8Rng, Rng, SeedableRng};
+use crate::core::rng::{ChaCha8Rng, RngExt, SeedableRng};
 use crate::core::solver::Solver;
 use crate::core::state::{BasicPopulationState, PopulationState, State};
 use crate::core::termination::{MaxCostEvals, TerminationCriterion, TerminationReason};

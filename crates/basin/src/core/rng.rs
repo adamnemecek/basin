@@ -13,15 +13,14 @@
 //!   `wasm32-unknown-unknown` build does not pull in any JS feature
 //!   flags from `getrandom`. This is load-bearing per the WASM hard
 //!   constraint in `AGENTS.md`.
-//! - **Pure-Rust, MSRV-friendly.** `rand 0.9` / `rand_chacha 0.9`
-//!   compile under basin's MSRV (1.84.1). The 0.10 line requires
-//!   edition2024 (Rust 1.85+) and is gated out — see the pin notes in
-//!   `Cargo.toml`.
+//! - **Pure-Rust, no platform deps.** `rand 0.10` / `rand_chacha 0.10`
+//!   compile under basin's MSRV and have no `getrandom` pull-in when
+//!   `default-features = false` — see the dep config in `Cargo.toml`.
 //! - **Statistical quality.** ChaCha8 passes TestU01 / PractRand at the
 //!   sample budgets stochastic optimization actually uses.
 //!
 //! No standard-normal sampling lives here yet; the first caller is
 //! S8 (CMA-ES) and the trait shape is best designed alongside it.
 
-pub use rand::{Rng, RngCore, SeedableRng};
+pub use rand::{Rng, RngExt, SeedableRng};
 pub use rand_chacha::ChaCha8Rng;

@@ -1,7 +1,7 @@
 use crate::core::constraint::BoxConstrained;
 use crate::core::math::{NormSquared, SampleUniformBox, ScaledAdd, VectorLen};
 use crate::core::problem::CostFunction;
-use crate::core::rng::{ChaCha8Rng, Rng, SeedableRng};
+use crate::core::rng::{ChaCha8Rng, Rng, RngExt, SeedableRng};
 use crate::core::solver::Solver;
 use crate::core::state::BasicPopulationState;
 use crate::core::termination::TerminationReason;

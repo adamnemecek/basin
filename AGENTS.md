@@ -26,7 +26,7 @@ layer, math abstraction) is in place along with two concrete solvers
 - `cargo fmt`: format (also enforced by pre-commit).
 
 The dev environment is provided by `devenv.nix` (loaded automatically via
-`direnv` from `.envrc`). It pins Rust 1.84.1 (matches `rust-version` in
+`direnv` from `.envrc`). It pins Rust 1.91.1 (matches `rust-version` in
 `Cargo.toml`) and adds the `wasm32-unknown-unknown` target plus tooling:
 `cargo-llvm-cov`, `cargo-flamegraph`, `cargo-audit`, `cargo-deny`, `cargo-msrv`,
 `samply`, `wasm-pack`, `go-task`. Pre-commit hooks run `clippy` (with
@@ -226,7 +226,7 @@ constraint on dependencies, not a feature:
 
 ## MSRV is externally constrained — do not bump casually
 
-basin's MSRV (currently **Rust 1.84.1**, pinned in `Cargo.toml` and
+basin's MSRV (currently **Rust 1.91.1**, pinned in `Cargo.toml` and
 `devenv.nix`) is set by downstream consumers, not by basin's own preferences:
 
 - **Primary constraint: CRAN.** A planned R-package wrapper around basin must
@@ -242,9 +242,10 @@ Practical consequences:
 - Do **not** bump `rust-version` or the `devenv.nix` Rust pin without verifying
   the current CRAN Rust toolchain version first.
 - Every new dependency (and dev-dependency, which `cargo publish --dry-run` and
-  CI exercise) must compile under the MSRV. Transitive deps that pull in
-  newer-edition crates (e.g. `clap 4.6+` requiring `edition2024`, only stable in
-  Rust 1.85) need to be pinned, replaced, or worked around.
+  CI exercise) must compile under the MSRV. Transitive deps that demand a newer
+  rustc than CRAN ships need to be pinned, replaced, or worked around. (Prior
+  pain points: `edition2024` crates back when CRAN was on 1.84 — long since
+  resolved by the 1.91 bump; logged here as a reminder of the failure mode.)
 - Prefer deps with small, stable transitive trees over feature-rich ones with
   sprawling dep graphs. Each transitive dep is another chance to silently lose
   MSRV compatibility.

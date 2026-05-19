@@ -1,7 +1,7 @@
 use faer::linalg::matmul::matmul;
 use faer::linalg::solvers::{Llt, Solve};
 use faer::{Accum, Col, Mat, Par, Side};
-use rand::Rng;
+use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal};
 
 use super::cl_scaling::{

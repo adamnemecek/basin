@@ -17,10 +17,9 @@ S13 — see git history for the per-session prose if needed.
 - [x] **S7: Wasm-safe RNG abstraction + simple stochastic solver.**
       *(done)* `RandomSearch` (elitist 1+λ) lands on top of new
       `BasicPopulationState<V>` / `PopulationState` and a new vector-
-      tier `SampleUniformBox` trait. RNG is `rand 0.9` +
-      `rand_chacha 0.9` (0.10 wants edition2024, blocks MSRV);
-      seeded `ChaCha8Rng` works on `wasm32-unknown-unknown` with no
-      JS shim.
+      tier `SampleUniformBox` trait. RNG is `rand 0.10` +
+      `rand_chacha 0.10`; seeded `ChaCha8Rng` works on
+      `wasm32-unknown-unknown` with no JS shim.
 
 - [x] **S8: CMA-ES (vanilla).**
       Second LA-heavy solver: covariance + eigendecomposition. Read
@@ -64,9 +63,9 @@ S13 — see git history for the per-session prose if needed.
       bound-boilerplate cost of preemptive generality still outweighs
       the refactor. Trigger now reads "a real f32 use case appears" or
       "the second stochastic solver needs it" (CMA-ES in S8 will tell us).
-- [ ] **Real bench tool (divan / Criterion) when MSRV pressure lifts.**
-      Hand-rolled bench works for now; revisit when CRAN's Rust pin moves past
-      1.85.
+- [ ] **Real bench tool (divan / Criterion).** Hand-rolled bench works for
+      now. CRAN moved to Rust 1.91.1 so the `edition2024` blocker is gone —
+      revisit when someone wants to do the bench-rewrite.
 
 ## Test problem corpus
 
