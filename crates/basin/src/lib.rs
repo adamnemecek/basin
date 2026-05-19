@@ -48,7 +48,7 @@ pub use crate::core::termination::{
 pub use crate::line_search::{
     Backtracking, Constant, LineSearch, LineSearchResult, MoreThuente, Wolfe,
 };
-pub use crate::solver::lbfgsb::LBFGSB;
+pub use crate::solver::lbfgs::{LBFGS, LBFGSB};
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{

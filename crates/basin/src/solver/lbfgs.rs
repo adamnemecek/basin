@@ -2,13 +2,23 @@
 // parity. Both lints are blanket-allowed for this module.
 #![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
 
-//! L-BFGS-B solver.
+//! Limited-memory BFGS — both modes.
 //!
-//! Faithful port of Nocedal–Zhu's L-BFGS-B v3.0 Fortran source
-//! (`references/lbfgsb-v3.0/`). The Fortran subroutines map to
-//! submodules below, and the top-level [`LBFGSB`] solver mirrors the
-//! `mainlb` iteration loop (with the goto-style coroutine flattened
-//! to a Rust `loop`):
+//! [`LBFGS`] is generic over a type-state [`Mode`](Bounded) marker:
+//!
+//! - [`LBFGS<Bounded>`] is a faithful port of Nocedal–Zhu's L-BFGS-B
+//!   v3.0 Fortran source (`references/lbfgsb-v3.0/`). The Fortran
+//!   subroutines map to submodules below, and the top-level solver
+//!   mirrors the `mainlb` iteration loop (with the goto-style
+//!   coroutine flattened to a Rust `loop`). `LBFGSB` is the type
+//!   alias for this mode.
+//! - [`LBFGS<Unbounded>`] is unconstrained limited-memory BFGS via
+//!   Nocedal–Wright's two-loop recursion (Algorithm 7.4). Uses the
+//!   same [`LbfgsState`] history fields (`ws`, `wy`, `sy`, `theta`)
+//!   but skips the Cauchy / `freev` / `subsm` machinery — those are
+//!   box-constraint-specific.
+//!
+//! Submodules backing the bounded path:
 //!
 //! - [`cauchy`] — generalized Cauchy point along the projected gradient
 //!   path. Port of `cauchy.f`.
@@ -28,6 +38,8 @@ pub(crate) mod compact;
 pub(crate) mod formk;
 pub(crate) mod subsm;
 
+use core::marker::PhantomData;
+
 use crate::core::constraint::BoxConstrained;
 use crate::core::math::{Dot, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
@@ -42,14 +54,23 @@ use self::compact::{bmv, formt};
 use self::formk::formk;
 use self::subsm::subsm;
 
-/// L-BFGS-B (limited-memory BFGS with box constraints).
+/// Limited-memory BFGS, parameterised over a type-state mode marker.
 ///
+/// `LBFGS<Bounded>` (aliased as [`LBFGSB`]) is a faithful port of
 /// Byrd–Lu–Nocedal 1995 / Zhu–Byrd–Lu–Nocedal 1997 (ACM TOMS Alg. 778),
 /// with the Nocedal–Morales 2011 v3.0 directional-derivative + bound-
-/// backtracking deviation in subspace minimization. Faithful port of
-/// the Fortran v3.0 reference at `references/lbfgsb-v3.0/`.
+/// backtracking deviation in subspace minimization. Iteration-wise
+/// parity with the Fortran v3.0 reference (`references/lbfgsb-v3.0/`)
+/// is verified by `tests/lbfgsb_iter_parity.rs`.
 ///
-/// At each iteration L-BFGS-B:
+/// `LBFGS<Unbounded>` is unconstrained limited-memory BFGS via
+/// Nocedal–Wright's two-loop recursion (Algorithm 7.4). It reuses the
+/// same [`LbfgsState`] history machinery but skips the Cauchy /
+/// `freev` / `subsm` phases — those are box-constraint-specific.
+/// Construct with [`LBFGS::<Unbounded>::new()`], or transition from
+/// the default [`LBFGS::<Bounded>::new()`] via [`LBFGS::unbounded`].
+///
+/// # Bounded mode — per-iteration outline
 ///
 /// 1. Walks the projected gradient ray, building a piecewise-quadratic
 ///    model and identifying the **generalized Cauchy point** `xcp` —
@@ -73,6 +94,15 @@ use self::subsm::subsm;
 /// either succeeds with the projected steepest-descent direction or
 /// fails the whole solve.
 ///
+/// # Unbounded mode — per-iteration outline
+///
+/// 1. Two-loop recursion (Nocedal–Wright Alg. 7.4) over the
+///    `(s_i, y_i)` history with initial Hessian `H₀ = (1/θ)·I`
+///    (`θ = (y_last·y_last) / (s_last·y_last)` after the first
+///    accepted update) to produce `d = −H_k · ∇f`.
+/// 2. Moré–Thuente line search along `d`.
+/// 3. Curvature-conditioned limited-memory update (same as bounded).
+///
 /// # Memory parameter
 ///
 /// The history capacity `m` lives on [`LbfgsState`]:
@@ -81,10 +111,15 @@ use self::subsm::subsm;
 ///
 /// # Termination
 ///
-/// No solver-internal optimality test; the canonical first-order
-/// metric is the framework-level
-/// [`ProjectedGradientTolerance`](crate::core::termination::ProjectedGradientTolerance),
-/// which captures bounds at construction. Pair with
+/// No solver-internal optimality test on the unbounded path — pair with
+/// the framework-level
+/// [`GradientTolerance`](crate::core::termination::GradientTolerance).
+/// On the bounded path, a built-in projected-gradient check fires
+/// when `‖projgr(x, g, l, u)‖_∞ ≤ tol_pg` (Fortran-`pgtol` parity);
+/// the framework-level
+/// [`ProjectedGradientTolerance`](crate::core::termination::ProjectedGradientTolerance)
+/// is the canonical companion when external bookkeeping wants the same
+/// metric. Pair either mode with
 /// [`MaxIter`](crate::core::termination::MaxIter),
 /// [`MaxCostEvals`](crate::core::termination::MaxCostEvals), and
 /// [`CostTolerance`](crate::core::termination::CostTolerance) as
@@ -98,17 +133,23 @@ use self::subsm::subsm;
 /// `nalgebra::DVector<f64>` (feature `nalgebra`), and `faer::Col<f64>`
 /// (feature `faer`). Other backends can implement the trait if their
 /// storage is contiguous.
-pub struct LBFGSB<S = MoreThuente> {
+pub struct LBFGS<Mode = Bounded, S = MoreThuente> {
     line_search: S,
     /// Fortran `dr ≤ epsmch · ddum` curvature-skip threshold
-    /// (`lbfgsb.f:875`). Defaults to `f64::EPSILON`.
+    /// (`lbfgsb.f:875`). Defaults to `f64::EPSILON`. Consulted in both
+    /// modes for the limited-memory update acceptance test.
     epsilon: f64,
-    /// Built-in projected-gradient convergence tolerance. Emits
-    /// [`TerminationReason::SolverConverged`] at the top of an
-    /// iteration when `‖projgr(x, g, l, u)‖_∞ ≤ tol_pg`. Default
+    /// Built-in projected-gradient convergence tolerance. Bounded mode
+    /// only — emits [`TerminationReason::SolverConverged`] at the top
+    /// of an iteration when `‖projgr(x, g, l, u)‖_∞ ≤ tol_pg`. Default
     /// `1e-10`. Set to `0.0` to disable (matches Fortran `pgtol = 0`
     /// — required for the iteration-wise parity test against the
     /// reference, which doesn't terminate on the projected gradient).
+    /// Stored on the shared struct; the field is unused (and the
+    /// builder unavailable) in [`Unbounded`] mode, where users wire
+    /// the framework-level
+    /// [`GradientTolerance`](crate::core::termination::GradientTolerance)
+    /// instead.
     tol_pg: f64,
     /// Default limited-memory history capacity (Fortran `m`,
     /// `references/lbfgsb-v3.0/`). Default `10`. Only consulted when
@@ -116,21 +157,48 @@ pub struct LBFGSB<S = MoreThuente> {
     /// [`MemeticInner`](crate::solver::MemeticInner) seeding a fresh
     /// [`LbfgsState`] for a CMA-ES injection refinement. Standalone
     /// users supply `m_capacity` directly to `LbfgsState::new(x, m)`,
-    /// in which case `LBFGSB::init` reads it off the state and this
-    /// field is unused.
+    /// in which case `init` reads it off the state and this field is
+    /// unused.
     ///
     /// `pub(crate)` so the `MemeticInner` impl in
     /// `solver/cma_inject.rs` can read it.
     pub(crate) m_capacity: usize,
+    /// Type-state marker; carries the mode at the type level only.
+    _mode: PhantomData<fn() -> Mode>,
 }
 
-impl Default for LBFGSB<MoreThuente> {
+/// Type-state marker for box-constrained L-BFGS-B (the default).
+/// Constructors live on [`LBFGS<Bounded, MoreThuente>`]; the
+/// [`Solver`] impl requires `P: BoxConstrained` and the full
+/// [`backend::AsFloatSliceMut`] + [`Dot`] + [`ScaledAdd<f64>`] backend.
+/// [`LBFGSB`] is the canonical type alias for this mode.
+pub struct Bounded;
+
+/// Type-state marker for unconstrained L-BFGS. Constructors live on
+/// [`LBFGS<Unbounded, MoreThuente>`]; the [`Solver`] impl has the same
+/// backend bounds as [`Bounded`] but **no** [`BoxConstrained`]
+/// requirement. The algorithm is Nocedal–Wright's two-loop recursion
+/// over the [`LbfgsState`] history with `H₀ = (1/θ)·I`.
+pub struct Unbounded;
+
+/// Type alias preserving the original [`LBFGSB`] name. Equivalent to
+/// `LBFGS<Bounded, S>` — every call site that built `LBFGSB::new()`
+/// or held an `LBFGSB<MoreThuente>` value keeps working unchanged.
+pub type LBFGSB<S = MoreThuente> = LBFGS<Bounded, S>;
+
+impl Default for LBFGS<Bounded, MoreThuente> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl LBFGSB<MoreThuente> {
+impl Default for LBFGS<Unbounded, MoreThuente> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LBFGS<Bounded, MoreThuente> {
     /// L-BFGS-B with Moré–Thuente line search and Fortran v3.0
     /// defaults (`ftol = 1e-3`, `gtol = 0.9`, `xtol = 0.1`). Built-in
     /// projected-gradient tolerance is `1e-10`; the seed history
@@ -142,11 +210,29 @@ impl LBFGSB<MoreThuente> {
             epsilon: f64::EPSILON,
             tol_pg: 1e-10,
             m_capacity: 10,
+            _mode: PhantomData,
         }
     }
 }
 
-impl<S> LBFGSB<S> {
+impl LBFGS<Unbounded, MoreThuente> {
+    /// Unconstrained L-BFGS with Moré–Thuente line search and the same
+    /// curvature-skip / history defaults as the bounded path. The
+    /// `tol_pg` field is unused in this mode — terminate via the
+    /// framework-level
+    /// [`GradientTolerance`](crate::core::termination::GradientTolerance).
+    pub fn new() -> Self {
+        Self {
+            line_search: MoreThuente::new(),
+            epsilon: f64::EPSILON,
+            tol_pg: 1e-10,
+            m_capacity: 10,
+            _mode: PhantomData,
+        }
+    }
+}
+
+impl<S> LBFGS<Bounded, S> {
     /// L-BFGS-B with an explicit line-search strategy. Note: using
     /// anything other than [`MoreThuente`] forfeits iteration-wise
     /// parity with the Fortran reference.
@@ -156,23 +242,69 @@ impl<S> LBFGSB<S> {
             epsilon: f64::EPSILON,
             tol_pg: 1e-10,
             m_capacity: 10,
+            _mode: PhantomData,
         }
     }
 
+    /// Override the built-in projected-gradient convergence tolerance.
+    /// Default `1e-10`; pass `0.0` to disable (Fortran-`pgtol=0`
+    /// semantics, used by the iteration-wise parity test). Bounded
+    /// mode only — the unbounded path doesn't compute a projected
+    /// gradient.
+    pub fn tol_pg(mut self, tol_pg: f64) -> Self {
+        assert!(tol_pg >= 0.0, "tol_pg must be ≥ 0");
+        self.tol_pg = tol_pg;
+        self
+    }
+
+    /// Switch to the unconstrained [`Unbounded`] mode while preserving
+    /// the configured line search, curvature threshold, and history
+    /// capacity. Mirrors [`NelderMead::projected`](crate::solver::NelderMead::projected)'s
+    /// type-state transition.
+    pub fn unbounded(self) -> LBFGS<Unbounded, S> {
+        LBFGS {
+            line_search: self.line_search,
+            epsilon: self.epsilon,
+            tol_pg: self.tol_pg,
+            m_capacity: self.m_capacity,
+            _mode: PhantomData,
+        }
+    }
+}
+
+impl<S> LBFGS<Unbounded, S> {
+    /// Unconstrained L-BFGS with an explicit line-search strategy.
+    pub fn with_line_search(line_search: S) -> Self {
+        Self {
+            line_search,
+            epsilon: f64::EPSILON,
+            tol_pg: 1e-10,
+            m_capacity: 10,
+            _mode: PhantomData,
+        }
+    }
+
+    /// Switch to box-constrained [`Bounded`] mode while preserving the
+    /// configured line search, curvature threshold, and history
+    /// capacity. The resulting solver requires the problem to
+    /// implement [`BoxConstrained`].
+    pub fn bounded(self) -> LBFGS<Bounded, S> {
+        LBFGS {
+            line_search: self.line_search,
+            epsilon: self.epsilon,
+            tol_pg: self.tol_pg,
+            m_capacity: self.m_capacity,
+            _mode: PhantomData,
+        }
+    }
+}
+
+impl<Mode, S> LBFGS<Mode, S> {
     /// Override the curvature-skip threshold. Default `f64::EPSILON`,
     /// matching Fortran's `dr ≤ epsmch · ddum` test.
     pub fn epsilon(mut self, epsilon: f64) -> Self {
         assert!(epsilon >= 0.0, "epsilon must be ≥ 0");
         self.epsilon = epsilon;
-        self
-    }
-
-    /// Override the built-in projected-gradient convergence tolerance.
-    /// Default `1e-10`; pass `0.0` to disable (Fortran-`pgtol=0`
-    /// semantics, used by the iteration-wise parity test).
-    pub fn tol_pg(mut self, tol_pg: f64) -> Self {
-        assert!(tol_pg >= 0.0, "tol_pg must be ≥ 0");
-        self.tol_pg = tol_pg;
         self
     }
 
@@ -191,7 +323,7 @@ impl<S> LBFGSB<S> {
     }
 }
 
-impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGSB<S>
+impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Bounded, S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstrained,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
@@ -601,6 +733,170 @@ where
             state.gradient = Some(g_new);
             return (state, None);
         }
+    }
+}
+
+impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Unbounded, S>
+where
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
+    S: LineSearch<P, V>,
+{
+    fn init(&mut self, problem: &P, mut state: LbfgsState<V>) -> LbfgsState<V> {
+        // Cache cost and gradient at the initial iterate. `state.work`
+        // stays `None` — the box-constrained scratch buffers are
+        // never touched on the unbounded path.
+        state.cost = Some(problem.cost(&state.param));
+        state.gradient = Some(problem.gradient(&state.param));
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+        state
+    }
+
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: LbfgsState<V>,
+    ) -> (LbfgsState<V>, Option<TerminationReason>) {
+        let g_v = state
+            .gradient
+            .take()
+            .expect("gradient not set: Solver::init must run before next_iter");
+        let f_old = state
+            .cost
+            .expect("cost not set: Solver::init must run before next_iter");
+
+        let n = state.param.as_float_slice().len();
+        let m = state.m_capacity;
+        let col = state.ws.len();
+        let theta = state.theta;
+
+        // Nocedal–Wright two-loop recursion (Algorithm 7.4). Computes
+        // d = −H_k · g into `d_v` via an in-place accumulator that
+        // starts at `g`, has the BFGS history applied, scales by
+        // `H₀ = (1/θ)·I`, then negates.
+        let mut d_v = state.param.clone();
+        {
+            let d_slice = d_v.as_float_slice_mut();
+            let g_slice = g_v.as_float_slice();
+            // q ← g.
+            d_slice.copy_from_slice(g_slice);
+
+            if col > 0 {
+                let mut alpha = vec![0.0_f64; col];
+
+                // Backward pass: q ← q − αᵢ yᵢ for i = col-1 .. 0.
+                for i in (0..col).rev() {
+                    let rho_i = 1.0 / state.sy[i * m + i];
+                    let s_i = state.ws[i].as_float_slice();
+                    let y_i = state.wy[i].as_float_slice();
+                    let mut s_dot_q = 0.0_f64;
+                    for k in 0..n {
+                        s_dot_q += s_i[k] * d_slice[k];
+                    }
+                    let a = rho_i * s_dot_q;
+                    alpha[i] = a;
+                    for k in 0..n {
+                        d_slice[k] -= a * y_i[k];
+                    }
+                }
+
+                // r ← H₀ · q with H₀ = (1/θ)·I.
+                let inv_theta = 1.0 / theta;
+                for k in 0..n {
+                    d_slice[k] *= inv_theta;
+                }
+
+                // Forward pass: r ← r + (αᵢ − β) sᵢ for i = 0 .. col-1.
+                for i in 0..col {
+                    let rho_i = 1.0 / state.sy[i * m + i];
+                    let s_i = state.ws[i].as_float_slice();
+                    let y_i = state.wy[i].as_float_slice();
+                    let mut y_dot_r = 0.0_f64;
+                    for k in 0..n {
+                        y_dot_r += y_i[k] * d_slice[k];
+                    }
+                    let beta = rho_i * y_dot_r;
+                    let coef = alpha[i] - beta;
+                    for k in 0..n {
+                        d_slice[k] += coef * s_i[k];
+                    }
+                }
+            }
+
+            // d = −H · g.
+            for k in 0..n {
+                d_slice[k] = -d_slice[k];
+            }
+        }
+
+        // gᵀd for the curvature-skip threshold (Fortran `gdold`).
+        let gdold: f64 = {
+            let g_slice = g_v.as_float_slice();
+            let d_slice = d_v.as_float_slice();
+            (0..n).map(|i| g_slice[i] * d_slice[i]).sum()
+        };
+
+        let ls_result = self
+            .line_search
+            .next(problem, &state.param, f_old, &g_v, &d_v);
+        state.cost_evals += ls_result.cost_evals;
+        state.gradient_evals += ls_result.gradient_evals;
+
+        let stp = ls_result.alpha;
+        if !(stp.is_finite() && stp > 0.0) {
+            // Line search bailed. Restore cached cost / gradient so
+            // the caller's final state is consistent with the last
+            // accepted iterate, and bubble the failure.
+            state.gradient = Some(g_v);
+            state.cost = Some(f_old);
+            return (state, Some(TerminationReason::SolverFailed));
+        }
+
+        // x ← x + stp · d.
+        state.param.scaled_add(stp, &d_v);
+        let f_new = problem.cost(&state.param);
+        let g_new = problem.gradient(&state.param);
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+
+        // Curvature-conditioned limited-memory update. Matches Fortran
+        // `dr ≤ epsmch · |ddum|` with `dr = y·s` and `ddum = −gdold·stp`.
+        let g_new_slice = g_new.as_float_slice();
+        let g_old_slice = g_v.as_float_slice();
+        let d_slice = d_v.as_float_slice();
+        let mut dr = 0.0_f64;
+        for i in 0..n {
+            let yi = g_new_slice[i] - g_old_slice[i];
+            let si = stp * d_slice[i];
+            dr += yi * si;
+        }
+        let ddum = -gdold * stp;
+
+        if dr > self.epsilon * ddum.abs() {
+            // Build s = stp · d and y = g_new − g_old as V-typed
+            // vectors, then push. `append_pair` re-runs the s·y > 0
+            // check as a final safeguard and refreshes `theta`.
+            let mut s_v = state.param.clone();
+            {
+                let s_slice = s_v.as_float_slice_mut();
+                for i in 0..n {
+                    s_slice[i] = stp * d_slice[i];
+                }
+            }
+            let mut y_v = g_new.clone();
+            {
+                let y_slice = y_v.as_float_slice_mut();
+                for i in 0..n {
+                    y_slice[i] = g_new_slice[i] - g_old_slice[i];
+                }
+            }
+            state.append_pair(s_v, y_v);
+        }
+
+        state.cost = Some(f_new);
+        state.gradient = Some(g_new);
+        (state, None)
     }
 }
 
