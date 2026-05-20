@@ -1,8 +1,8 @@
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
     GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter,
-    MaxTime, NelderMead, ParamTolerance, RelativeCostTolerance, RelativeParamTolerance, Solver,
-    State, TerminationCriterion, TerminationReason,
+    MaxTime, NelderMead, ParamTolerance, RelativeCostTolerance, RelativeGradientTolerance,
+    RelativeParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -62,6 +62,74 @@ fn gradient_tolerance_fires_after_convergence() {
         .expect("gradient should be populated");
     let g_norm = g.iter().map(|v| v * v).sum::<f64>().sqrt();
     assert!(g_norm <= 1e-6);
+}
+
+#[test]
+fn relative_gradient_tolerance_fires_after_convergence() {
+    // On f = ½‖x‖², GradientDescent(0.5) gives ∇f_k = x_k = 0.5^k·x_0, so
+    // ‖∇f_k‖/‖∇f_0‖ = 0.5^k. A 1e-3 relative bound fires once 0.5^k ≤
+    // 1e-3, i.e. around iter 10.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(RelativeGradientTolerance::new(1e-3))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::RelativeGradientTolerance);
+    assert!(
+        result.iter() > 0 && result.iter() < 20,
+        "expected convergence near iter 10, got {}",
+        result.iter()
+    );
+}
+
+#[test]
+fn relative_gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {
+    // ∇f(x_0) = 0 ⇒ initial norm 0, and 0 ≤ tol²·0, so it fires at iter 0
+    // (same edge as the absolute GradientTolerance).
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![0.0, 0.0]),
+    )
+    .terminate_on(RelativeGradientTolerance::new(1e-6))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::RelativeGradientTolerance);
+    assert_eq!(result.iter(), 0);
+}
+
+#[test]
+fn relative_gradient_tolerance_is_scale_invariant() {
+    // The headline property: normalizing by the initial gradient makes
+    // the stopping iteration independent of the objective's scale, where
+    // the absolute GradientTolerance would fire at different iterations.
+    // Scaling the start by 10⁶ scales every gradient by 10⁶ but leaves
+    // the ratio ‖∇f_k‖/‖∇f_0‖ = 0.5^k unchanged.
+    let run_from = |x0: f64| {
+        Executor::new(
+            Quadratic,
+            GradientDescent::new(0.5),
+            BasicState::new(vec![x0, x0]),
+        )
+        .max_iter(1_000)
+        .terminate_on(RelativeGradientTolerance::new(1e-3))
+        .run()
+    };
+
+    let small = run_from(1.0);
+    let large = run_from(1.0e6);
+
+    assert_eq!(small.reason, TerminationReason::RelativeGradientTolerance);
+    assert_eq!(large.reason, TerminationReason::RelativeGradientTolerance);
+    assert_eq!(
+        small.iter(),
+        large.iter(),
+        "relative gradient tolerance should be scale-invariant"
+    );
 }
 
 #[test]

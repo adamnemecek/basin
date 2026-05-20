@@ -363,6 +363,7 @@ fn reason_str(r: TerminationReason) -> &'static str {
         TerminationReason::MaxCostEvals => "max_cost_evals",
         TerminationReason::MaxGradientEvals => "max_gradient_evals",
         TerminationReason::GradientTolerance => "gradient_tolerance",
+        TerminationReason::RelativeGradientTolerance => "relative_gradient_tolerance",
         TerminationReason::ProjectedGradientTolerance => "projected_gradient_tolerance",
         TerminationReason::ParamTolerance => "param_tolerance",
         TerminationReason::RelativeParamTolerance => "relative_param_tolerance",

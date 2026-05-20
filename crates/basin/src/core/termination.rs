@@ -22,6 +22,9 @@ pub enum TerminationReason {
     MaxGradientEvals,
     /// `‖∇f(x)‖ ≤ tol`.
     GradientTolerance,
+    /// `‖∇f(x_k)‖ ≤ tol · ‖∇f(x_0)‖` — gradient norm relative to the
+    /// initial gradient (scale-invariant first-order stationarity).
+    RelativeGradientTolerance,
     /// `‖x − π_C(x − ∇f(x))‖_∞ ≤ tol` — projected-gradient stationarity
     /// for box-constrained problems. Collapses to the unconstrained
     /// gradient norm when no constraint is active.
@@ -152,6 +155,59 @@ where
         let g = state.gradient()?;
         if g.norm_squared() <= self.0 * self.0 {
             Some(TerminationReason::GradientTolerance)
+        } else {
+            None
+        }
+    }
+}
+
+/// Stop when `‖∇f(x_k)‖ ≤ tol · ‖∇f(x_0)‖` — the gradient norm relative
+/// to the gradient at the starting point. The scale-invariant analogue
+/// of [`GradientTolerance`]: scaling the objective by a constant scales
+/// every gradient by the same constant, so the ratio — and hence the
+/// stopping point — is unchanged, letting one `tol` port across
+/// objectives of different magnitude.
+///
+/// Unlike [`RelativeCostTolerance`] / [`RelativeParamTolerance`] (which
+/// normalize by the *current* iterate's quantity), this normalizes by
+/// the *initial* gradient. The gradient → 0 at a minimizer, so a
+/// relative-to-current gradient test would be degenerate (`0/0`);
+/// relative-to-initial is the standard first-order rule (`‖∇f_k‖ ≤
+/// ε·‖∇f_0‖`). Pair with an absolute [`GradientTolerance`] when the
+/// starting gradient may itself be tiny.
+///
+/// Captures `‖∇f(x_0)‖` on the first check at which a gradient is
+/// populated. Requires `S: GradientState` — pairing with a
+/// derivative-free solver is a compile error. Skipped silently while
+/// the state has no gradient populated yet.
+pub struct RelativeGradientTolerance {
+    tol: f64,
+    initial_norm_squared: Option<f64>,
+}
+
+impl RelativeGradientTolerance {
+    /// New tolerance with the given relative gradient-norm bound.
+    pub fn new(tol: f64) -> Self {
+        Self {
+            tol,
+            initial_norm_squared: None,
+        }
+    }
+}
+
+impl<S> TerminationCriterion<S> for RelativeGradientTolerance
+where
+    S: GradientState,
+    S::Param: NormSquared,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let g = state.gradient()?;
+        let norm_squared = g.norm_squared();
+        // Anchor on the first populated gradient (the initial iterate).
+        let initial = *self.initial_norm_squared.get_or_insert(norm_squared);
+        // ‖∇f_k‖ ≤ tol·‖∇f_0‖ ⟺ ‖∇f_k‖² ≤ tol²·‖∇f_0‖², avoiding a sqrt.
+        if norm_squared <= self.tol * self.tol * initial {
+            Some(TerminationReason::RelativeGradientTolerance)
         } else {
             None
         }
