@@ -169,15 +169,27 @@ pub struct LevenbergMarquardt<V, M> {
     // −Jᵀr`.
     diag: Option<V>,
 
-    // Residual and Jacobian caches across iterations. `r_cache` is
-    // refreshed whenever the iterate moves (to `r(x_trial)` on accept,
-    // to the unchanged old `r` on reject); `j_cache` is preserved on
-    // reject but cleared on accept, since `J(x_trial)` wasn't computed
-    // in the gain-ratio test. Skipping these caches re-evaluates the
-    // same `(r, J)` pair at the same point — Madsen-Nielsen Algorithm
-    // 3.16 assigns `J` only after acceptance (line 13).
+    // Cross-iteration caches keyed on "did the iterate move?". A
+    // rejected step leaves `x` unchanged, so everything derived from it
+    // — the residual `r`, the Gram `A = JᵀJ`, and the gradient
+    // `g = Jᵀr` — is still valid on the next outer iteration and is
+    // reused. Madsen-Nielsen Algorithm 3.16 recomputes `A` and `g` only
+    // *after* an accepted step (line 13), never on a reject; caching
+    // them here makes basin's executor-driven loop (one `next_iter` per
+    // damping attempt) match that, instead of reforming the
+    // dominant-cost Gram from an unchanged `J` on every rejected step
+    // (issue #10).
+    //
+    // - `r_cache`: refreshed to `r(x_trial)` on accept, to the unchanged
+    //   `r` on reject; the trial residual is computed in the gain-ratio
+    //   test, so accepting never re-evaluates it.
+    // - `gram_cache` / `jtr_cache`: set together on reject (the iterate
+    //   held still), cleared together on accept (the new `J` — and so
+    //   `A`, `g` — must be recomputed at the moved iterate). When both
+    //   are absent the step re-evaluates `J` once and rebuilds them.
     r_cache: Option<V>,
-    j_cache: Option<M>,
+    gram_cache: Option<M>,
+    jtr_cache: Option<V>,
 }
 
 impl<V, M> Default for LevenbergMarquardt<V, M> {
@@ -202,7 +214,8 @@ impl<V, M> LevenbergMarquardt<V, M> {
             nu: 2.0,
             diag: None,
             r_cache: None,
-            j_cache: None,
+            gram_cache: None,
+            jtr_cache: None,
         }
     }
 
@@ -333,22 +346,24 @@ where
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
         // Seed cost so iter-0 termination criteria see a populated
         // state. Also evaluate J(x₀) once to seed the Marquardt scaling
-        // diagonal `D`. `r` and `J(x₀)` are stashed into the caches so
-        // the first `next_iter` reuses them — no redundant evaluation
-        // at the init/iter-0 boundary.
+        // diagonal `D`. The Gram `A₀`, gradient `g₀`, and residual `r`
+        // are stashed into the caches so the first `next_iter` reuses
+        // them — no redundant evaluation (or re-formed Gram) at the
+        // init/iter-0 boundary.
         let r = problem.residual(&state.param);
         let j = problem.jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;
 
-        // D₀ = diag(J(x₀)ᵀJ(x₀)), the per-parameter curvature. A column
-        // that's exactly zero at x₀ contributes 0 here, which would
-        // make `μ·D` vanish on that coordinate and the Gram singular;
-        // following MINPACK we floor those to 1 so an insensitive
-        // parameter simply doesn't move. The running max in `next_iter`
-        // then keeps `D` monotone.
-        let mut d = j.gram().diagonal();
+        // A₀ = J(x₀)ᵀJ(x₀); its diagonal is D₀, the per-parameter
+        // curvature. A column that's exactly zero at x₀ contributes 0
+        // there, which would make `μ·D` vanish on that coordinate and
+        // the Gram singular; following MINPACK we floor those to 1 so an
+        // insensitive parameter simply doesn't move. The running max in
+        // `next_iter` then keeps `D` monotone.
+        let a = j.gram();
+        let mut d = a.diagonal();
         d.floor_zeros_in_place(1.0);
         self.diag = Some(d);
 
@@ -356,8 +371,9 @@ where
         // `D`, so the initial per-column damping is `τ·diag(J(x₀)ᵀJ(x₀))`.
         self.mu = Some(self.tau);
         self.nu = 2.0;
+        self.jtr_cache = Some(j.mat_transpose_vec(&r));
+        self.gram_cache = Some(a);
         self.r_cache = Some(r);
-        self.j_cache = Some(j);
         state
     }
 
@@ -366,12 +382,10 @@ where
         problem: &P,
         mut state: BasicState<V>,
     ) -> (BasicState<V>, Option<TerminationReason>) {
-        // Use cached `r` / `J` when available — they're at the current
-        // `state.param` after either init (initial point) or the
-        // previous iteration's bookkeeping (post-accept: r at the new
-        // iterate; post-reject: both unchanged). Only count an eval
-        // when the cache misses, so `cost_evals` / `gradient_evals`
-        // grow with *actual* problem invocations.
+        // `r` is at the current `state.param` after init (initial point)
+        // or the previous iteration's bookkeeping (post-accept: r at the
+        // new iterate; post-reject: unchanged). Only count an eval on a
+        // cache miss, so `cost_evals` grows with *actual* invocations.
         let r = match self.r_cache.take() {
             Some(r) => r,
             None => {
@@ -379,20 +393,25 @@ where
                 problem.residual(&state.param)
             }
         };
-        let j = match self.j_cache.take() {
-            Some(j) => j,
-            None => {
+
+        // A = JᵀJ (Gram) and g = Jᵀr (the gradient of ½‖r‖²). On a
+        // rejected step the iterate didn't move, so A and g are unchanged
+        // and reused from the caches; Madsen-Nielsen Algorithm 3.16
+        // recomputes them only after an *accepted* step. When the caches
+        // are cold (post-accept or — but for init's seeding — first
+        // iteration) re-evaluate J once and rebuild them. This is the
+        // issue-#10 fix: a rejected step no longer reforms the
+        // dominant-cost Gram from an unchanged J.
+        let (a, g) = match (self.gram_cache.take(), self.jtr_cache.take()) {
+            (Some(a), Some(g)) => (a, g),
+            _ => {
                 state.gradient_evals += 1;
-                problem.jacobian(&state.param)
+                let j = problem.jacobian(&state.param);
+                (j.gram(), j.mat_transpose_vec(&r))
             }
         };
-
-        // g = Jᵀr is the gradient of ½‖r‖². The Gram and its diagonal
-        // (the current per-column curvatures, `diag(JᵀJ)ⱼ = ‖J·,ⱼ‖²`)
-        // feed both the damping and the relative gradient test, so form
-        // them up front.
-        let g = j.mat_transpose_vec(&r);
-        let a = j.gram();
+        // The current per-column curvatures `diag(JᵀJ)ⱼ = ‖J·,ⱼ‖²` feed
+        // both the damping and the relative gradient test.
         let diag_cur = a.diagonal();
 
         // First-order optimality — converge on *either* test, matching
@@ -417,9 +436,11 @@ where
         if abs_converged || rel_converged {
             // Restore the caches so a subsequent `run()` (e.g. via
             // `InnerExecutor`) doesn't see corrupted state — though
-            // in practice `init` resets them on each reuse.
+            // in practice `init` resets them on each reuse. The iterate
+            // didn't move, so A and g are still valid.
             self.r_cache = Some(r);
-            self.j_cache = Some(j);
+            self.gram_cache = Some(a);
+            self.jtr_cache = Some(g);
             return (state, Some(TerminationReason::SolverConverged));
         }
 
@@ -465,10 +486,11 @@ where
                         self.mu = Some(mu);
                         self.nu = nu;
                         self.diag = Some(d);
-                        // State unchanged; both caches still valid at
-                        // the current iterate.
+                        // State unchanged; r, A and g are all still valid
+                        // at the current iterate.
                         self.r_cache = Some(r);
-                        self.j_cache = Some(j);
+                        self.gram_cache = Some(a);
+                        self.jtr_cache = Some(g);
                         return (state, Some(TerminationReason::SolverFailed));
                     }
                     mu *= nu;
@@ -507,23 +529,28 @@ where
         if rho > 0.0 {
             // Accept. Update x and cost; adapt μ via Nielsen eq. 2.5
             // with β=2, γ=3, p=3. The trial residual is at the new
-            // iterate — stash it; the Jacobian at the new iterate
-            // hasn't been computed, so leave `j_cache` empty.
+            // iterate — stash it; the iterate moved, so the Gram and
+            // gradient are stale — clear them so the next iteration
+            // re-evaluates J(x_trial) and rebuilds A and g.
             state.param = x_trial;
             state.cost = Some(f_trial);
             let factor = 1.0 - (2.0 * rho - 1.0).powi(3);
             mu *= factor.max(1.0 / 3.0);
             nu = 2.0;
             self.r_cache = Some(r_trial);
-            self.j_cache = None;
+            self.gram_cache = None;
+            self.jtr_cache = None;
         } else {
             // Reject. Keep state; bump μ geometrically and double ν so
-            // consecutive failures escalate damping faster. Both r and
-            // J remain valid at the unchanged iterate.
+            // consecutive failures escalate damping faster. The iterate
+            // held still, so r, A and g all remain valid — cache A and g
+            // so the next attempt re-solves with a new μ instead of
+            // reforming the Gram (Madsen-Nielsen Alg. 3.16; issue #10).
             mu *= nu;
             nu *= 2.0;
             self.r_cache = Some(r);
-            self.j_cache = Some(j);
+            self.gram_cache = Some(a);
+            self.jtr_cache = Some(g);
         }
 
         self.mu = Some(mu);

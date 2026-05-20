@@ -299,10 +299,11 @@ fn relative_gradient_tolerance_is_invariant_to_residual_scaling() {
 #[test]
 fn levenberg_marquardt_caches_residual_and_jacobian_across_iterations() {
     // Regression test for the Madsen-Nielsen caching contract (Alg.
-    // 3.16, line 13: J reassigned only after acceptance). At the top
-    // of each `next_iter`, LM reuses the residual and Jacobian stashed
-    // by either `init` or the previous iteration's bookkeeping —
-    // re-evaluating them at the same point is wasted work.
+    // 3.16, line 13: J — and so A = JᵀJ, g = Jᵀr — recomputed only
+    // after acceptance). At the top of each `next_iter`, LM reuses the
+    // residual stashed by `init`/the previous iter, and on a rejected
+    // step reuses the cached Gram and gradient at the unchanged iterate
+    // — re-evaluating J or reforming A there is wasted work.
     //
     // Disable the internal `‖Jᵀr‖_∞ ≤ tol_grad` check so termination
     // is purely by MaxIter; the early-exit path otherwise evaluates J
@@ -313,8 +314,8 @@ fn levenberg_marquardt_caches_residual_and_jacobian_across_iterations() {
     // so:
     //   - cost_evals = 1 (init) + K (one trial per iter)
     //   - gradient_evals = K (init's J carries iter 1; each subsequent
-    //     iter's J is recomputed because the previous accept cleared
-    //     the cache — the last iter's accept clears it but no
+    //     iter re-evaluates J because the previous accept cleared the
+    //     Gram/gradient cache — the last iter's accept clears it but no
     //     follow-up iter consumes it under MaxIter exit).
     let problem = RosenbrockResiduals::<DVector<f64>>::new();
     let initial = DVector::from_vec(vec![-1.2, 1.0]);
