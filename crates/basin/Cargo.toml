@@ -81,10 +81,24 @@ rand_chacha = { version = "0.10", default-features = false }
 rand_distr = { version = "0.6", default-features = false }
 
 [dev-dependencies]
+# Statistical bench harness. dev-dependency only — never enters the
+# published or WASM dependency graph. `default-features = false` drops
+# rayon (tenet: no parallelism by default) and plotters/html_reports
+# (heavy tree, no value for CLI microbenchmarks), keeping just the
+# `cargo bench` integration shim.
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 
 [[bench]]
 name = "rosenbrock"
 harness = false
+
+# Backend-vs-backend microbenchmark for the LM hot path (issue #9):
+# nalgebra vs faer on the small dense ops LM runs each iteration. Needs
+# both backends plus the test-problem corpus.
+[[bench]]
+name = "lm_backends"
+harness = false
+required-features = ["nalgebra", "faer", "problems"]
 
 # Per-backend integration tests (`tests/rosenbrock_<backend>.rs`) gate
 # themselves with `#![cfg(feature = "<backend>")]` rather than declaring

@@ -1,0 +1,47 @@
+# Non-published benchmark harness comparing basin against competing
+# optimization libraries (axis 3 of the bench plan): the
+# `levenberg-marquardt` crate for NLLS, and `argmin` for the
+# gradient-based and derivative-free solvers. These external frameworks
+# (and criterion) have no business in basin proper — so per AGENTS.md
+# ("a new member should pull in heavy deps that have no business in the
+# core crate") they live here, isolated from basin's own dependency
+# graph, MSRV gate, and the wasm build (CI scopes those to `-p basin`).
+#
+# Backend-vs-backend (axis 1) and solver-vs-solver (axis 2) benchmarks
+# are basin-internal and live in `crates/basin/benches/` instead.
+#
+# The lm crate (0.15) and basin both use nalgebra ^0.34, so the shared
+# workspace lockfile pins them to the *same* nalgebra patch: comparing
+# the lm crate against basin's nalgebra backend isolates pure
+# solver-loop overhead with zero linear-algebra-library confound. argmin
+# is compared on the `Vec<f64>` backend, which both basin and argmin
+# support natively, so GD / Nelder-Mead run on identical param types.
+[package]
+name = "competitor-bench"
+version = "0.0.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+basin = { path = "../basin", features = ["nalgebra", "faer", "problems"] }
+levenberg-marquardt = "0.15"
+nalgebra = "0.34"
+faer = { version = "0.24", default-features = false, features = ["std", "linalg"] }
+# argmin on its default `Vec<f64>` backend. default-features keeps the
+# `vec` math impls (via argmin-math) and `rand`; we don't enable any
+# per-version backend feature (the explosion basin's tenet 2 avoids).
+argmin = "0.11"
+argmin-math = { version = "0.5", features = ["vec"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "compare"
+harness = false
+
+[[bench]]
+name = "gd_nm"
+harness = false

@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/basin",
     "crates/basin-wasm",
+    "crates/competitor-bench",
 ]
 # Lockfile lives at the workspace root; member crates share dependency
 # resolution. Per AGENTS.md tenet 2 (no per-version backend feature gates),
