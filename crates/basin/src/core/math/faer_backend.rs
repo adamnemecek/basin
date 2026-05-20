@@ -15,8 +15,8 @@ use super::linalg::{
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
-    ClampInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace, NegInPlace,
-    NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
+    ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
+    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
 };
 
 impl ScaledAdd<f64> for Col<f64> {
@@ -109,6 +109,17 @@ impl FloorZerosInPlace for Col<f64> {
                 *x = value;
             }
         });
+    }
+}
+
+impl ComponentDivAssign for Col<f64> {
+    fn component_div_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.nrows(),
+            other.nrows(),
+            "component_div_assign: shape mismatch"
+        );
+        faer::zip!(self.as_mut(), other.as_ref()).for_each(|faer::unzip!(x, y)| *x /= *y);
     }
 }
 

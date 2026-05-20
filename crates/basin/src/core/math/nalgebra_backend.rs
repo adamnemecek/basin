@@ -13,8 +13,8 @@ use super::linalg::{
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
-    ClampInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace, NegInPlace,
-    NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
+    ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
+    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
 };
 
 impl<R, C, S> ScaledAdd<f64> for Matrix<f64, R, C, S>
@@ -153,6 +153,22 @@ where
                 *x = value;
             }
         });
+    }
+}
+
+impl<R, C, S> ComponentDivAssign for Matrix<f64, R, C, S>
+where
+    R: Dim,
+    C: Dim,
+    S: StorageMut<f64, R, C>,
+{
+    fn component_div_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.shape(),
+            other.shape(),
+            "component_div_assign: shape mismatch"
+        );
+        self.zip_apply(other, |x, y| *x /= y);
     }
 }
 

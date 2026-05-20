@@ -1,7 +1,7 @@
 use crate::core::math::{
-    AddDiagonalVectorInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace,
-    GramMatrix, LinearSolveSpd, MatDiagonal, MatTransposeVec, NegInPlace, NormInfinity,
-    NormSquared, ScaleInPlace, ScaledAdd,
+    AddDiagonalVectorInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
+    FloorZerosInPlace, GramMatrix, LinearSolveSpd, MatDiagonal, MatTransposeVec, NegInPlace,
+    NormInfinity, NormSquared, ScaleInPlace, ScaledAdd,
 };
 use crate::core::problem::{Jacobian, Residual};
 use crate::core::solver::Solver;
@@ -88,10 +88,21 @@ use crate::core::termination::TerminationReason;
 /// ([`MaxIter`](crate::core::termination::MaxIter),
 /// [`CostTolerance`](crate::core::termination::CostTolerance),
 /// [`ParamTolerance`](crate::core::termination::ParamTolerance), …),
-/// the solver emits [`TerminationReason::SolverConverged`] when the
-/// first-order optimality measure
-/// `‖Jᵀr‖_∞ ≤ tol_grad` (Madsen et al. eq. 3.3a) is satisfied.
-/// Default `tol_grad = 1e-8`; set to `0.0` to disable the check.
+/// the solver emits [`TerminationReason::SolverConverged`] when either
+/// of two first-order optimality tests is satisfied:
+///
+/// - **Absolute** (Madsen et al. eq. 3.3a): `‖Jᵀr‖_∞ ≤ tol_grad`.
+///   Default `tol_grad = 1e-8`; set to `0.0` to disable.
+/// - **Relative** (MINPACK `gtol`, Moré 1978): the cosine of the angle
+///   between the residual `r` and every column of `J`,
+///   `max_j |gⱼ| / (‖J·,ⱼ‖ · ‖r‖) ≤ tol_grad_rel`. This measure is
+///   dimensionless — invariant to scaling the residuals — so a single
+///   tolerance is portable across problems whose residuals carry
+///   different normalizations (where the absolute `‖Jᵀr‖_∞` is too
+///   tight for some and too loose for others). Default
+///   `tol_grad_rel = 0.0` (disabled); set e.g. `1e-8` for MINPACK
+///   `gtol` parity. The per-column norms `‖J·,ⱼ‖ = √diag(JᵀJ)ⱼ` reuse
+///   the Marquardt scaling diagonal the solver already forms.
 ///
 /// LM deliberately leaves `state.gradient = None` — the framework's
 /// [`GradientTolerance`](crate::core::termination::GradientTolerance)
@@ -122,6 +133,7 @@ use crate::core::termination::TerminationReason;
 /// termination criteria are unaffected.
 pub struct LevenbergMarquardt<V, M> {
     tol_grad: f64,
+    tol_grad_rel: f64,
     tau: f64,
     max_inner_attempts: u32,
 
@@ -156,10 +168,12 @@ impl<V, M> Default for LevenbergMarquardt<V, M> {
 
 impl<V, M> LevenbergMarquardt<V, M> {
     /// Levenberg-Marquardt with Nielsen's defaults: `tol_grad = 1e-8`,
-    /// `tau = 1e-3`, `max_inner_attempts = 50`.
+    /// `tol_grad_rel = 0.0` (disabled), `tau = 1e-3`,
+    /// `max_inner_attempts = 50`.
     pub fn new() -> Self {
         Self {
             tol_grad: 1e-8,
+            tol_grad_rel: 0.0,
             tau: 1e-3,
             max_inner_attempts: 50,
             mu: None,
@@ -170,13 +184,34 @@ impl<V, M> LevenbergMarquardt<V, M> {
         }
     }
 
-    /// First-order optimality tolerance: emit
-    /// [`TerminationReason::SolverConverged`] when `‖Jᵀr‖_∞ ≤ tol`.
-    /// Set to `0.0` to disable the check and rely solely on framework
-    /// termination criteria. Default `1e-8`.
+    /// Absolute first-order optimality tolerance: emit
+    /// [`TerminationReason::SolverConverged`] when `‖Jᵀr‖_∞ ≤ tol`
+    /// (Madsen et al. eq. 3.3a). Set to `0.0` to disable the check and
+    /// rely solely on [`tol_grad_rel`](Self::tol_grad_rel) and/or
+    /// framework termination criteria. Default `1e-8`.
     pub fn tol_grad(mut self, tol: f64) -> Self {
         assert!(tol >= 0.0, "tol_grad must be ≥ 0");
         self.tol_grad = tol;
+        self
+    }
+
+    /// Relative (scale-invariant) first-order optimality tolerance —
+    /// the MINPACK `gtol` test (Moré 1978): emit
+    /// [`TerminationReason::SolverConverged`] when the cosine of the
+    /// angle between the residual `r` and every Jacobian column is at
+    /// most `tol`, i.e. `max_j |gⱼ| / (‖J·,ⱼ‖ · ‖r‖) ≤ tol` with
+    /// `g = Jᵀr`. Being a dimensionless cosine, it is invariant to
+    /// scaling of the residuals, so one tolerance ports across problems
+    /// with different residual normalizations — unlike the absolute
+    /// [`tol_grad`](Self::tol_grad). Set to `0.0` to disable. Default
+    /// `0.0` (disabled); use e.g. `1e-8` for MINPACK `gtol` parity.
+    ///
+    /// Both gradient tests can be active at once; the solver converges
+    /// when *either* fires (matching MINPACK, which checks `ftol`,
+    /// `xtol`, and `gtol` independently).
+    pub fn tol_grad_rel(mut self, tol: f64) -> Self {
+        assert!(tol >= 0.0, "tol_grad_rel must be ≥ 0");
+        self.tol_grad_rel = tol;
         self
     }
 
@@ -213,6 +248,7 @@ where
         + Dot
         + ScaleInPlace
         + ComponentMulAssign
+        + ComponentDivAssign
         + ComponentMaxAssign
         + FloorZerosInPlace
         + Clone,
@@ -280,10 +316,34 @@ where
             }
         };
 
-        // g = Jᵀr is the gradient of ½‖r‖². First-order optimality
-        // (Madsen et al. eq. 3.3a) is the canonical NLLS test.
+        // g = Jᵀr is the gradient of ½‖r‖². The Gram and its diagonal
+        // (the current per-column curvatures, `diag(JᵀJ)ⱼ = ‖J·,ⱼ‖²`)
+        // feed both the damping and the relative gradient test, so form
+        // them up front.
         let g = j.mat_transpose_vec(&r);
-        if self.tol_grad > 0.0 && g.norm_infinity() <= self.tol_grad {
+        let a = j.gram();
+        let diag_cur = a.diagonal();
+
+        // First-order optimality — converge on *either* test, matching
+        // MINPACK's independent checks:
+        //   * absolute   ‖Jᵀr‖_∞ ≤ tol_grad           (Madsen et al. 3.3a)
+        //   * relative   max_j |gⱼ|/(‖J·,ⱼ‖·‖r‖) ≤ tol_grad_rel  (MINPACK gtol)
+        // The relative measure is the cosine of the angle between r and
+        // each Jacobian column. Squaring avoids a sqrt: it's
+        // `max_j gⱼ²/diag(JᵀJ)ⱼ ≤ tol_grad_rel²·‖r‖²`. A zero column has
+        // `diag(JᵀJ)ⱼ = 0` and `gⱼ = 0`; flooring the denominator to 1
+        // makes that term `0/1 = 0` rather than `0/0 = NaN`, which is
+        // MINPACK's "skip zero columns" behavior.
+        let abs_converged = self.tol_grad > 0.0 && g.norm_infinity() <= self.tol_grad;
+        let rel_converged = self.tol_grad_rel > 0.0 && {
+            let mut cos_sq = g.clone();
+            cos_sq.component_mul_assign(&g);
+            let mut denom = diag_cur.clone();
+            denom.floor_zeros_in_place(1.0);
+            cos_sq.component_div_assign(&denom);
+            cos_sq.norm_infinity() <= self.tol_grad_rel * self.tol_grad_rel * r.norm_squared()
+        };
+        if abs_converged || rel_converged {
             // Restore the caches so a subsequent `run()` (e.g. via
             // `InnerExecutor`) doesn't see corrupted state — though
             // in practice `init` resets them on each reuse.
@@ -294,7 +354,6 @@ where
 
         let mut neg_g = g.clone();
         neg_g.neg_in_place();
-        let a = j.gram();
 
         // Marquardt scaling: maintain `D` as the monotone running max of
         // `diag(JᵀJ)` (Moré 1978). `D` was floored away from zero at
@@ -304,7 +363,7 @@ where
             .diag
             .take()
             .expect("diag not set: Solver::init must run before next_iter");
-        d.component_max_assign(&a.diagonal());
+        d.component_max_assign(&diag_cur);
 
         let mut mu = self
             .mu

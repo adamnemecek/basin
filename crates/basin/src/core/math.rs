@@ -94,6 +94,21 @@ pub trait ComponentMaxAssign {
     fn component_max_assign(&mut self, other: &Self);
 }
 
+/// In-place componentwise division `self[i] ← self[i] / other[i]`. The
+/// counterpart of [`ComponentMulAssign`]. Levenberg-Marquardt forms the
+/// MINPACK `gtol` measure — the per-column cosine `g_j² / (JᵀJ)ⱼⱼ` —
+/// with this.
+///
+/// # Contract
+///
+/// - **Caller must:** ensure `other[i] ≠ 0` for every `i`; division by a
+///   zero divisor yields a non-finite value that propagates. (LM floors
+///   the divisor away from zero with [`FloorZerosInPlace`] first.)
+pub trait ComponentDivAssign {
+    /// Divide `self[i]` by `other[i]` for every `i`, in place.
+    fn component_div_assign(&mut self, other: &Self);
+}
+
 /// In-place floor of non-positive entries to a positive `value`,
 /// leaving strictly-positive entries untouched
 /// (`self[i] ← value` where `self[i] ≤ 0`, else unchanged).

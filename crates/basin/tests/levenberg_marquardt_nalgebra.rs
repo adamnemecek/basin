@@ -164,6 +164,70 @@ fn levenberg_marquardt_pairs_with_relative_cost_tolerance() {
 }
 
 #[test]
+fn levenberg_marquardt_converges_via_relative_gradient_tolerance() {
+    // The MINPACK `gtol` test (issue #6): the scale-invariant cosine
+    // measure max_j |gⱼ|/(‖J·,ⱼ‖‖r‖). Disable the absolute ‖Jᵀr‖∞ check
+    // so only the relative gradient test can stop the run, and confirm
+    // it both fires (SolverConverged, not MaxIter) and lands on the
+    // global optimum of the poorly-scaled exponential fit.
+    let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = DVector::from_vec(vec![5.0e4, -0.3]);
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new().tol_grad(0.0).tol_grad_rel(1e-10),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+    assert!(
+        (result.param()[1] + 1.0).abs() < 1e-6,
+        "b = {} (expected −1)",
+        result.param()[1]
+    );
+}
+
+#[test]
+fn relative_gradient_tolerance_is_invariant_to_residual_scaling() {
+    // The point of the cosine measure: scaling the residuals by a
+    // constant doesn't move the convergence point. Scaling both the
+    // amplitude a and the data y by `c` multiplies every residual by `c`
+    // (the model is linear in a), so the per-column cosine is identical
+    // — the relative gtol must stop at the same iteration for both,
+    // where the absolute ‖Jᵀr‖∞ would not (it scales with c²).
+    let solve = |scale: f64| {
+        let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e3 * scale, -1.0, 10, 0.4);
+        let initial = DVector::from_vec(vec![5.0e2 * scale, -0.3]);
+        Executor::new(
+            problem,
+            LevenbergMarquardt::new().tol_grad(0.0).tol_grad_rel(1e-8),
+            BasicState::new(initial),
+        )
+        .max_iter(200)
+        .run()
+    };
+
+    let small = solve(1.0);
+    let large = solve(1.0e3);
+
+    assert_eq!(small.reason, TerminationReason::SolverConverged);
+    assert_eq!(large.reason, TerminationReason::SolverConverged);
+    assert_eq!(
+        small.iter(),
+        large.iter(),
+        "MINPACK gtol cosine should be invariant to residual scaling"
+    );
+}
+
+#[test]
 fn levenberg_marquardt_caches_residual_and_jacobian_across_iterations() {
     // Regression test for the Madsen-Nielsen caching contract (Alg.
     // 3.16, line 13: J reassigned only after acceptance). At the top

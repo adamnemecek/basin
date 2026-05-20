@@ -8,8 +8,8 @@ use super::cl_scaling::{
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
-    ClampInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace, NegInPlace,
-    NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
+    ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
+    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
 };
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
@@ -138,6 +138,21 @@ where
                 *x = value;
             }
         });
+    }
+}
+
+impl<S, D> ComponentDivAssign for ArrayBase<S, D>
+where
+    S: DataMut<Elem = f64>,
+    D: Dimension,
+{
+    fn component_div_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.shape(),
+            other.shape(),
+            "component_div_assign: shape mismatch"
+        );
+        self.zip_mut_with(other, |x, y| *x /= y);
     }
 }
 
