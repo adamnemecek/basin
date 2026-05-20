@@ -1,7 +1,8 @@
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
     GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter,
-    MaxTime, NelderMead, ParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
+    MaxTime, NelderMead, ParamTolerance, RelativeCostTolerance, RelativeParamTolerance, Solver,
+    State, TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -118,6 +119,73 @@ fn cost_tolerance_fires_when_cost_stagnates() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::CostTolerance);
+}
+
+#[test]
+fn relative_param_tolerance_fires_when_relative_step_small() {
+    // On f = ½‖x‖², GradientDescent(α) gives x_{k+1} = (1−α)x_k, so the
+    // relative step ‖Δx‖/‖x_k‖ = α/(1−α) is constant. With α = 0.001
+    // that's ≈ 1e-3, below a 1e-2 relative bound, so the criterion fires
+    // early (where an *absolute* ParamTolerance would keep shrinking as
+    // x → 0).
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(RelativeParamTolerance::new(1e-2))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::RelativeParamTolerance);
+    assert!(result.iter() < 5, "fired late at iter {}", result.iter());
+}
+
+#[test]
+fn relative_cost_tolerance_fires_when_relative_reduction_small() {
+    // Relative cost reduction |Δf|/|f_{k−1}| = α(2−α) is constant on the
+    // quadratic; α = 0.001 gives ≈ 2e-3 < 1e-2, so the criterion fires.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.001),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(RelativeCostTolerance::new(1e-2))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::RelativeCostTolerance);
+    assert!(result.iter() < 5, "fired late at iter {}", result.iter());
+}
+
+#[test]
+fn relative_cost_tolerance_is_scale_invariant() {
+    // The headline property: a single relative `tol` fires at the same
+    // iteration regardless of the cost scale, where an absolute
+    // `CostTolerance` would fire at wildly different points. Run the
+    // same solver from a small start and a 10⁶-times-larger start; the
+    // relative criterion must stop at the same iter.
+    let run_from = |x0: f64| {
+        Executor::new(
+            Quadratic,
+            GradientDescent::new(0.001),
+            BasicState::new(vec![x0, x0]),
+        )
+        .max_iter(1_000)
+        .terminate_on(RelativeCostTolerance::new(1e-2))
+        .run()
+    };
+
+    let small = run_from(1.0);
+    let large = run_from(1.0e6);
+
+    assert_eq!(small.reason, TerminationReason::RelativeCostTolerance);
+    assert_eq!(large.reason, TerminationReason::RelativeCostTolerance);
+    assert_eq!(
+        small.iter(),
+        large.iter(),
+        "relative cost tolerance should be scale-invariant"
+    );
 }
 
 #[test]

@@ -28,8 +28,14 @@ pub enum TerminationReason {
     ProjectedGradientTolerance,
     /// `‖x_k − x_{k−1}‖ ≤ tol`.
     ParamTolerance,
+    /// `‖x_k − x_{k−1}‖ ≤ tol · ‖x_k‖` — scale-invariant step test
+    /// (MINPACK `xtol`).
+    RelativeParamTolerance,
     /// `|f_k − f_{k−1}| ≤ tol`.
     CostTolerance,
+    /// `|f_k − f_{k−1}| ≤ tol · |f_{k−1}|` — scale-invariant cost
+    /// reduction test (MINPACK `ftol`).
+    RelativeCostTolerance,
     /// Simplex collapsed below the configured tolerance.
     SimplexTolerance,
     /// Wall-clock time limit reached.
@@ -256,6 +262,48 @@ where
     }
 }
 
+/// Stop when `‖x_k − x_{k−1}‖ ≤ tol · ‖x_k‖` — the scale-invariant
+/// analogue of [`ParamTolerance`], matching MINPACK's `xtol`. Holds its
+/// own copy of the previous iterate.
+///
+/// Unlike the absolute [`ParamTolerance`], the bound scales with the
+/// magnitude of the iterate, so a single `tol` is portable across
+/// problems whose parameters live at very different scales. Near
+/// `x = 0` the relative bound collapses (the right-hand side → 0), so
+/// pair it with an absolute [`ParamTolerance`] when the optimum may sit
+/// at the origin.
+pub struct RelativeParamTolerance<P> {
+    tol: f64,
+    last: Option<P>,
+}
+
+impl<P> RelativeParamTolerance<P> {
+    /// New tolerance with the given relative step bound.
+    pub fn new(tol: f64) -> Self {
+        Self { tol, last: None }
+    }
+}
+
+impl<S, P> TerminationCriterion<S> for RelativeParamTolerance<P>
+where
+    S: State<Param = P>,
+    P: ScaledAdd<f64> + NormSquared + Clone,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let curr = state.param();
+        let triggered = if let Some(last) = &self.last {
+            let mut diff = curr.clone();
+            diff.scaled_add(-1.0, last);
+            // ‖Δx‖ ≤ tol·‖x_k‖ ⟺ ‖Δx‖² ≤ tol²·‖x_k‖², avoiding a sqrt.
+            diff.norm_squared() <= self.tol * self.tol * curr.norm_squared()
+        } else {
+            false
+        };
+        self.last = Some(curr.clone());
+        triggered.then_some(TerminationReason::RelativeParamTolerance)
+    }
+}
+
 /// Stop when `|f_k − f_{k−1}| ≤ tol`. Holds its own copy of the previous
 /// cost.
 pub struct CostTolerance {
@@ -281,6 +329,42 @@ where
             .is_some_and(|l| (l - curr).abs() <= self.tol && curr.is_finite());
         self.last = Some(curr);
         triggered.then_some(TerminationReason::CostTolerance)
+    }
+}
+
+/// Stop when `|f_k − f_{k−1}| ≤ tol · |f_{k−1}|` — the scale-invariant
+/// analogue of [`CostTolerance`], matching MINPACK's `ftol` (whose
+/// `actred = 1 − (‖r_k‖/‖r_{k−1}‖)²` reduces to this relative-cost test
+/// for `f = ½‖r‖²`). Holds its own copy of the previous cost.
+///
+/// The bound scales with the current cost level, so one `tol` is
+/// portable across problems whose cost magnitudes differ by orders of
+/// magnitude (e.g. least-squares residuals carrying different
+/// normalizations). Near `f = 0` the relative bound collapses, so pair
+/// it with an absolute [`CostTolerance`] when the optimum cost is zero.
+pub struct RelativeCostTolerance {
+    tol: f64,
+    last: Option<f64>,
+}
+
+impl RelativeCostTolerance {
+    /// New tolerance with the given relative cost-change bound.
+    pub fn new(tol: f64) -> Self {
+        Self { tol, last: None }
+    }
+}
+
+impl<S> TerminationCriterion<S> for RelativeCostTolerance
+where
+    S: State<Float = f64>,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let curr = state.cost();
+        let triggered = self
+            .last
+            .is_some_and(|l| curr.is_finite() && (l - curr).abs() <= self.tol * l.abs());
+        self.last = Some(curr);
+        triggered.then_some(TerminationReason::RelativeCostTolerance)
     }
 }
 

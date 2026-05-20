@@ -1,6 +1,7 @@
 use crate::core::math::{
-    AddDiagonalInPlace, Dot, GramMatrix, LinearSolveSpd, MatTransposeVec, MaxDiagonal, NegInPlace,
-    NormInfinity, NormSquared, ScaledAdd,
+    AddDiagonalVectorInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace,
+    GramMatrix, LinearSolveSpd, MatDiagonal, MatTransposeVec, NegInPlace, NormInfinity,
+    NormSquared, ScaleInPlace, ScaledAdd,
 };
 use crate::core::problem::{Jacobian, Residual};
 use crate::core::solver::Solver;
@@ -8,10 +9,11 @@ use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
 
 /// Levenberg-Marquardt solver for nonlinear least-squares problems
-/// `min ½‖r(x)‖²`, with the Nielsen 1999 smooth μ-update.
+/// `min ½‖r(x)‖²`, with Marquardt diagonal scaling and the Nielsen
+/// 1999 smooth μ-update.
 ///
 /// Each iteration solves the damped normal equations
-/// `(JᵀJ + μI) h = −Jᵀr` via Cholesky, then adapts the damping
+/// `(JᵀJ + μ·D) h = −Jᵀr` via Cholesky, then adapts the damping
 /// parameter μ from the gain ratio
 /// `ρ = (F(x) − F(x+h)) / (L(0) − L(h))` (Nielsen eq. 2.2). On a
 /// successful step (ρ > 0) μ is reduced via the smooth cubic
@@ -24,18 +26,40 @@ use crate::core::termination::TerminationReason;
 /// Madsen, Nielsen, Tingleff (2004), *Methods for Non-Linear Least
 /// Squares Problems*, §3.2.
 ///
-/// Initial damping is `μ₀ = τ · max diag(J(x₀)ᵀ J(x₀))` (Nielsen eq.
-/// 1.10) with τ in the range `[10⁻⁸, 1]` depending on closeness to
-/// the optimum. Default `τ = 10⁻³` matches Nielsen's "moderate trust"
-/// recommendation.
+/// **Marquardt scaling (`μ·D`, not `μI`).** The damping matrix is the
+/// diagonal of the Gram, `D = diag(JᵀJ)` — the per-parameter curvature
+/// — rather than the identity. This makes the trust region ellipsoidal
+/// in the metric of the columns of `J`, so the algorithm is invariant
+/// to diagonal rescaling of the parameters (Marquardt 1963; Moré 1978,
+/// *The Levenberg-Marquardt Algorithm: Implementation and Theory*).
+/// Isotropic `μI` damping over-damps well-scaled directions and
+/// under-damps poorly-scaled ones when the columns of `J` have very
+/// different norms (e.g. parameters in a mixed log/linear/angle
+/// encoding), which biases the step and can pull the iterate into a
+/// worse basin. `D` is maintained as a **monotone running max**
+/// `D_k = max(D_{k−1}, diag(J(x_k)ᵀJ(x_k)))` so a column whose
+/// curvature momentarily drops keeps the damping floor it earned
+/// earlier (Moré 1978; the same safeguard MINPACK applies to its
+/// column-norm scaling). Columns that are exactly zero at `x₀` (a
+/// parameter with no first-order effect on any residual) would make
+/// `μ·D` vanish there and the Gram singular; following MINPACK, their
+/// scale is floored to `1` at `init` (see [`FloorZerosInPlace`]), so a
+/// fully-insensitive parameter stays put rather than failing Cholesky.
 ///
-/// **Cholesky-on-(JᵀJ + μI) vs QR-on-stacked-system.** The damping
+/// Initial damping is `μ₀ = τ` — dimensionless, because the
+/// per-parameter magnitude now lives in `D` (the initial per-column
+/// damping is `τ·diag(J(x₀)ᵀJ(x₀))`). τ is the *relative* trust
+/// parameter; use a smaller value (e.g. `1e-6`) when `x₀` is believed
+/// close to the optimum, larger (e.g. `1.0`) when far. Default
+/// `τ = 10⁻³` matches Nielsen's "moderate trust" recommendation.
+///
+/// **Cholesky-on-(JᵀJ + μ·D) vs QR-on-stacked-system.** The damping
 /// makes the SPD path strictly better-conditioned than pure
-/// Gauss-Newton's `JᵀJ` — μ regularizes the rank deficiency that
+/// Gauss-Newton's `JᵀJ` — `μ·D` regularizes the rank deficiency that
 /// makes GN fail. We stay on the SPD path because that's the only one
 /// the [`linalg`](crate::core::math) tier exposes today, and the
 /// regularization is sufficient for unconstrained LM.
-/// QR-on-stacked-system (`[J; √μ I]`) is more robust to ill-conditioned
+/// QR-on-stacked-system (`[J; √(μD)]`) is more robust to ill-conditioned
 /// `J` near rank deficiency but adds a second factorization route to
 /// the linalg surface; deferred until S6 (TRF), where rank-deficient
 /// Jacobians and box constraints make QR materially better.
@@ -43,13 +67,15 @@ use crate::core::termination::TerminationReason;
 /// # Failure modes
 ///
 /// - **Cholesky failure under bumped μ.** When the initial damping is
-///   too small to make `JᵀJ + μI` SPD (effectively never, for any
+///   too small to make `JᵀJ + μ·D` SPD (effectively never, for any
 ///   sensible `JᵀJ` and finite μ), the inner damping loop bumps μ via
 ///   `μ := μ·ν, ν := 2ν` and retries. Default
 ///   [`max_inner_attempts`](Self::max_inner_attempts) is 50 — far more
 ///   than enough; in practice the first attempt succeeds. If the cap
 ///   is exhausted (μ overflowing to `inf`), the solver returns
-///   [`TerminationReason::SolverFailed`].
+///   [`TerminationReason::SolverFailed`]. Note that bumping μ cannot
+///   rescue a coordinate whose `D` entry is zero (`μ·0 = 0`); the
+///   `init` zero-column floor exists precisely to keep `D > 0`.
 /// - **Divergence on highly nonlinear / poorly initialized problems.**
 ///   The damping itself prevents divergent steps (failed steps are
 ///   rejected via the gain-ratio test), so divergence manifests as
@@ -82,7 +108,7 @@ use crate::core::termination::TerminationReason;
 /// `ndarray::Array1<f64>` produce a compile-time error per tenet 5.
 /// The sparse damping path requires the diagonal of `JᵀJ` to be in the
 /// CSC pattern (always true when `J` has no zero columns); see
-/// [`AddDiagonalInPlace`].
+/// [`AddDiagonalVectorInPlace`] and [`MatDiagonal`].
 ///
 /// # State convention
 ///
@@ -103,6 +129,13 @@ pub struct LevenbergMarquardt<V, M> {
     // through `&mut self`.
     mu: Option<f64>,
     nu: f64,
+
+    // Marquardt scaling diagonal `D` — the monotone running max of
+    // `diag(JᵀJ)` (Moré 1978). Seeded at `init` from `diag(J(x₀)ᵀJ(x₀))`
+    // with zero columns floored to 1, then maxed against each
+    // iteration's Gram diagonal. The damped system is `(JᵀJ + μ·D) h =
+    // −Jᵀr`.
+    diag: Option<V>,
 
     // Residual and Jacobian caches across iterations. `r_cache` is
     // refreshed whenever the iterate moves (to `r(x_trial)` on accept,
@@ -131,6 +164,7 @@ impl<V, M> LevenbergMarquardt<V, M> {
             max_inner_attempts: 50,
             mu: None,
             nu: 2.0,
+            diag: None,
             r_cache: None,
             j_cache: None,
         }
@@ -146,10 +180,11 @@ impl<V, M> LevenbergMarquardt<V, M> {
         self
     }
 
-    /// Initial damping scale `τ` in `μ₀ = τ · max diag(J(x₀)ᵀ J(x₀))`
-    /// (Nielsen eq. 1.10). Use a smaller value (e.g. `1e-6`) when `x₀`
-    /// is believed close to the optimum; a larger value (e.g. `1.0`)
-    /// when far from it. Default `1e-3`.
+    /// Relative initial damping `τ`: `μ₀ = τ`, giving an initial
+    /// per-column damping of `τ·diag(J(x₀)ᵀJ(x₀))` under Marquardt
+    /// scaling. Use a smaller value (e.g. `1e-6`) when `x₀` is believed
+    /// close to the optimum; a larger value (e.g. `1.0`) when far from
+    /// it. Default `1e-3` (Nielsen's "moderate trust").
     pub fn tau(mut self, tau: f64) -> Self {
         assert!(tau > 0.0, "tau must be > 0");
         self.tau = tau;
@@ -171,34 +206,48 @@ impl<V, M> LevenbergMarquardt<V, M> {
 impl<P, V, M> Solver<P, BasicState<V>> for LevenbergMarquardt<V, M>
 where
     P: Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
-    V: ScaledAdd<f64> + NormSquared + NormInfinity + NegInPlace + Dot + Clone,
+    V: ScaledAdd<f64>
+        + NormSquared
+        + NormInfinity
+        + NegInPlace
+        + Dot
+        + ScaleInPlace
+        + ComponentMulAssign
+        + ComponentMaxAssign
+        + FloorZerosInPlace
+        + Clone,
     M: GramMatrix
         + MatTransposeVec<V>
         + LinearSolveSpd<V>
-        + AddDiagonalInPlace
-        + MaxDiagonal
+        + AddDiagonalVectorInPlace<V>
+        + MatDiagonal<V>
         + Clone,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
         // Seed cost so iter-0 termination criteria see a populated
-        // state. Also evaluate J(x₀) once to seed μ₀ via Nielsen eq.
-        // 1.10. `r` and `J(x₀)` are stashed into the caches so the
-        // first `next_iter` reuses them — no redundant evaluation at
-        // the init/iter-0 boundary.
+        // state. Also evaluate J(x₀) once to seed the Marquardt scaling
+        // diagonal `D`. `r` and `J(x₀)` are stashed into the caches so
+        // the first `next_iter` reuses them — no redundant evaluation
+        // at the init/iter-0 boundary.
         let r = problem.residual(&state.param);
         let j = problem.jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;
 
-        // μ₀ = τ · max diag(JᵀJ). The diagonal extraction goes through
-        // MaxDiagonal so sparse and dense backends share the same
-        // path. If max diag is non-positive (degenerate J with zero
-        // columns), fall back to τ alone — Nielsen's recommendation
-        // assumes the diagonal scaling is meaningful.
-        let gram = j.gram();
-        let max_diag = gram.max_diagonal().max(1.0);
-        self.mu = Some(self.tau * max_diag);
+        // D₀ = diag(J(x₀)ᵀJ(x₀)), the per-parameter curvature. A column
+        // that's exactly zero at x₀ contributes 0 here, which would
+        // make `μ·D` vanish on that coordinate and the Gram singular;
+        // following MINPACK we floor those to 1 so an insensitive
+        // parameter simply doesn't move. The running max in `next_iter`
+        // then keeps `D` monotone.
+        let mut d = j.gram().diagonal();
+        d.floor_zeros_in_place(1.0);
+        self.diag = Some(d);
+
+        // μ₀ = τ. Dimensionless: the per-parameter magnitude lives in
+        // `D`, so the initial per-column damping is `τ·diag(J(x₀)ᵀJ(x₀))`.
+        self.mu = Some(self.tau);
         self.nu = 2.0;
         self.r_cache = Some(r);
         self.j_cache = Some(j);
@@ -247,13 +296,23 @@ where
         neg_g.neg_in_place();
         let a = j.gram();
 
+        // Marquardt scaling: maintain `D` as the monotone running max of
+        // `diag(JᵀJ)` (Moré 1978). `D` was floored away from zero at
+        // `init`, and the max only grows entries, so it stays strictly
+        // positive — the damped Gram below is SPD by construction.
+        let mut d = self
+            .diag
+            .take()
+            .expect("diag not set: Solver::init must run before next_iter");
+        d.component_max_assign(&a.diagonal());
+
         let mut mu = self
             .mu
             .expect("mu not set: Solver::init must run before next_iter");
         let mut nu = self.nu;
 
         // Inner damping loop: bump μ on Cholesky failure. In practice
-        // the first attempt succeeds — a properly damped (JᵀJ + μI) is
+        // the first attempt succeeds — a properly damped (JᵀJ + μ·D) is
         // SPD by construction. The retry path matters only for
         // pathological cases where the initial μ is too small to
         // overcome arithmetic roundoff.
@@ -261,7 +320,10 @@ where
         let mut attempts: u32 = 0;
         loop {
             let mut a_damped = a.clone();
-            a_damped.add_diagonal_in_place(mu);
+            // damping = μ·D, added to the Gram diagonal.
+            let mut damping = d.clone();
+            damping.scale_in_place(mu);
+            a_damped.add_diagonal_vector_in_place(&damping);
             match a_damped.solve_spd(&neg_g) {
                 Ok(step) => {
                     h = step;
@@ -272,6 +334,7 @@ where
                     if attempts >= self.max_inner_attempts || !mu.is_finite() {
                         self.mu = Some(mu);
                         self.nu = nu;
+                        self.diag = Some(d);
                         // State unchanged; both caches still valid at
                         // the current iterate.
                         self.r_cache = Some(r);
@@ -284,12 +347,15 @@ where
             }
         }
 
-        // L(0) − L(h) = ½ hᵀ(μh − g) (Nielsen eq. 2.3). Both terms in
-        // the parenthesis make the predicted reduction positive: μh⊤h
-        // > 0 and h points opposite to g (descent direction), so
-        // -h⊤g > 0. Compute scalar form to avoid materializing
-        // (μh − g).
-        let l_diff = 0.5 * (mu * h.norm_squared() - h.dot(&g));
+        // L(0) − L(h) = ½ hᵀ(μ·D·h − g) = ½(μ·hᵀD h − hᵀg) (Nielsen eq.
+        // 2.3, with the scaling diagonal D folded into the quadratic
+        // term — `μI` is the D = I special case). Both terms make the
+        // predicted reduction positive: μ·hᵀD h > 0 since D > 0, and
+        // −hᵀg > 0 since h is a descent direction. Form hᵀD h as
+        // h·(D ⊙ h) to avoid materializing μ·D·h − g.
+        let mut dh = d.clone();
+        dh.component_mul_assign(&h);
+        let l_diff = 0.5 * (mu * h.dot(&dh) - h.dot(&g));
 
         // Trial step.
         let mut x_trial = state.param.clone();
@@ -332,6 +398,9 @@ where
 
         self.mu = Some(mu);
         self.nu = nu;
+        // `d` is unchanged by accept/reject (the running max happens
+        // once, above) — persist it for the next iteration.
+        self.diag = Some(d);
         (state, None)
     }
 }

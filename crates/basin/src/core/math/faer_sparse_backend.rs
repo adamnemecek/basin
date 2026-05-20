@@ -18,7 +18,7 @@ use faer::{Accum, Col, Par, Side};
 
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
-    LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal,
+    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MaxDiagonal,
 };
 
 impl MatVec<Col<f64>> for SparseColMat<usize, f64> {
@@ -111,6 +111,32 @@ impl MaxDiagonal for SparseColMat<usize, f64> {
             }
         }
         best
+    }
+}
+
+impl MatDiagonal<Col<f64>> for SparseColMat<usize, f64> {
+    fn diagonal(&self) -> Col<f64> {
+        let n = self.ncols();
+        assert_eq!(
+            self.nrows(),
+            n,
+            "diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            n
+        );
+        // Same per-column walk as `max_diagonal`: search each column's
+        // row-index slice for the diagonal entry; a missing diagonal is
+        // the implicit zero.
+        let col_ptr = self.col_ptr();
+        let row_idx = self.row_idx();
+        let vals = self.val();
+        Col::from_fn(n, |j| {
+            let start = col_ptr[j];
+            let end = col_ptr[j + 1];
+            (start..end)
+                .find_map(|k| (row_idx[k] == j).then_some(vals[k]))
+                .unwrap_or(0.0)
+        })
     }
 }
 

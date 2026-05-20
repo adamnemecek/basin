@@ -7,8 +7,8 @@ use super::cl_scaling::{
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
-    ClampInPlace, ComponentMulAssign, Dot, NegInPlace, NormInfinity, NormSquared, ScaleInPlace,
-    ScaledAdd, VectorLen,
+    ClampInPlace, ComponentMaxAssign, ComponentMulAssign, Dot, FloorZerosInPlace, NegInPlace,
+    NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
 };
 
 impl ScaledAdd<f64> for Vec<f64> {
@@ -64,6 +64,29 @@ impl ComponentMulAssign for Vec<f64> {
         );
         for (x, y) in self.iter_mut().zip(other.iter()) {
             *x *= *y;
+        }
+    }
+}
+
+impl ComponentMaxAssign for Vec<f64> {
+    fn component_max_assign(&mut self, other: &Self) {
+        assert_eq!(
+            self.len(),
+            other.len(),
+            "component_max_assign: length mismatch"
+        );
+        for (x, y) in self.iter_mut().zip(other.iter()) {
+            *x = x.max(*y);
+        }
+    }
+}
+
+impl FloorZerosInPlace for Vec<f64> {
+    fn floor_zeros_in_place(&mut self, value: f64) {
+        for x in self.iter_mut() {
+            if *x <= 0.0 {
+                *x = value;
+            }
         }
     }
 }

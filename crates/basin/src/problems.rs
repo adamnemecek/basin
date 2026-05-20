@@ -21,6 +21,7 @@
 
 pub mod beale;
 pub mod booth;
+pub mod exponential_fit;
 pub mod goldstein_price;
 pub mod matyas;
 pub mod mccormick;
@@ -35,6 +36,10 @@ pub use beale::{beale, beale_gradient, Beale, BEALE_SPEC};
 pub use booth::{
     booth, booth_gradient, booth_residuals, booth_residuals_jacobian, Booth, BoothBoxed,
     BoothBoxedResiduals, BoothResiduals, BOOTH_SPEC,
+};
+pub use exponential_fit::{
+    exponential_fit, exponential_fit_jacobian, exponential_fit_residuals, ExponentialFit,
+    EXPONENTIAL_FIT_SPEC,
 };
 pub use goldstein_price::{
     goldstein_price, goldstein_price_gradient, GoldsteinPrice, GOLDSTEIN_PRICE_SPEC,
@@ -69,4 +74,5 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &POWELL_SINGULAR_SPEC,
     &RASTRIGIN_SPEC,
     &SPARSE_LEAST_SQUARES_SPEC,
+    &EXPONENTIAL_FIT_SPEC,
 ];

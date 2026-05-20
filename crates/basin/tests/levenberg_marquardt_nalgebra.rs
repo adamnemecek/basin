@@ -1,7 +1,10 @@
 #![cfg(feature = "nalgebra")]
 
-use basin::problems::{PowellSingular, RosenbrockResiduals};
-use basin::{BasicState, Executor, GradientState, LevenbergMarquardt, TerminationReason};
+use basin::problems::{ExponentialFit, PowellSingular, RosenbrockResiduals};
+use basin::{
+    BasicState, Executor, GradientState, LevenbergMarquardt, RelativeCostTolerance,
+    TerminationReason,
+};
 use nalgebra::DVector;
 
 #[test]
@@ -93,6 +96,71 @@ fn levenberg_marquardt_emits_solver_converged_via_first_order_optimality() {
         .run();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
+}
+
+#[test]
+fn levenberg_marquardt_converges_fast_on_poorly_scaled_exponential_fit() {
+    // Regression guard for Marquardt diagonal damping (issue #6). The
+    // exponential model ŷ = a·exp(b·t) has wildly disparate Jacobian
+    // column scales — ∂r/∂b ≈ a·t·exp(b·t) is ~10⁵× larger than
+    // ∂r/∂a = exp(b·t) at amplitude a = 1e5. Marquardt scaling
+    // (μ·diag(JᵀJ)) is invariant to that and reaches the global minimum
+    // (1e5, −1) in a handful of iterations; the old isotropic μI damping
+    // converges to the *same* point but needs ~27 iterations (≈4× the
+    // count — the wall-time penalty the issue reported). The tight iter
+    // bound below fails under isotropic damping, so it locks the fix in.
+    let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = DVector::from_vec(vec![5.0e4, -0.3]);
+
+    let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
+        .max_iter(200)
+        .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+    assert!(
+        (result.param()[1] + 1.0).abs() < 1e-6,
+        "b = {} (expected −1)",
+        result.param()[1]
+    );
+    assert!(
+        result.iter() <= 15,
+        "Marquardt scaling should reach the optimum in ≤15 iters; took {} \
+         (isotropic μI damping needs ~27)",
+        result.iter()
+    );
+}
+
+#[test]
+fn levenberg_marquardt_pairs_with_relative_cost_tolerance() {
+    // The scale-invariant termination side of issue #6: a relative cost
+    // tolerance is portable across problem scales where the absolute
+    // CostTolerance is not. Disable the solver's own ‖Jᵀr‖∞ check so the
+    // framework criterion is what stops the run.
+    let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = DVector::from_vec(vec![5.0e4, -0.3]);
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new().tol_grad(0.0),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .terminate_on(RelativeCostTolerance::new(1e-10))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::RelativeCostTolerance);
+    assert!(result.cost() < 1e-3, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1e2,
+        "a = {} (expected ≈1e5)",
+        result.param()[0]
+    );
 }
 
 #[test]

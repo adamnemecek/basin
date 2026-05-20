@@ -83,6 +83,36 @@ pub trait ComponentMulAssign {
     fn component_mul_assign(&mut self, other: &Self);
 }
 
+/// In-place componentwise maximum `self[i] ← max(self[i], other[i])`.
+/// Levenberg-Marquardt uses this to maintain the monotone running-max
+/// scaling diagonal `D_k = max(D_{k−1}, diag(JᵀJ))` of MINPACK-style
+/// Marquardt damping (Moré 1978): a parameter whose column curvature
+/// momentarily drops doesn't lose the damping floor accumulated from
+/// earlier iterations.
+pub trait ComponentMaxAssign {
+    /// Set `self[i]` to `max(self[i], other[i])` for every `i`, in place.
+    fn component_max_assign(&mut self, other: &Self);
+}
+
+/// In-place floor of non-positive entries to a positive `value`,
+/// leaving strictly-positive entries untouched
+/// (`self[i] ← value` where `self[i] ≤ 0`, else unchanged).
+///
+/// This is *not* a blanket lower-clamp: a legitimately small positive
+/// entry keeps its value. It exists for MINPACK's zero-column guard in
+/// Marquardt-scaled Levenberg-Marquardt — a Jacobian column that is
+/// entirely zero gives `diag(JᵀJ)ⱼ = 0`, which would make the damping
+/// `μ·D` vanish on that coordinate and leave the normal-equations
+/// matrix singular there. MINPACK sets such a column's scale to `1`
+/// (lmder, `mode = 1`); flooring zeros to `1` reproduces that, so a
+/// fully-insensitive parameter simply stays put instead of failing the
+/// Cholesky.
+pub trait FloorZerosInPlace {
+    /// Replace every entry `≤ 0` with `value`; leave positive entries
+    /// unchanged.
+    fn floor_zeros_in_place(&mut self, value: f64);
+}
+
 mod cl_scaling;
 mod clamp;
 mod linalg;

@@ -21,7 +21,7 @@ use nalgebra_sparse::{CscMatrix, SparseEntryMut};
 
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatTransposeVec, MatVec, MaxDiagonal,
+    MatDiagonal, MatTransposeVec, MatVec, MaxDiagonal,
 };
 
 impl MatVec<DVector<f64>> for CscMatrix<f64> {
@@ -86,6 +86,28 @@ impl MaxDiagonal for CscMatrix<f64> {
                     .into_value()
             })
             .fold(f64::NEG_INFINITY, f64::max)
+    }
+}
+
+impl MatDiagonal<DVector<f64>> for CscMatrix<f64> {
+    fn diagonal(&self) -> DVector<f64> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        // Diagonal entries missing from the CSC pattern are the implicit
+        // zero — same contract as `max_diagonal`.
+        DVector::from_iterator(
+            self.nrows(),
+            (0..self.nrows()).map(|i| {
+                self.get_entry(i, i)
+                    .expect("diagonal: index in bounds")
+                    .into_value()
+            }),
+        )
     }
 }
 
