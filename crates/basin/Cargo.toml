@@ -86,7 +86,7 @@ rand_distr = { version = "0.6", default-features = false }
 # rayon (tenet: no parallelism by default) and plotters/html_reports
 # (heavy tree, no value for CLI microbenchmarks), keeping just the
 # `cargo bench` integration shim.
-criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
 
 [[bench]]
 name = "rosenbrock"
