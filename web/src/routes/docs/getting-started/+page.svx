@@ -1,0 +1,91 @@
+# Getting started
+
+## Install
+
+Add basin to your project:
+
+```sh
+cargo add basin
+```
+
+basin works on plain `Vec<f64>` out of the box. Linear-algebra backends are
+opt-in, one feature each — for example, to use the [nalgebra](https://nalgebra.org)
+backend (required by some solvers, see [Solvers](../solvers/)):
+
+```sh
+cargo add basin --features nalgebra
+```
+
+Available backend features: `nalgebra`, `ndarray`, `faer`. The `problems`
+feature (a corpus of standard test functions) is on by default; disable it with
+`default-features = false` to shrink a wasm build.
+
+## Your first solve
+
+Implement `CostFunction` for your objective. Add a `Gradient` impl when the
+solver needs derivatives (gradient descent does; Nelder–Mead does not). Then
+hand the problem, a solver, and an initial state to the `Executor`.
+
+```rust
+use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
+
+struct Rosenbrock;
+
+impl CostFunction for Rosenbrock {
+    type Param = Vec<f64>;
+    type Output = f64;
+
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+    }
+}
+
+impl Gradient for Rosenbrock {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+
+    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        vec![
+            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
+            200.0 * (x[1] - x[0].powi(2)),
+        ]
+    }
+}
+
+fn main() {
+    let solver = GradientDescent::new(1e-3);
+    let state = BasicState::new(vec![-1.2, 1.0]);
+
+    let result = Executor::new(Rosenbrock, solver, state)
+        .max_iter(50_000)
+        .run();
+
+    println!("x = {:?}", result.param());
+    println!("f = {}", result.cost());
+    println!("stopped: {:?}", result.reason);
+}
+```
+
+## Termination criteria
+
+`max_iter` is one stopping condition; the others are pluggable and composed via
+`terminate_on`. They are framework-level, so the same criteria work across
+solvers — and they are bound to the state a solver actually exposes (asking for
+a gradient tolerance on a derivative-free solver is a compile error):
+
+```rust
+use basin::{Executor, GradientDescent, GradientTolerance, BasicState};
+
+let result = Executor::new(problem, GradientDescent::new(1e-3), BasicState::new(x0))
+    .max_iter(50_000)
+    .terminate_on(GradientTolerance(1e-6))
+    .run();
+```
+
+The solver stops at whichever criterion fires first, and `result.reason`
+reports which one.
+
+## Next
+
+- [Solvers](../solvers/) — pick the right algorithm and backend.
+- Browse the full API reference on [docs.rs](https://docs.rs/basin).

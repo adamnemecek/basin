@@ -1,4 +1,4 @@
-name: Deploy web visualizer
+name: Deploy website
 
 on:
   push:

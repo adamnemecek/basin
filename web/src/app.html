@@ -6,9 +6,33 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta
             name="description"
-            content="Interactive visualization of optimization solvers from the basin Rust library."
+            content="basin — a numerical optimization library for Rust."
         />
-        <title>basin — solver visualizer</title>
+        <title>basin</title>
+        <!-- No-FOUC: resolve the saved theme and set the class on <html>
+             before first paint, so prerendered content doesn't flash the
+             wrong colors. Mirrors `src/lib/theme.svelte.ts` (key
+             `basin.theme`, default `auto`). -->
+        <script>
+            (function () {
+                try {
+                    var pref = localStorage.getItem('basin.theme');
+                    if (pref !== 'light' && pref !== 'dark' && pref !== 'auto')
+                        pref = 'auto';
+                    var dark =
+                        pref === 'dark' ||
+                        (pref === 'auto' &&
+                            window.matchMedia &&
+                            window.matchMedia('(prefers-color-scheme: dark)')
+                                .matches);
+                    var root = document.documentElement;
+                    root.classList.add(dark ? 'dark' : 'light');
+                    root.style.colorScheme = dark ? 'dark' : 'light';
+                } catch (e) {
+                    /* private mode / no storage — fall back to light */
+                }
+            })();
+        </script>
         %sveltekit.head%
     </head>
     <body

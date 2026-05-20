@@ -1,0 +1,71 @@
+# Solvers
+
+basin ships a growing catalogue of solvers, all driven by the same `Executor`
+loop. Pick one based on what your problem provides (a gradient? only costs?
+residuals?) and whether it is constrained.
+
+## First-order
+
+- **`GradientDescent`** — steepest descent with a pluggable step rule:
+  `Constant`, `Backtracking`, `MoreThuente`, or `Wolfe` line searches.
+- **`ProjectedGradientDescent`** — gradient descent for box-constrained
+  problems, projecting each step back onto the feasible box.
+
+## Derivative-free
+
+- **`NelderMead`** — the classic reflection / expansion / contraction simplex;
+  needs only a `CostFunction`. `NelderMead::adaptive()` uses the
+  dimension-aware coefficients of Gao & Han (2012).
+- **`Brent`** — robust 1-D minimization on a bracketed interval; also used
+  inside line searches.
+
+## Quasi-Newton
+
+- **`BFGS`** — dense quasi-Newton with a full approximate Hessian.
+- **`LBFGS`** — limited-memory BFGS (two-loop recursion) for larger problems.
+- **`LBFGSB`** — L-BFGS with box bounds, a faithful port of Nocedal's
+  Fortran v3.0.
+
+## Nonlinear least squares
+
+For problems expressed as residuals (`Residual` + `Jacobian`):
+
+- **`GaussNewton`** — undamped normal-equations solver.
+- **`LevenbergMarquardt`** — damped least squares with Nielsen's (1999) update
+  rule; the workhorse for curve fitting.
+- **`Trf`** — trust-region reflective: Levenberg–Marquardt with box bounds.
+
+## Global & stochastic
+
+- **`CmaEs`** / **`BoundedCmaEs`** — covariance-matrix adaptation evolution
+  strategy (Hansen, 2016), unconstrained and box-bounded.
+- **`RandomSearch`** — elitist (1+λ) uniform sampling over a box.
+- **`Ssga`** — steady-state genetic algorithm (BLX-α crossover, replace-worst).
+
+## Memetic (composed)
+
+These run a local solver inside a global one — an example of basin's solver
+composition primitives:
+
+- **`CmaInject`** / **`BoundedCmaInject`** — CMA-ES with per-generation local
+  polishing of the best individuals.
+- **`MaLsChCma`** — a memetic algorithm with persistent local-search chains.
+
+## Backends and constraints
+
+Two design rules shape which solver you can use where:
+
+- **Constraints are first-class and type-checked.** Box bounds live on the
+  *problem* (`BoxConstrained`). Handing a constrained problem to an
+  unconstrained solver is a compile error, not a runtime surprise.
+- **Backends are tiered.** First-order and derivative-free solvers stay generic
+  over the parameter type (`Vec<f64>`, nalgebra, ndarray, faer). Linear-algebra
+  heavy solvers (the quasi-Newton and least-squares families) require a backend
+  that implements the richer math they need — so an unsupported parameter type
+  fails to compile rather than at runtime.
+
+Each solver's page on [docs.rs](https://docs.rs/basin) carries a **Backends**
+note listing exactly which parameter types it supports.
+
+See [getting started](../getting-started/) for a worked example, or open the
+[visualizer](../../visualizer/) to watch several of these solvers converge.

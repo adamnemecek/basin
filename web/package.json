@@ -11,11 +11,13 @@
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
     "@sveltejs/adapter-static": "^3.0.0",
     "@sveltejs/kit": "^2.5.0",
     "@sveltejs/vite-plugin-svelte": "^7.0.0",
+    "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^22.0.0",
+    "mdsvex": "^0.12.7",
     "svelte": "^5.55.7",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.0.0",

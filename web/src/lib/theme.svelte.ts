@@ -13,9 +13,11 @@
  * Persisted in `localStorage` under `basin.theme`. Defaults to `auto`
  * for first-time visitors.
  *
- * The module guards `window`/`localStorage` access for safety, but
- * `+layout.ts` sets `ssr = false`, so in practice we always run in a
- * browser.
+ * The module guards `window`/`localStorage` access for safety: the root
+ * layout is server-rendered (prerendered), so this store is imported in
+ * an SSR context where those globals are absent. The pre-hydration paint
+ * is handled by an inline script in `app.html`; this store keeps the
+ * `.dark`/`.light` class in sync after hydration.
  */
 
 export type ThemePreference = 'auto' | 'light' | 'dark';

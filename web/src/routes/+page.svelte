@@ -1,247 +1,202 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import init, {
-        ProblemKind,
-        SolverKind,
-        Run,
-        evalGrid,
-    } from '$lib/basin-wasm/basin_wasm';
-    import { PROBLEMS, problemByKind } from '$lib/problems';
-    import { SOLVERS } from '$lib/solvers';
-    import ContourPlot from '$lib/ContourPlot.svelte';
-    import CostChart from '$lib/CostChart.svelte';
-    import Controls from '$lib/Controls.svelte';
-    import ThemeToggle from '$lib/ThemeToggle.svelte';
-    import { theme } from '$lib/theme.svelte';
+    import { base } from '$app/paths';
 
-    // Wasm boot. The viz waits on this once; everything downstream assumes
-    // the module is already loaded.
-    let wasmReady = $state(false);
+    // Kept as a string so Svelte doesn't try to parse the braces in the
+    // Rust code as template expressions.
+    const code = `use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
 
-    let problemKind: ProblemKind = $state(ProblemKind.Rosenbrock);
-    let solverKind: SolverKind = $state(SolverKind.GradientDescentConstant);
-    let gdAlpha = $state(problemByKind(ProblemKind.Rosenbrock).gdAlphaDefault);
-    let maxIter = $state(500);
-    let startPoint = $state({ x: -1.5, y: 2.0 });
+struct Rosenbrock;
 
-    // Heatmap grid. Recomputed when the problem changes (or on first boot).
-    const GRID_N = 192;
-    // Use the wide `Float64Array<ArrayBufferLike>` type so values returned
-    // from wasm-bindgen (which use `ArrayBufferLike`) assign cleanly.
-    let grid: Float64Array<ArrayBufferLike> = $state(
-        new Float64Array(GRID_N * GRID_N),
-    );
-
-    // Animated trajectory and cost log fed to the children.
-    let trajectory: Float64Array<ArrayBufferLike> = $state(new Float64Array(0));
-    let costs: Float64Array<ArrayBufferLike> = $state(new Float64Array(0));
-    let reason = $state('');
-
-    let problemMeta = $derived(problemByKind(problemKind));
-    let solverMeta = $derived(SOLVERS.find((s) => s.kind === solverKind)!);
-
-    // Plain (non-reactive) handles for the in-flight run + animation
-    // frame. We deliberately keep these out of `$state` because the run
-    // effect both reads (cleanup) and writes (assignment) them, and a
-    // reactive write would re-trigger the effect — Svelte detects that
-    // as `effect_update_depth_exceeded` and aborts.
-    let activeRun: Run | null = null;
-    let frameId: number | null = null;
-
-    // Refresh the heatmap when the problem changes.
-    $effect(() => {
-        if (!wasmReady) return;
-        const d = problemMeta.domain;
-        grid = evalGrid(
-            problemMeta.kind,
-            d.xmin,
-            d.xmax,
-            d.ymin,
-            d.ymax,
-            GRID_N,
-            GRID_N,
-        );
-    });
-
-    // Boot a fresh run whenever the inputs change. The reads inside
-    // `new Run(...)` track the dependencies; writes to `activeRun` and
-    // `frameId` are non-reactive so they don't retrigger this effect.
-    $effect(() => {
-        if (!wasmReady) return;
-        const pk = problemKind;
-        const sk = solverKind;
-        const a = gdAlpha;
-        const mi = maxIter;
-        const sx = startPoint.x;
-        const sy = startPoint.y;
-
-        if (frameId !== null) {
-            cancelAnimationFrame(frameId);
-            frameId = null;
-        }
-        if (activeRun !== null) {
-            activeRun.free();
-            activeRun = null;
-        }
-
-        const run = new Run(pk, sk, sx, sy, a, mi);
-        activeRun = run;
-        trajectory = run.trajectoryXy();
-        costs = run.costs();
-        reason = '';
-
-        const tick = () => {
-            // Stale-frame guard: a newer effect run replaces `activeRun`,
-            // so a tick from an older closure should bail.
-            if (run !== activeRun) return;
-            const result = run.stepMany(8) as {
-                done: boolean;
-                iters_added: number;
-                reason?: string | null;
-            };
-            trajectory = run.trajectoryXy();
-            costs = run.costs();
-            if (result.done) {
-                reason = result.reason ?? '';
-                frameId = null;
-                return;
-            }
-            frameId = requestAnimationFrame(tick);
-        };
-        frameId = requestAnimationFrame(tick);
-
-        return () => {
-            if (frameId !== null) {
-                cancelAnimationFrame(frameId);
-                frameId = null;
-            }
-            if (activeRun === run) {
-                run.free();
-                activeRun = null;
-            }
-        };
-    });
-
-    // Reflect the resolved (light/dark) theme onto `<html>` so Tailwind
-    // dark: variants apply. Set on `documentElement` so the body and
-    // every descendant pick it up; the inverse class is removed so the
-    // two states are mutually exclusive.
-    $effect(() => {
-        if (typeof document === 'undefined') return;
-        const root = document.documentElement;
-        if (theme.effective === 'dark') {
-            root.classList.add('dark');
-            root.classList.remove('light');
-            root.style.colorScheme = 'dark';
-        } else {
-            root.classList.add('light');
-            root.classList.remove('dark');
-            root.style.colorScheme = 'light';
-        }
-    });
-
-    onMount(async () => {
-        await init();
-        wasmReady = true;
-        // Seed start point near a visually interesting corner of the
-        // initial problem (Rosenbrock).
-        startPoint = { x: -1.5, y: 2.0 };
-    });
-
-    function handlePick(p: { x: number; y: number }) {
-        startPoint = p;
+impl CostFunction for Rosenbrock {
+    type Param = Vec<f64>;
+    type Output = f64;
+    fn cost(&self, x: &Vec<f64>) -> f64 {
+        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
     }
+}
 
-    function handleControlChange(patch: {
-        problemKind?: ProblemKind;
-        solverKind?: SolverKind;
-        gdAlpha?: number;
-        maxIter?: number;
-    }) {
-        if (patch.problemKind !== undefined && patch.problemKind !== problemKind) {
-            problemKind = patch.problemKind;
-            // Re-center start and reset α default for the new problem.
-            const d = problemByKind(problemKind).domain;
-            startPoint = {
-                x: d.xmin + 0.25 * (d.xmax - d.xmin),
-                y: d.ymin + 0.75 * (d.ymax - d.ymin),
-            };
-            gdAlpha = problemByKind(problemKind).gdAlphaDefault;
-        }
-        if (patch.solverKind !== undefined) solverKind = patch.solverKind;
-        if (patch.gdAlpha !== undefined) gdAlpha = patch.gdAlpha;
-        if (patch.maxIter !== undefined) maxIter = patch.maxIter;
+impl Gradient for Rosenbrock {
+    type Param = Vec<f64>;
+    type Gradient = Vec<f64>;
+    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        vec![
+            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
+            200.0 * (x[1] - x[0].powi(2)),
+        ]
     }
+}
+
+let result = Executor::new(Rosenbrock, GradientDescent::new(1e-3), BasicState::new(vec![-1.2, 1.0]))
+    .max_iter(50_000)
+    .run();
+
+println!("x = {:?}, f = {}", result.param(), result.cost());`;
+
+    const features = [
+        {
+            title: 'Pluggable solvers',
+            body: 'Gradient descent, Nelder–Mead, L-BFGS / L-BFGS-B, Gauss–Newton, Levenberg–Marquardt, CMA-ES and more — driven by one shared executor loop.',
+        },
+        {
+            title: 'Multiple backends',
+            body: 'Run on plain Vec<f64>, nalgebra, ndarray, or faer. Each backend sits behind a single feature — no per-version feature explosion.',
+        },
+        {
+            title: 'First-class constraints',
+            body: 'Box bounds are part of the problem and enforced at the type level: handing a constrained problem to an unconstrained solver is a compile error.',
+        },
+        {
+            title: 'Composable termination',
+            body: 'Gradient, parameter, and cost tolerances, iteration and time budgets — configured uniformly across solvers, bound to the state each one exposes.',
+        },
+        {
+            title: 'Runs in the browser',
+            body: 'wasm-first by design: the default build pulls in no BLAS/LAPACK or threads, so basin compiles to wasm32 out of the box.',
+        },
+        {
+            title: 'Paper-anchored',
+            body: 'Solvers track published algorithms (Nocedal’s L-BFGS-B, Nielsen’s LM damping, Hansen’s CMA-ES) rather than ad-hoc variants.',
+        },
+    ];
 </script>
 
 <svelte:head>
-    <title>basin — solver visualizer</title>
+    <title>basin — numerical optimization for Rust</title>
+    <meta
+        name="description"
+        content="basin is a numerical optimization library for Rust: pluggable solvers, multiple linear-algebra backends, first-class constraints, and a wasm-first design."
+    />
 </svelte:head>
 
-<main
-    class="min-h-screen lg:h-screen lg:overflow-hidden max-w-screen-2xl w-full mx-auto p-4 md:p-8 flex flex-col gap-6"
->
-    <header class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight">
-                basin · solver visualizer
-            </h1>
-            <p class="text-slate-600 dark:text-slate-400 text-sm mt-1">
-                Live wasm-driven 2D trajectories from
-                <a
-                    class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-200"
-                    href="https://github.com/jolars/basin">basin</a
-                >. Click on the contour to reset the start.
-            </p>
-        </div>
-        <div class="flex items-center gap-3">
-            <p
-                class="text-xs text-slate-500 dark:text-slate-500 font-mono hidden md:block"
+<!-- Hero -->
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16">
+    <div class="max-w-3xl">
+        <span
+            class="inline-block text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400"
+        >
+            Alpha · Rust
+        </span>
+        <h1
+            class="mt-3 text-4xl md:text-6xl font-semibold tracking-tight text-balance"
+        >
+            Numerical optimization, built for Rust.
+        </h1>
+        <p
+            class="mt-5 text-lg md:text-xl text-slate-600 dark:text-slate-300 text-pretty"
+        >
+            <span class="font-semibold">basin</span> is a solver framework in the
+            spirit of argmin: a generic executor loop over pluggable solvers, multiple
+            linear-algebra backends, first-class constraints, and a wasm-first design.
+        </p>
+        <div class="mt-8 flex flex-wrap gap-3">
+            <a
+                href="{base}/docs/getting-started/"
+                class="px-5 py-2.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white transition-colors"
             >
-                {solverMeta.blurb}
-            </p>
-            <ThemeToggle />
+                Get started
+            </a>
+            <a
+                href="{base}/visualizer/"
+                class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+                Open the visualizer
+            </a>
+            <a
+                href="https://github.com/jolars/basin"
+                target="_blank"
+                rel="noreferrer"
+                class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+                GitHub
+            </a>
         </div>
-    </header>
+    </div>
+</section>
 
-    {#if !wasmReady}
-        <p class="text-slate-500 dark:text-slate-400">Loading wasm…</p>
-    {:else}
-        <section
-            class="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-6 flex-1 min-h-0"
+<!-- Quick taste -->
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pb-16">
+    <div class="grid lg:grid-cols-[1fr_1.4fr] gap-8 items-start">
+        <div>
+            <h2 class="text-2xl font-semibold tracking-tight">A minimal solve</h2>
+            <p class="mt-3 text-slate-600 dark:text-slate-300">
+                Implement <code class="font-mono text-sm">CostFunction</code> (and
+                <code class="font-mono text-sm">Gradient</code>, when your solver
+                needs it), pick a solver, and hand both to the
+                <code class="font-mono text-sm">Executor</code>. The same loop drives
+                every solver in the library.
+            </p>
+            <p class="mt-3 text-slate-600 dark:text-slate-300">
+                Want to see it move? The
+                <a
+                    class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
+                    href="{base}/visualizer/">visualizer</a
+                >
+                animates these trajectories live, compiled to wasm.
+            </p>
+        </div>
+        <div
+            class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden"
         >
             <div
-                class="relative bg-slate-100 dark:bg-slate-900 rounded-lg overflow-hidden aspect-square lg:aspect-auto lg:min-h-[360px]"
+                class="px-4 py-2 border-b border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-500 dark:text-slate-400"
             >
-                <ContourPlot
-                    problem={problemMeta}
-                    {grid}
-                    nx={GRID_N}
-                    ny={GRID_N}
-                    {trajectory}
-                    {startPoint}
-                    theme={theme.effective}
-                    onPick={handlePick}
-                />
+                rosenbrock.rs
             </div>
-            <aside class="flex flex-col gap-6 min-w-0">
-                <div class="bg-slate-100 dark:bg-slate-900 rounded-lg p-4">
-                    <Controls
-                        {problemKind}
-                        {solverKind}
-                        {gdAlpha}
-                        {maxIter}
-                        {startPoint}
-                        usesAlpha={solverMeta.usesAlpha}
-                        onChange={handleControlChange}
-                    />
-                </div>
+            <pre
+                class="p-4 overflow-x-auto text-sm leading-relaxed"><code class="font-mono">{code}</code></pre>
+        </div>
+    </div>
+</section>
+
+<!-- Features -->
+<section
+    class="border-t border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40"
+>
+    <div class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
+        <h2 class="text-2xl font-semibold tracking-tight">What's in the box</h2>
+        <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {#each features as f}
                 <div
-                    class="bg-slate-100 dark:bg-slate-900 rounded-lg p-3 h-56 lg:flex-1"
+                    class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 p-5"
                 >
-                    <CostChart {costs} {reason} theme={theme.effective} />
+                    <h3 class="font-semibold">{f.title}</h3>
+                    <p class="mt-2 text-sm text-slate-600 dark:text-slate-300">
+                        {f.body}
+                    </p>
                 </div>
-            </aside>
-        </section>
-    {/if}
-</main>
+            {/each}
+        </div>
+    </div>
+</section>
+
+<!-- Closing CTA -->
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
+    <div
+        class="rounded-2xl border border-slate-200 dark:border-slate-800 p-8 md:p-12 flex flex-wrap items-center justify-between gap-6"
+    >
+        <div>
+            <h2 class="text-2xl font-semibold tracking-tight">
+                Compare solvers on classical problems
+            </h2>
+            <p class="mt-2 text-slate-600 dark:text-slate-300 max-w-xl">
+                Benchmarks and head-to-head solver comparisons are on the way.
+                In the meantime, explore the docs or watch solvers converge in
+                the visualizer.
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a
+                href="{base}/docs/getting-started/"
+                class="px-5 py-2.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white transition-colors"
+            >
+                Read the docs
+            </a>
+            <a
+                href="{base}/benchmarks/"
+                class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+                Benchmarks
+            </a>
+        </div>
+    </div>
+</section>
