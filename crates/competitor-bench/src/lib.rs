@@ -281,6 +281,186 @@ impl LeastSquaresProblem<f64, Dyn, Dyn> for LmVarDim {
     }
 }
 
+// ---------------------------------------------------------------------
+// Underdetermined trigonometric least-squares (issue #10): a smooth
+// nonlinear problem with `m < n`, so `JᵀJ` is rank-deficient (singular
+// without the LM damping `μ·D`). This is the regime where eunoia's
+// ellipse fits live and where basin's LM showed a large per-iteration
+// cost gap vs the lm crate. The target `b` is deliberately outside the
+// range of `A·sin(x)` (whose entries are bounded by `Σⱼ|Aᵢⱼ|`), so the
+// problem is *infeasible* and the solver genuinely iterates — with
+// rejected steps that bump `μ` — instead of hitting a zero-residual fit
+// in one step.
+//
+//   rᵢ(x)   = Σⱼ Aᵢⱼ·sin(xⱼ) − bᵢ            (i = 0 … m−1)
+//   ∂rᵢ/∂xⱼ = Aᵢⱼ·cos(xⱼ)
+//
+// `A`, `b`, and the start `x₀` are fixed deterministic splitmix64 draws,
+// so the basin and lm-crate sides attack bit-identical math.
+// ---------------------------------------------------------------------
+
+/// splitmix64-style deterministic pseudo-random in `[-0.5, 0.5)`. Shared
+/// by both sides so the generated `A` / `b` / `x₀` are bit-identical.
+fn splitmix(i: u64) -> f64 {
+    let mut x = i.wrapping_add(0x9E37_79B9_7F4A_7C15);
+    x = (x ^ (x >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+    x = (x ^ (x >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+    x ^= x >> 31;
+    (x >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+}
+
+/// Shared data + math for the underdetermined problem, reused verbatim by
+/// the basin and lm-crate adapters.
+pub struct UnderDetData {
+    m: usize,
+    n: usize,
+    a: Vec<f64>, // row-major m × n: a[i*n + j] = Aᵢⱼ
+    b: Vec<f64>, // length m
+}
+
+impl UnderDetData {
+    /// `m` residuals, `n` parameters (use `m < n` for the rank-deficient
+    /// regime). Deterministic, so repeated construction is identical.
+    pub fn new(m: usize, n: usize) -> Self {
+        let a = (0..m * n).map(|k| splitmix(k as u64)).collect();
+        // b ∈ 3 ± 2.5, well outside |A·sin(x)| ≤ Σⱼ|Aᵢⱼ| (≈ n/4 here),
+        // so the fit is infeasible and the solver must iterate.
+        let b = (0..m)
+            .map(|i| 3.0 + 5.0 * splitmix(1_000_000 + i as u64))
+            .collect();
+        Self { m, n, a, b }
+    }
+
+    /// Start point `x₀ⱼ = 0.1·splitmix(42+j)` — small, generic, away from
+    /// any stationary point.
+    pub fn start(&self) -> Vec<f64> {
+        (0..self.n).map(|j| 0.1 * splitmix(42 + j as u64)).collect()
+    }
+
+    fn residual(&self, x: &[f64], out: &mut [f64]) {
+        for (i, out_i) in out.iter_mut().enumerate().take(self.m) {
+            let row = &self.a[i * self.n..(i + 1) * self.n];
+            *out_i = row
+                .iter()
+                .zip(x)
+                .map(|(&aij, &xj)| aij * xj.sin())
+                .sum::<f64>()
+                - self.b[i];
+        }
+    }
+
+    /// Row-major `m × n` Jacobian: `out[i*n + j] = Aᵢⱼ·cos(xⱼ)`.
+    fn jacobian_row_major(&self, x: &[f64], out: &mut [f64]) {
+        for i in 0..self.m {
+            for j in 0..self.n {
+                out[i * self.n + j] = self.a[i * self.n + j] * x[j].cos();
+            }
+        }
+    }
+}
+
+/// basin-side underdetermined problem, generic over the param backend
+/// `V` (mirrors [`VarDim`]).
+pub struct UnderDet<V> {
+    data: UnderDetData,
+    _backend: PhantomData<fn() -> V>,
+}
+
+impl<V> UnderDet<V> {
+    pub fn new(m: usize, n: usize) -> Self {
+        Self {
+            data: UnderDetData::new(m, n),
+            _backend: PhantomData,
+        }
+    }
+
+    pub fn start(&self) -> Vec<f64> {
+        self.data.start()
+    }
+}
+
+impl Residual for UnderDet<DVector<f64>> {
+    type Param = DVector<f64>;
+    type Output = DVector<f64>;
+    fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        let mut out = vec![0.0; self.data.m];
+        self.data.residual(x.as_slice(), &mut out);
+        DVector::from_vec(out)
+    }
+}
+
+impl Jacobian for UnderDet<DVector<f64>> {
+    type Param = DVector<f64>;
+    type Output = DMatrix<f64>;
+    fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+        let mut out = vec![0.0; self.data.m * self.data.n];
+        self.data.jacobian_row_major(x.as_slice(), &mut out);
+        DMatrix::from_row_slice(self.data.m, self.data.n, &out)
+    }
+}
+
+impl Residual for UnderDet<Col<f64>> {
+    type Param = Col<f64>;
+    type Output = Col<f64>;
+    fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        let xs: Vec<f64> = (0..self.data.n).map(|i| x[i]).collect();
+        let mut out = vec![0.0; self.data.m];
+        self.data.residual(&xs, &mut out);
+        Col::from_fn(self.data.m, |i| out[i])
+    }
+}
+
+impl Jacobian for UnderDet<Col<f64>> {
+    type Param = Col<f64>;
+    type Output = Mat<f64>;
+    fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+        let xs: Vec<f64> = (0..self.data.n).map(|i| x[i]).collect();
+        let mut out = vec![0.0; self.data.m * self.data.n];
+        self.data.jacobian_row_major(&xs, &mut out);
+        Mat::from_fn(self.data.m, self.data.n, |i, j| out[i * self.data.n + j])
+    }
+}
+
+/// lm-crate-side underdetermined problem.
+pub struct LmUnderDet {
+    data: UnderDetData,
+    p: DVector<f64>,
+}
+
+impl LmUnderDet {
+    pub fn new(m: usize, n: usize) -> Self {
+        let data = UnderDetData::new(m, n);
+        let p = DVector::from_vec(data.start());
+        Self { data, p }
+    }
+}
+
+impl LeastSquaresProblem<f64, Dyn, Dyn> for LmUnderDet {
+    type ParameterStorage = Owned<f64, Dyn>;
+    type ResidualStorage = Owned<f64, Dyn>;
+    type JacobianStorage = Owned<f64, Dyn, Dyn>;
+
+    fn set_params(&mut self, x: &DVector<f64>) {
+        self.p.copy_from(x);
+    }
+
+    fn params(&self) -> DVector<f64> {
+        self.p.clone()
+    }
+
+    fn residuals(&self) -> Option<DVector<f64>> {
+        let mut out = vec![0.0; self.data.m];
+        self.data.residual(self.p.as_slice(), &mut out);
+        Some(DVector::from_vec(out))
+    }
+
+    fn jacobian(&self) -> Option<DMatrix<f64>> {
+        let mut out = vec![0.0; self.data.m * self.data.n];
+        self.data.jacobian_row_major(self.p.as_slice(), &mut out);
+        Some(DMatrix::from_row_slice(self.data.m, self.data.n, &out))
+    }
+}
+
 const SQRT_5: f64 = 2.236_067_977_499_79;
 const SQRT_10: f64 = 3.162_277_660_168_379_5;
 

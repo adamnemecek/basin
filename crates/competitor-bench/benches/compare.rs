@@ -18,7 +18,8 @@ use std::hint::black_box;
 use basin::problems::{ExponentialFit, PowellSingular};
 use basin::{BasicState, Executor, LevenbergMarquardt};
 use competitor_bench::{
-    vardim_start, LmExponentialFit, LmPowellSingular, LmVarDim, VarDim, LM_DEFAULT_TOL,
+    vardim_start, LmExponentialFit, LmPowellSingular, LmUnderDet, LmVarDim, UnderDet, VarDim,
+    LM_DEFAULT_TOL,
 };
 use criterion::{criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use faer::Col;
@@ -191,5 +192,70 @@ fn bench_vardim(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench_exp_fit, bench_powell, bench_vardim);
+/// Underdetermined trigonometric (`m < n`, rank-deficient `JᵀJ`) at
+/// eunoia's regime — issue #10. Both solvers reach the same cost (see
+/// `verify`), so on the sizes where iteration counts also match
+/// (`(15,7)`, `(25,12)`) the timing ratio is per-iteration cost. This is
+/// the regime where basin reformed `JᵀJ` on every rejected step, which
+/// the lm crate avoids by factoring `J` once per outer iteration.
+fn bench_underdet(c: &mut Criterion) {
+    for (m, n) in [(7usize, 15usize), (15, 20), (12, 25)] {
+        let mut g = c.benchmark_group(format!("underdet_n{n}_m{m}"));
+
+        g.bench_function(BenchmarkId::from_parameter("lm-crate"), |b| {
+            b.iter_batched(
+                || LmUnderDet::new(m, n),
+                |p| black_box(levenberg_marquardt::LevenbergMarquardt::new().minimize(p)),
+                BatchSize::SmallInput,
+            )
+        });
+
+        g.bench_function(BenchmarkId::from_parameter("basin/nalgebra"), |b| {
+            b.iter_batched(
+                || {
+                    let p = UnderDet::<DVector<f64>>::new(m, n);
+                    let x0 = DVector::from_vec(p.start());
+                    (p, x0)
+                },
+                |(p, x0)| {
+                    black_box(
+                        Executor::new(p, basin_lm(), BasicState::new(x0))
+                            .max_iter(500)
+                            .run(),
+                    )
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        g.bench_function(BenchmarkId::from_parameter("basin/faer"), |b| {
+            b.iter_batched(
+                || {
+                    let p = UnderDet::<Col<f64>>::new(m, n);
+                    let start = p.start();
+                    let x0 = Col::from_fn(n, |i| start[i]);
+                    (p, x0)
+                },
+                |(p, x0)| {
+                    black_box(
+                        Executor::new(p, basin_lm(), BasicState::new(x0))
+                            .max_iter(500)
+                            .run(),
+                    )
+                },
+                BatchSize::SmallInput,
+            )
+        });
+
+        g.finish();
+    }
+}
+
+criterion_group!(
+    benches,
+    bench_exp_fit,
+    bench_powell,
+    bench_vardim,
+    bench_underdet
+);
 criterion_main!(benches);

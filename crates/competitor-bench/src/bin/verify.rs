@@ -9,7 +9,8 @@
 use basin::problems::{ExponentialFit, PowellSingular};
 use basin::{BasicState, Executor, LevenbergMarquardt};
 use competitor_bench::{
-    vardim_start, LmExponentialFit, LmPowellSingular, LmVarDim, VarDim, LM_DEFAULT_TOL,
+    vardim_start, LmExponentialFit, LmPowellSingular, LmUnderDet, LmVarDim, UnderDet, VarDim,
+    LM_DEFAULT_TOL,
 };
 use faer::Col;
 use levenberg_marquardt::LeastSquaresProblem;
@@ -163,6 +164,55 @@ fn main() {
             (0..n)
                 .map(|i| (r.param()[i] - 1.0).abs())
                 .fold(0.0, f64::max),
+            r.cost_evals(),
+            r.reason
+        );
+    }
+
+    // ---- Underdetermined trigonometric (m < n, rank-deficient JᵀJ),
+    //      issue #10's regime: infeasible so the solver iterates with
+    //      rejected steps. eunoia's slow sizes are (n=15,m=7) and
+    //      (n=20,m=15). The lm crate factors J once per outer iteration
+    //      and reuses it across the inner λ-loop; basin's per-iteration
+    //      cost on this regime is what #10 tracks. ----
+    for (m, n) in [(7usize, 15usize), (15, 20), (12, 25)] {
+        println!("\n== underdet  n={n}, m={m}  (m < n) ==");
+
+        let (prob, rep) =
+            levenberg_marquardt::LevenbergMarquardt::new().minimize(LmUnderDet::new(m, n));
+        println!(
+            "  lm-crate    {:>5} evals  cost={:.6e}  ‖x‖∞={:.2e}  ({:?})",
+            rep.number_of_evaluations,
+            rep.objective_function,
+            prob.params().iter().map(|&v| v.abs()).fold(0.0, f64::max),
+            rep.termination
+        );
+
+        let p = UnderDet::<DVector<f64>>::new(m, n);
+        let x0 = DVector::from_vec(p.start());
+        let r = Executor::new(p, basin_lm(), BasicState::new(x0))
+            .max_iter(500)
+            .run();
+        println!(
+            "  basin/nalg  {:>5} iters  cost={:.6e}  ‖x‖∞={:.2e}  ({} cost-evals, {:?})",
+            r.iter(),
+            r.cost(),
+            r.param().iter().map(|&v| v.abs()).fold(0.0, f64::max),
+            r.cost_evals(),
+            r.reason
+        );
+
+        let p = UnderDet::<Col<f64>>::new(m, n);
+        let start = p.start();
+        let x0 = Col::from_fn(n, |i| start[i]);
+        let r = Executor::new(p, basin_lm(), BasicState::new(x0))
+            .max_iter(500)
+            .run();
+        println!(
+            "  basin/faer  {:>5} iters  cost={:.6e}  ‖x‖∞={:.2e}  ({} cost-evals, {:?})",
+            r.iter(),
+            r.cost(),
+            (0..n).map(|i| r.param()[i].abs()).fold(0.0, f64::max),
             r.cost_evals(),
             r.reason
         );
