@@ -196,6 +196,75 @@ fn levenberg_marquardt_converges_via_relative_gradient_tolerance() {
 }
 
 #[test]
+fn levenberg_marquardt_converges_via_ftol() {
+    // The MINPACK `ftol` test (issue #8): converge when both the actual
+    // and the *predicted* per-iteration reduction in ½‖r‖² are tiny
+    // relative to the cost. Disable both gradient tests so only `ftol`
+    // (or MaxIter) can stop the run — SolverConverged then implies `ftol`
+    // fired — and confirm it lands on the global optimum of the
+    // poorly-scaled exponential fit rather than stopping short.
+    let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = DVector::from_vec(vec![5.0e4, -0.3]);
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new()
+            .tol_grad(0.0)
+            .tol_grad_rel(0.0)
+            .ftol(1e-10),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+    assert!(
+        (result.param()[1] + 1.0).abs() < 1e-6,
+        "b = {} (expected −1)",
+        result.param()[1]
+    );
+}
+
+#[test]
+fn levenberg_marquardt_converges_via_xtol() {
+    // The MINPACK `xtol` test (issue #8): converge when the step is
+    // negligible relative to the iterate, ‖h‖ ≤ xtol·‖x‖. Disable both
+    // gradient tests and `ftol` so SolverConverged implies `xtol` fired.
+    let problem = ExponentialFit::<DVector<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = DVector::from_vec(vec![5.0e4, -0.3]);
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new()
+            .tol_grad(0.0)
+            .tol_grad_rel(0.0)
+            .xtol(1e-10),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+    assert!(
+        (result.param()[1] + 1.0).abs() < 1e-6,
+        "b = {} (expected −1)",
+        result.param()[1]
+    );
+}
+
+#[test]
 fn relative_gradient_tolerance_is_invariant_to_residual_scaling() {
     // The point of the cosine measure: scaling the residuals by a
     // constant doesn't move the convergence point. Scaling both the

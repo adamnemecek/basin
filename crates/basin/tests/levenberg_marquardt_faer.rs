@@ -87,6 +87,61 @@ fn levenberg_marquardt_converges_via_relative_gradient_tolerance() {
 }
 
 #[test]
+fn levenberg_marquardt_converges_via_ftol() {
+    // MINPACK `ftol` test (issue #8), faer mirror: disable both gradient
+    // tests so SolverConverged implies the relative-cost `ftol` fired,
+    // and confirm it reaches the optimum of the poorly-scaled fit.
+    let problem = ExponentialFit::<Col<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = Col::from_fn(2, |i| if i == 0 { 5.0e4 } else { -0.3 });
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new()
+            .tol_grad(0.0)
+            .tol_grad_rel(0.0)
+            .ftol(1e-10),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+}
+
+#[test]
+fn levenberg_marquardt_converges_via_xtol() {
+    // MINPACK `xtol` test (issue #8), faer mirror: ‖h‖ ≤ xtol·‖x‖.
+    // Disable the other tests so SolverConverged implies `xtol` fired.
+    let problem = ExponentialFit::<Col<f64>>::sampled(1.0e5, -1.0, 10, 0.4);
+    let initial = Col::from_fn(2, |i| if i == 0 { 5.0e4 } else { -0.3 });
+
+    let result = Executor::new(
+        problem,
+        LevenbergMarquardt::new()
+            .tol_grad(0.0)
+            .tol_grad_rel(0.0)
+            .xtol(1e-10),
+        BasicState::new(initial),
+    )
+    .max_iter(200)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(result.cost() < 1e-6, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0e5).abs() < 1.0,
+        "a = {} (expected 1e5)",
+        result.param()[0]
+    );
+}
+
+#[test]
 fn levenberg_marquardt_recovers_on_rank_deficient_powell_singular() {
     // Mirror of the nalgebra "why LM" test. At (1, 2, 1, 1) GN's
     // Cholesky fails on the singular JᵀJ; LM's damping recovers and
