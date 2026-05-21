@@ -1,20 +1,20 @@
-# basin <img src='https://raw.githubusercontent.com/jolars/basin/main/images/logo.png' align="right" width="139" />
+# basin <img src='https://raw.githubusercontent.com/jolars/basin/main/images/logo.png' align="right" width="189" />
 
 [![CI](https://github.com/jolars/basin/actions/workflows/ci.yml/badge.svg)](https://github.com/jolars/basin/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/basin.svg)](https://crates.io/crates/basin)
 [![docs.rs](https://img.shields.io/docsrs/basin)](https://docs.rs/basin)
 
 A numerical optimization library for Rust, inspired by [argmin]. It pairs a
-small generic core — problem traits you implement, a pluggable termination
-layer, and a driver loop (`Executor`) — with a growing set of solvers spanning
+small generic core, problem traits you implement, a pluggable termination layer,
+and a driver loop (`Executor`), with a growing set of solvers spanning
 first-order, derivative-free, nonlinear least-squares, and evolutionary methods.
 Solvers are generic over the linear-algebra backend, constraints are
 first-class, and the default build compiles to `wasm32-unknown-unknown` with no
 BLAS/LAPACK or threads.
 
-Narrative documentation lives at [jolars.github.io/basin/docs/]; the rustdoc
-reference is at [docs.rs/basin]. There is also an in-browser
-[solver visualizer].
+Narrative documentation lives at [basin.bz/docs]; the rustdoc
+reference is at [docs.rs/basin]. There is also an in-browser [solver
+visualizer].
 
 ## Install
 
@@ -67,21 +67,21 @@ println!("x = {:?}, f = {}, stopped: {:?}", result.param(), result.cost(), resul
 ```
 
 Termination criteria are framework-level: the same ones compose across solvers,
-and they are bound to the state a solver actually exposes — so asking for a
+and they are bound to the state a solver actually exposes --- so asking for a
 gradient tolerance on a derivative-free solver is a compile error, not a runtime
 surprise.
 
 ## Solvers
 
-- **First-order / quasi-Newton:** gradient descent (with momentum and pluggable
+- **First-order/quasi-Newton:** gradient descent (with momentum and pluggable
   line searches), BFGS, L-BFGS, L-BFGS-B.
-- **Derivative-free:** Nelder–Mead, Brent (1D).
-- **Nonlinear least squares:** Gauss–Newton, Levenberg–Marquardt, trust-region
+- **Derivative-free:** Nelder--Mead, Brent (1D).
+- **Nonlinear least squares:** Gauss--Newton, Levenberg--Marquardt, trust-region
   reflective.
-- **Global / stochastic:** random search, CMA-ES, a steady-state genetic
+- **Global/stochastic:** random search, CMA-ES, a steady-state genetic
   algorithm, and memetic combinations.
 - **Constrained:** box bounds via projected gradient descent, bounded
-  Nelder–Mead, L-BFGS-B, and bounded CMA-ES.
+  Nelder--Mead, L-BFGS-B, and bounded CMA-ES.
 
 See [Solvers] for which backends each one supports.
 
@@ -93,8 +93,9 @@ pinning a single major version. First-order and derivative-free solvers run on
 any backend; linear-algebra-heavy solvers may require a specific one and say so
 in their docs.
 
-The default build is wasm-friendly — no BLAS/LAPACK and no threads. Parallelism
-and BLAS-backed paths are behind opt-in features (`parallel`, `ndarray-blas`).
+The default build is wasm-friendly: no BLAS/LAPACK and no threads.
+Parallelism and BLAS-backed paths are behind opt-in features (`parallel`,
+`ndarray-blas`).
 
 ## Status
 
@@ -110,7 +111,7 @@ published to a package registry yet.
 [nalgebra]: https://nalgebra.org
 [ndarray]: https://github.com/rust-ndarray/ndarray
 [faer]: https://github.com/sarah-quinones/faer-rs
-[jolars.github.io/basin/docs/]: https://jolars.github.io/basin/docs/
+[basin.bz/docs/]: https://basin.bz/docs/
 [docs.rs/basin]: https://docs.rs/basin
-[solver visualizer]: https://jolars.github.io/basin/visualizer/
-[Solvers]: https://jolars.github.io/basin/docs/solvers/
+[solver visualizer]: https://basin.bz/visualizer/
+[Solvers]: https://basin.bz/docs/solvers/
