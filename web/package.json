@@ -8,7 +8,8 @@
     "dev": "npm run build:wasm && vite dev",
     "build": "npm run build:wasm && vite build",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "check:snippets": "tsx scripts/check-snippets.ts"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.109",
@@ -19,11 +20,14 @@
     "@tailwindcss/typography": "^0.5.19",
     "@tailwindcss/vite": "^4.0.0",
     "@types/node": "^22.0.0",
+    "@types/prismjs": "^1.26.6",
     "mdsvex": "^0.12.7",
+    "prismjs": "^1.30.0",
     "svelte": "^5.55.7",
     "svelte-check": "^4.0.0",
     "tailwindcss": "^4.0.0",
     "tslib": "^2.6.0",
+    "tsx": "^4.22.3",
     "typescript": "^5.4.0",
     "unplugin-icons": "^23.0.1",
     "vite": "^8.0.10",

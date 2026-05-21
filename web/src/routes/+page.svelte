@@ -2,37 +2,7 @@
 import { base } from "$app/paths";
 import IconGithub from "~icons/simple-icons/github";
 import Seo from "$lib/Seo.svelte";
-
-// Kept as a string so Svelte doesn't try to parse the braces in the
-// Rust code as template expressions.
-const code = `use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
-
-struct Rosenbrock;
-
-impl CostFunction for Rosenbrock {
-    type Param = Vec<f64>;
-    type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
-    }
-}
-
-impl Gradient for Rosenbrock {
-    type Param = Vec<f64>;
-    type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        vec![
-            -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
-            200.0 * (x[1] - x[0].powi(2)),
-        ]
-    }
-}
-
-let result = Executor::new(Rosenbrock, GradientDescent::new(1e-3), BasicState::new(vec![-1.2, 1.0]))
-    .max_iter(50_000)
-    .run();
-
-println!("x = {:?}, f = {}", result.param(), result.cost());`;
+import Playground from "$lib/playground/Playground.svelte";
 
 const features = [
     {
@@ -113,39 +83,17 @@ const features = [
     </div>
 </section>
 
-<!-- Quick taste -->
+<!-- Quick taste: interactive code-gen playground -->
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 pb-16">
-    <div class="grid lg:grid-cols-[1fr_1.4fr] gap-8 items-start">
-        <div>
-            <h2 class="text-2xl font-semibold tracking-tight">A Small Example</h2>
-            <p class="mt-3 text-slate-600 dark:text-slate-300">
-                Implement <code class="font-mono text-sm">CostFunction</code> (and
-                <code class="font-mono text-sm">Gradient</code>, when your solver
-                needs it), pick a solver, and hand both to the
-                <code class="font-mono text-sm">Executor</code>. The same loop drives
-                every solver in the library.
-            </p>
-            <p class="mt-3 text-slate-600 dark:text-slate-300">
-                Want to see it move? The
-                <a
-                    class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
-                    href="{base}/visualizer/">visualizer</a
-                >
-                animates these trajectories live, compiled to wasm.
-            </p>
-        </div>
-        <div
-            class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden"
+    <Playground />
+    <p class="mt-6 text-sm text-slate-600 dark:text-slate-300">
+        Want to see it move? The
+        <a
+            class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
+            href="{base}/visualizer/">visualizer</a
         >
-            <div
-                class="px-4 py-2 border-b border-slate-200 dark:border-slate-800 text-xs font-mono text-slate-500 dark:text-slate-400"
-            >
-                rosenbrock.rs
-            </div>
-            <pre
-                class="p-4 overflow-x-auto text-sm leading-relaxed"><code class="font-mono">{code}</code></pre>
-        </div>
-    </div>
+        animates these trajectories live, compiled to wasm.
+    </p>
 </section>
 
 <!-- Features -->
