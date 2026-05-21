@@ -1,4 +1,4 @@
-//! WebAssembly bindings for the `basin` optimization library.
+//! WebAssembly bindings for the Basin optimization library.
 //!
 //! Exposes a small, JS-friendly surface for the `web/` visualizer:
 //!
@@ -60,7 +60,7 @@ pub enum SolverKind {
 }
 
 /// 2D problem dispatcher. Implements `CostFunction` + `Gradient` once
-/// for `Vec<f64>`, delegating to basin's raw functions. Lets the inner
+/// for `Vec<f64>`, delegating to Basin's raw functions. Lets the inner
 /// stepper be a single concrete type per solver instead of a forest of
 /// monomorphizations.
 #[derive(Clone, Copy)]

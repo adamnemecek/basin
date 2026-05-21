@@ -1,33 +1,33 @@
 <script lang="ts">
-    import '../app.css';
-    import { base } from '$app/paths';
-    import { page } from '$app/state';
-    import ThemeToggle from '$lib/ThemeToggle.svelte';
-    import { theme } from '$lib/theme.svelte';
-    import { NAV_LINKS, activeSection } from '$lib/nav';
+import "../app.css";
+import { base } from "$app/paths";
+import { page } from "$app/state";
+import ThemeToggle from "$lib/ThemeToggle.svelte";
+import { theme } from "$lib/theme.svelte";
+import { NAV_LINKS, activeSection } from "$lib/nav";
 
-    let { children } = $props();
+let { children } = $props();
 
-    let current = $derived(activeSection(page.url.pathname, base));
+let current = $derived(activeSection(page.url.pathname, base));
 
-    // Reflect the resolved (light/dark) theme onto `<html>` so Tailwind
-    // dark: variants apply everywhere. Lives in the root layout so it
-    // runs on every page (the inline script in app.html handles the
-    // pre-hydration paint; this keeps the class in sync afterwards).
-    // Effects only run in the browser, but the guard is kept for clarity.
-    $effect(() => {
-        if (typeof document === 'undefined') return;
-        const root = document.documentElement;
-        if (theme.effective === 'dark') {
-            root.classList.add('dark');
-            root.classList.remove('light');
-            root.style.colorScheme = 'dark';
-        } else {
-            root.classList.add('light');
-            root.classList.remove('dark');
-            root.style.colorScheme = 'light';
-        }
-    });
+// Reflect the resolved (light/dark) theme onto `<html>` so Tailwind
+// dark: variants apply everywhere. Lives in the root layout so it
+// runs on every page (the inline script in app.html handles the
+// pre-hydration paint; this keeps the class in sync afterwards).
+// Effects only run in the browser, but the guard is kept for clarity.
+$effect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (theme.effective === "dark") {
+        root.classList.add("dark");
+        root.classList.remove("light");
+        root.style.colorScheme = "dark";
+    } else {
+        root.classList.add("light");
+        root.classList.remove("dark");
+        root.style.colorScheme = "light";
+    }
+});
 </script>
 
 <div class="min-h-screen flex flex-col">

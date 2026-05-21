@@ -1,6 +1,6 @@
 # Solvers
 
-basin ships a growing catalogue of solvers, all driven by the same `Executor`
+Basin ships a growing catalogue of solvers, all driven by the same `Executor`
 loop. Pick one based on what your problem provides (a gradient? only costs?
 residuals?) and whether it is constrained.
 
@@ -44,7 +44,7 @@ For problems expressed as residuals (`Residual` + `Jacobian`):
 
 ## Memetic (composed)
 
-These run a local solver inside a global one — an example of basin's solver
+These run a local solver inside a global one — an example of Basin's solver
 composition primitives:
 
 - **`CmaInject`** / **`BoundedCmaInject`** — CMA-ES with per-generation local

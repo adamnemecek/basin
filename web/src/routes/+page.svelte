@@ -1,5 +1,6 @@
 <script lang="ts">
 import { base } from "$app/paths";
+import Seo from "$lib/Seo.svelte";
 
 // Kept as a string so Svelte doesn't try to parse the braces in the
 // Rust code as template expressions.
@@ -60,13 +61,10 @@ const features = [
 ];
 </script>
 
-<svelte:head>
-    <title>basin — numerical optimization for Rust</title>
-    <meta
-        name="description"
-        content="basin is a numerical optimization library for Rust: pluggable solvers, multiple linear-algebra backends, first-class constraints, and a wasm-first design."
-    />
-</svelte:head>
+<Seo
+    title="basin — numerical optimization for Rust"
+    description="basin is a numerical optimization library for Rust: pluggable solvers, multiple linear-algebra backends, first-class constraints, and a wasm-first design."
+/>
 
 <!-- Hero -->
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16 flex gap-6">

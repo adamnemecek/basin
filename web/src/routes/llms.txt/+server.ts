@@ -1,9 +1,10 @@
 import { base } from '$app/paths';
 
-// Same canonical origin as sitemap.xml / robots.txt. Internal doc links
-// are absolute (origin + base) so the file is useful when fetched on its
-// own; `base` is `/basin` on the Pages build and empty in dev.
-const SITE_ORIGIN = 'https://jolars.github.io';
+// Same canonical origin as sitemap.xml / robots.txt: the apex custom
+// domain `https://basin.bz/`, served at root (so `base` is empty).
+// Internal doc links are absolute so the file is useful when fetched on
+// its own.
+const SITE_ORIGIN = 'https://basin.bz';
 
 // llms.txt format: https://llmstxt.org — an H1 name, a blockquote summary,
 // then sections of `- [title](url): note` links. This is a *signpost*,

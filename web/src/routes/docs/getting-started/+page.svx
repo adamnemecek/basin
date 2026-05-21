@@ -2,13 +2,13 @@
 
 ## Install
 
-Add basin to your project:
+Add Basin to your project:
 
 ```sh
 cargo add basin
 ```
 
-basin works on plain `Vec<f64>` out of the box. Linear-algebra backends are
+Basin works on plain `Vec<f64>` out of the box. Linear-algebra backends are
 opt-in, one feature each — for example, to use the [nalgebra](https://nalgebra.org)
 backend (required by some solvers, see [Solvers](../solvers/)):
 

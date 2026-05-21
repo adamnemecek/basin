@@ -108,7 +108,7 @@ published to a package registry yet.
 [nalgebra]: https://nalgebra.org
 [ndarray]: https://github.com/rust-ndarray/ndarray
 [faer]: https://github.com/sarah-quinones/faer-rs
-[basin.bz/docs/]: https://basin.bz/docs/
+[basin.bz/docs]: https://basin.bz/docs/
 [docs.rs/basin]: https://docs.rs/basin
 [solver visualizer]: https://basin.bz/visualizer/
 [Solvers]: https://basin.bz/docs/solvers/

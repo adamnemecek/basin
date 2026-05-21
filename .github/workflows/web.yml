@@ -47,10 +47,10 @@ jobs:
 
       - name: Build site
         working-directory: web
-        env:
-          # Pages serves repo sites under /<repo>/. The BASIN_BASE_PATH
-          # is read by svelte.config.js to set kit.paths.base.
-          BASIN_BASE_PATH: /basin
+        # No BASIN_BASE_PATH: the site is served at the root of the apex
+        # custom domain (basin.bz), so kit.paths.base stays empty. (Repo
+        # Pages sites under /<repo>/ would set it; the custom domain does
+        # not.)
         run: npm run build
 
       - name: Add .nojekyll

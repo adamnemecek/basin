@@ -1,30 +1,28 @@
 <script lang="ts">
-    import { base } from '$app/paths';
+import { base } from "$app/paths";
+import Seo from "$lib/Seo.svelte";
 
-    // The planned benchmark axes (see the project's benchmark suite plan).
-    const axes = [
-        {
-            title: 'Backends',
-            body: 'The same solver across Vec, nalgebra, ndarray, and faer — isolating the cost of the linear-algebra layer.',
-        },
-        {
-            title: 'Solvers',
-            body: 'Head-to-head runs of different solvers on the same classical problems (Rosenbrock, Beale, Powell, …).',
-        },
-        {
-            title: 'Competitors',
-            body: 'basin against established crates such as argmin and levenberg-marquardt on matched problems.',
-        },
-    ];
+// The planned benchmark axes (see the project's benchmark suite plan).
+const axes = [
+    {
+        title: "Backends",
+        body: "The same solver across Vec, nalgebra, ndarray, and faer — isolating the cost of the linear-algebra layer.",
+    },
+    {
+        title: "Solvers",
+        body: "Head-to-head runs of different solvers on the same classical problems (Rosenbrock, Beale, Powell, …).",
+    },
+    {
+        title: "Competitors",
+        body: "basin against established crates such as argmin and levenberg-marquardt on matched problems.",
+    },
+];
 </script>
 
-<svelte:head>
-    <title>basin — benchmarks</title>
-    <meta
-        name="description"
-        content="Benchmarks and solver comparisons for the basin optimization library (coming soon)."
-    />
-</svelte:head>
+<Seo
+    title="basin — benchmarks"
+    description="Benchmarks and solver comparisons for the basin optimization library (coming soon)."
+/>
 
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
     <span

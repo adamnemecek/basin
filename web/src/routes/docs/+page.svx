@@ -1,6 +1,6 @@
 # Documentation
 
-**basin** is a numerical optimization library for Rust. It follows the overall
+**Basin** is a numerical optimization library for Rust. It follows the overall
 shape of [argmin](https://argmin-rs.org): a generic *executor* loop drives a
 *solver* over a *state*, calling into the *problem* traits you implement
 (`CostFunction`, `Gradient`, and friends).
@@ -24,8 +24,8 @@ shape of [argmin](https://argmin-rs.org): a generic *executor* loop drives a
 
 ## Where to go next
 
-- [Getting started](getting-started/) — install basin and run your first solve.
-- [Solvers](solvers/) — the catalogue of solvers and which backends they need.
+- [Getting started](getting-started/): install Basin and run your first solve.
+- [Solvers](solvers/): the catalogue of solvers and which backends they need.
 
 You can also watch solvers converge interactively in the
 [visualizer](../visualizer/), or browse the full API on
