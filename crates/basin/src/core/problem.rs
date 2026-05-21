@@ -130,3 +130,47 @@ pub trait Jacobian {
     /// Evaluate the Jacobian at `param`.
     fn jacobian(&self, param: &Self::Param) -> Self::Output;
 }
+
+/// Analytic Hessian `H(x) = ∇²f(x): Param → Output` for second-order
+/// solvers (Newton, trust-region-Newton). Like [`Jacobian`], the
+/// associated `Output` matrix type lets solvers bound on the
+/// linear-algebra ops they need
+/// ([`LinearSolveSpd`](crate::core::math::LinearSolveSpd),
+/// [`SymmetricEigen`](crate::core::math::SymmetricEigen), …) without
+/// baking in a backend.
+///
+/// # Contract
+///
+/// - **Implementor must:** be a *pure* function of `param`, with the
+///   same call-order independence as [`CostFunction::cost`].
+/// - **Implementor must:** return a **symmetric** `n × n` matrix where
+///   `n = param.len()`. The `(i, j)` entry is `∂²f / ∂xᵢ∂xⱼ`. Shape is
+///   fixed across iterates.
+/// - The Hessian must agree with [`CostFunction::cost`] (and
+///   [`Gradient::gradient`] when present): it is the actual second
+///   derivative, not a finite-difference approximation, unless the
+///   implementor accepts the loss in solver convergence behavior.
+///
+/// # Backends
+///
+/// Wired up for the LA-heavy backends only, mirroring [`Jacobian`]:
+///
+/// - `Param = nalgebra::DVector<f64>` → `Output = nalgebra::DMatrix<f64>`
+///   (rides on the `nalgebra` feature).
+/// - `Param = faer::Col<f64>` → `Output = faer::Mat<f64>` (rides on the
+///   `faer` feature).
+///
+/// `Vec<f64>` and `ndarray::Array1<f64>` deliberately have no `Hessian`
+/// impl — there's no honest dense matrix type to pair with them. Per
+/// tenet 5 in `AGENTS.md`, missing backend coverage is a compile-time
+/// error rather than a runtime surprise.
+pub trait Hessian {
+    /// The parameter type the Hessian is defined over (matches
+    /// [`CostFunction::Param`]).
+    type Param;
+    /// The Hessian matrix type, shape `n × n` and symmetric.
+    type Output;
+
+    /// Evaluate the Hessian at `param`.
+    fn hessian(&self, param: &Self::Param) -> Self::Output;
+}

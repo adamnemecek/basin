@@ -286,6 +286,43 @@ pub trait MatrixIdentity {
     fn identity(n: usize) -> Self;
 }
 
+/// Maps a vector backend to its canonical dense matrix type and builds a
+/// matrix of that type from a per-entry closure. Implemented on the
+/// *vector* type so that finite-difference differentiation
+/// ([`crate::core::numdiff`]) can synthesize a `Jacobian` / `Hessian`
+/// matrix from a problem whose only typed handle is the parameter vector
+/// `V`, with **one** generic impl rather than a per-backend blanket impl
+/// (two `impl<P> Jacobian for FiniteDiff<P> where P: Residual<Param = …>`
+/// blocks would collide under coherence — both have the head
+/// `impl<P> … for FiniteDiff<P>`, and Rust does not use the associated-type
+/// values of `where`-bounds to prove disjointness). Routing the matrix-type
+/// choice through `V::Matrix` keeps the impl single-headed.
+///
+/// # Contract
+///
+/// - **Implementor must:** return a freshly allocated `rows × cols` matrix
+///   with entry `(i, j) = f(i, j)`. `f` is called once per entry; the call
+///   order is backend-defined (column-major for both current backends), so
+///   callers that care about evaluation order must precompute their data
+///   and let `f` be a pure read.
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DVector<f64>` (`Matrix = DMatrix<f64>`) and
+/// `faer::Col<f64>` (`Matrix = Mat<f64>`). `Vec<f64>` and `ndarray` do not
+/// implement it — they have no honest dense matrix type — so finite-
+/// difference `Jacobian` / `Hessian` over them is a compile-time error
+/// (tenet 5 in `AGENTS.md`), mirroring the analytic
+/// [`Jacobian`](crate::core::problem::Jacobian) backend coverage.
+pub trait DenseMatrixFromFn: Sized {
+    /// The dense matrix type paired with this vector backend.
+    type Matrix;
+
+    /// Build a `rows × cols` matrix with entry `(i, j) = f(i, j)`.
+    fn dense_from_fn<F: FnMut(usize, usize) -> f64>(rows: usize, cols: usize, f: F)
+        -> Self::Matrix;
+}
+
 /// Symmetric (self-adjoint) eigendecomposition `A = U diag(λ) Uᵀ`. The
 /// load-bearing op for CMA-ES, which factors its covariance every
 /// iteration to compute both the sampling map `B D z_k = y_k ~ N(0, C)`

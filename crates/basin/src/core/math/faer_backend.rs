@@ -9,14 +9,15 @@ use super::cl_scaling::{
     BoxAffineScaling,
 };
 use super::linalg::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveSpd,
-    MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal, RankOneUpdate,
-    SymmetricEigen, SymmetricEigenError,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
+    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal,
+    RankOneUpdate, SymmetricEigen, SymmetricEigenError,
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
     ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
-    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
+    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorIndex,
+    VectorLen,
 };
 
 impl ScaledAdd<f64> for Col<f64> {
@@ -65,6 +66,15 @@ impl SampleUniformBox for Col<f64> {
 impl VectorLen for Col<f64> {
     fn vec_len(&self) -> usize {
         self.nrows()
+    }
+}
+
+impl VectorIndex for Col<f64> {
+    fn get_scalar(&self, i: usize) -> f64 {
+        self[i]
+    }
+    fn set_scalar(&mut self, i: usize, value: f64) {
+        self[i] = value;
     }
 }
 
@@ -368,6 +378,13 @@ impl ScaleInPlace for Mat<f64> {
 impl MatrixIdentity for Mat<f64> {
     fn identity(n: usize) -> Self {
         Mat::<f64>::identity(n, n)
+    }
+}
+
+impl DenseMatrixFromFn for Col<f64> {
+    type Matrix = Mat<f64>;
+    fn dense_from_fn<F: FnMut(usize, usize) -> f64>(rows: usize, cols: usize, f: F) -> Mat<f64> {
+        Mat::from_fn(rows, cols, f)
     }
 }
 

@@ -128,6 +128,28 @@ pub trait FloorZerosInPlace {
     fn floor_zeros_in_place(&mut self, value: f64);
 }
 
+/// Per-component scalar read/write on a 1-D vector backend. The minimal
+/// access finite-difference differentiation needs: perturb one coordinate
+/// of a parameter vector and read derivative values back out
+/// ([`crate::core::numdiff`]).
+///
+/// Methods are named `get_scalar` / `set_scalar` rather than `get` / `set`
+/// to dodge the inherent `slice::get -> Option<&T>` (which would shadow a
+/// trait `get` at call sites on a concrete `Vec`) and the `Index` /
+/// `IndexMut` traits — the same defensive convention as
+/// [`VectorLen::vec_len`].
+///
+/// # Contract
+///
+/// - **Caller must:** pass `i < self.vec_len()`. Backends index directly and
+///   panic on out-of-bounds, matching the underlying `Index` impls.
+pub trait VectorIndex {
+    /// Read component `i` as `f64`.
+    fn get_scalar(&self, i: usize) -> f64;
+    /// Write `value` into component `i`.
+    fn set_scalar(&mut self, i: usize, value: f64);
+}
+
 mod cl_scaling;
 mod clamp;
 mod linalg;
@@ -153,8 +175,8 @@ mod faer_sparse_backend;
 pub use cl_scaling::BoxAffineScaling;
 pub use clamp::ClampInPlace;
 pub use linalg::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, GramMatrix, LinearSolveError, LinearSolveLstsq,
-    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal,
-    RankOneUpdate, SymmetricEigen, SymmetricEigenError,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
+    LinearSolveLstsq, LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity,
+    MaxDiagonal, RankOneUpdate, SymmetricEigen, SymmetricEigenError,
 };
 pub use sample::{SampleStandardNormal, SampleUniformBox};

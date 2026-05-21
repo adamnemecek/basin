@@ -28,11 +28,16 @@ pub use crate::core::constraint::BoxConstrained;
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::inner::InnerExecutor;
 pub use crate::core::math::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace, Dot, GramMatrix,
-    LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec, MaxDiagonal, NegInPlace,
-    NormInfinity, NormSquared, SampleUniformBox, ScaledAdd,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace,
+    DenseMatrixFromFn, Dot, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,
+    MaxDiagonal, NegInPlace, NormInfinity, NormSquared, SampleUniformBox, ScaledAdd, VectorIndex,
 };
-pub use crate::core::problem::{CostFunction, Gradient, Jacobian, Residual};
+pub use crate::core::numdiff::{
+    central_difference_gradient, central_difference_hessian, central_difference_jacobian,
+    forward_difference_gradient, forward_difference_hessian, forward_difference_jacobian,
+    FiniteDiff, Method,
+};
+pub use crate::core::problem::{CostFunction, Gradient, Hessian, Jacobian, Residual};
 pub use crate::core::solver::Solver;
 #[cfg(feature = "nalgebra")]
 pub use crate::core::state::QuasiNewtonState;

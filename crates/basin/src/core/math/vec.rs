@@ -8,7 +8,8 @@ use super::cl_scaling::{
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
     ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
-    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorLen,
+    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorIndex,
+    VectorLen,
 };
 
 impl ScaledAdd<f64> for Vec<f64> {
@@ -107,6 +108,15 @@ impl ComponentDivAssign for Vec<f64> {
 impl VectorLen for Vec<f64> {
     fn vec_len(&self) -> usize {
         self.len()
+    }
+}
+
+impl VectorIndex for Vec<f64> {
+    fn get_scalar(&self, i: usize) -> f64 {
+        self[i]
+    }
+    fn set_scalar(&mut self, i: usize, value: f64) {
+        self[i] = value;
     }
 }
 

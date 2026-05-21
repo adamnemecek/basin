@@ -3,8 +3,15 @@
 //!
 //! - [`problem`] — what the *user* implements about their objective:
 //!   [`CostFunction`](problem::CostFunction),
-//!   [`Gradient`](problem::Gradient).
-//!   Future: residual/Jacobian, Hessian, operators (matrix-free).
+//!   [`Gradient`](problem::Gradient),
+//!   [`Residual`](problem::Residual) / [`Jacobian`](problem::Jacobian)
+//!   (least squares), and [`Hessian`](problem::Hessian) (second order).
+//!   Future: operators (matrix-free).
+//! - [`numdiff`] — finite-difference derivative synthesis: the
+//!   [`FiniteDiff`](numdiff::FiniteDiff) wrapper adds
+//!   [`Gradient`](problem::Gradient) / [`Jacobian`](problem::Jacobian) /
+//!   [`Hessian`](problem::Hessian) to a problem that only exposes
+//!   function values.
 //! - [`constraint`] — constraint markers carried on the problem (tenet 4
 //!   in `AGENTS.md`). Currently
 //!   [`BoxConstrained`](constraint::BoxConstrained).
@@ -39,6 +46,7 @@ pub mod constraint;
 pub mod executor;
 pub mod inner;
 pub mod math;
+pub mod numdiff;
 pub mod problem;
 pub mod rng;
 pub mod solver;
