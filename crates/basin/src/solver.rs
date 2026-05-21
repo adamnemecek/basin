@@ -15,7 +15,8 @@ pub mod cma_es;
 pub mod cma_inject;
 /// Pure Gauss-Newton solver for nonlinear least squares.
 pub mod gauss_newton;
-/// Steepest-descent solver with a pluggable line search.
+/// Steepest-descent solver with a pluggable line search and optional
+/// heavy-ball momentum.
 pub mod gradient_descent;
 /// L-BFGS family — unconstrained `LBFGS<Unbounded>` (two-loop
 /// recursion) and box-constrained `LBFGS<Bounded>` (faithful port of

@@ -152,8 +152,10 @@ pub fn eval_grid(
 /// is fully concrete so the resulting wasm is tight and no `dyn Solver`
 /// gymnastics are needed.
 enum Inner {
-    GdConstant(Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<Constant>>),
-    GdBacktracking(Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<Backtracking>>),
+    GdConstant(Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<Constant, Vec<f64>>>),
+    GdBacktracking(
+        Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<Backtracking, Vec<f64>>>,
+    ),
     NelderMead(Stepper<Problem2D, BasicSimplexState<Vec<f64>>, NelderMead>),
 }
 
@@ -342,12 +344,12 @@ impl Run {
 
 fn make_stepper<L>(
     problem: Problem2D,
-    solver: GradientDescent<L>,
+    solver: GradientDescent<L, Vec<f64>>,
     initial: &[f64],
     max_iter: u32,
-) -> Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<L>>
+) -> Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<L, Vec<f64>>>
 where
-    GradientDescent<L>: basin::Solver<Problem2D, BasicState<Vec<f64>>>,
+    GradientDescent<L, Vec<f64>>: basin::Solver<Problem2D, BasicState<Vec<f64>>>,
 {
     Executor::new(problem, solver, BasicState::new(initial.to_vec()))
         .max_iter(max_iter as u64)
