@@ -20,6 +20,7 @@
     go-task
     quartoMinimal
     shfmt
+    resvg # SVG → PNG rasteriser for the `task logo` asset pipeline
   ];
 
   languages = {

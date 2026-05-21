@@ -4,6 +4,54 @@ version: "3"
 # Run `task --list` to see available recipes.
 
 tasks:
+  logo:
+    desc: "Watch the logo example; rebuild SVG + PNGs and sync to web/static on save."
+    summary: |
+      Renders crates/basin/examples/logo.rs to images/logo.svg, rasterises PNGs
+      at a few widths (resvg), and copies the SVG + PNGs into web/static/ for the
+      web app — then watches the example and rebuilds on every save. The example
+      traces a real GradientDescent run over its surface, so the river is genuine
+      optimizer output.
+
+      Watch mode by default (watch: true) — leave `task logo` running while you
+      tweak constants; Ctrl-C to stop. For a single build (CI, committing the
+      assets) use `task logo:once`.
+
+      Outputs (in images/ and web/static/): logo.svg (scalable, transparent),
+      logo.png (1024px wide), logo-512.png, logo-256.png. Aspect ratio is
+      preserved; PNG rasterisation uses `resvg` (pinned in devenv.nix).
+    watch: true
+    sources:
+      - crates/basin/examples/logo.rs
+    cmds:
+      - task: logo:build
+
+  logo:once:
+    desc: "Build the logo once: SVG + PNGs, synced to web/static (no watch)."
+    sources:
+      - crates/basin/examples/logo.rs
+    generates:
+      - images/logo.svg
+      - images/logo.png
+      - images/logo-512.png
+      - images/logo-256.png
+      - web/static/logo.svg
+      - web/static/logo.png
+    cmds:
+      - task: logo:build
+
+  logo:build:
+    internal: true
+    cmds:
+      # 1. render the scalable, transparent master SVG
+      - cargo run --quiet --package basin --example logo -- images/logo.svg
+      # 2. rasterise PNGs at a few widths (aspect preserved, transparent)
+      - resvg images/logo.svg images/logo.png --width 1024
+      - resvg images/logo.svg images/logo-512.png --width 512
+      - resvg images/logo.svg images/logo-256.png --width 256
+      # 3. sync the asset set into the web app's static dir
+      - cp images/logo.svg images/logo.png images/logo-512.png images/logo-256.png web/static/
+
   ingest-paper:
     desc: "Fast first-pass parse of a PDF paper into references/<NAME>/source.md (pymupdf4llm)."
     summary: |

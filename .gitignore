@@ -45,7 +45,6 @@ result-*
 devenv.local.nix
 devenv.local.yaml
 
-
 # Added by cargo
 
 /target
@@ -54,3 +53,5 @@ devenv.local.yaml
 tools/.venv/
 # References dir (papers, reference impls — see tools/README once added)
 references/
+
+.task/
