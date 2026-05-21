@@ -1,14 +1,12 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
     <head>
         <meta charset="utf-8" />
         <link rel="icon" href="%sveltekit.assets%/favicon.svg" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta
-            name="description"
-            content="basin — a numerical optimization library for Rust."
-        />
-        <title>basin</title>
+        <meta name="description"
+              content="basin — a numerical optimization library for Rust." />
+        <title>Basin</title>
         <!-- No-FOUC: resolve the saved theme and set the class on <html>
              before first paint, so prerendered content doesn't flash the
              wrong colors. Mirrors `src/lib/theme.svelte.ts` (key
@@ -35,10 +33,8 @@
         </script>
         %sveltekit.head%
     </head>
-    <body
-        data-sveltekit-preload-data="hover"
-        class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100"
-    >
+    <body data-sveltekit-preload-data="hover"
+          class="bg-white text-slate-900 dark:bg-slate-950 dark:text-slate-100">
         <div style="display: contents">%sveltekit.body%</div>
     </body>
 </html>

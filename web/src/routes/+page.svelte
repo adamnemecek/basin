@@ -1,9 +1,9 @@
 <script lang="ts">
-    import { base } from '$app/paths';
+import { base } from "$app/paths";
 
-    // Kept as a string so Svelte doesn't try to parse the braces in the
-    // Rust code as template expressions.
-    const code = `use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
+// Kept as a string so Svelte doesn't try to parse the braces in the
+// Rust code as template expressions.
+const code = `use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent};
 
 struct Rosenbrock;
 
@@ -32,32 +32,32 @@ let result = Executor::new(Rosenbrock, GradientDescent::new(1e-3), BasicState::n
 
 println!("x = {:?}, f = {}", result.param(), result.cost());`;
 
-    const features = [
-        {
-            title: 'Pluggable solvers',
-            body: 'Gradient descent, Nelder–Mead, L-BFGS / L-BFGS-B, Gauss–Newton, Levenberg–Marquardt, CMA-ES and more — driven by one shared executor loop.',
-        },
-        {
-            title: 'Multiple backends',
-            body: 'Run on plain Vec<f64>, nalgebra, ndarray, or faer. Each backend sits behind a single feature — no per-version feature explosion.',
-        },
-        {
-            title: 'First-class constraints',
-            body: 'Box bounds are part of the problem and enforced at the type level: handing a constrained problem to an unconstrained solver is a compile error.',
-        },
-        {
-            title: 'Composable termination',
-            body: 'Gradient, parameter, and cost tolerances, iteration and time budgets — configured uniformly across solvers, bound to the state each one exposes.',
-        },
-        {
-            title: 'Runs in the browser',
-            body: 'wasm-first by design: the default build pulls in no BLAS/LAPACK or threads, so basin compiles to wasm32 out of the box.',
-        },
-        {
-            title: 'Paper-anchored',
-            body: 'Solvers track published algorithms (Nocedal’s L-BFGS-B, Nielsen’s LM damping, Hansen’s CMA-ES) rather than ad-hoc variants.',
-        },
-    ];
+const features = [
+    {
+        title: "Pluggable solvers",
+        body: "Gradient descent, Nelder–Mead, L-BFGS / L-BFGS-B, Gauss–Newton, Levenberg–Marquardt, CMA-ES and more — driven by one shared executor loop.",
+    },
+    {
+        title: "Multiple backends",
+        body: "Run on plain Vec<f64>, nalgebra, ndarray, or faer. Each backend sits behind a single feature — no per-version feature explosion.",
+    },
+    {
+        title: "First-class constraints",
+        body: "Box bounds are part of the problem and enforced at the type level: handing a constrained problem to an unconstrained solver is a compile error.",
+    },
+    {
+        title: "Composable termination",
+        body: "Gradient, parameter, and cost tolerances, iteration and time budgets — configured uniformly across solvers, bound to the state each one exposes.",
+    },
+    {
+        title: "Runs in the browser",
+        body: "wasm-first by design: the default build pulls in no BLAS/LAPACK or threads, so basin compiles to wasm32 out of the box.",
+    },
+    {
+        title: "Paper-anchored",
+        body: "Solvers track published algorithms (Nocedal’s L-BFGS-B, Nielsen’s LM damping, Hansen’s CMA-ES) rather than ad-hoc variants.",
+    },
+];
 </script>
 
 <svelte:head>
@@ -69,24 +69,21 @@ println!("x = {:?}, f = {}", result.param(), result.cost());`;
 </svelte:head>
 
 <!-- Hero -->
-<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16">
-    <div class="max-w-3xl">
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16 flex gap-6">
+    <div class="max-w-3xl flex-col">
         <span
             class="inline-block text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400"
         >
             Alpha · Rust
         </span>
-        <h1
-            class="mt-3 text-4xl md:text-6xl font-semibold tracking-tight text-balance"
-        >
-            Numerical optimization, built for Rust.
+        <h1 class="mt-3 text-4xl md:text-6xl font-semibold tracking-tight text-balance">
+            Numerical Optimization in Rust
         </h1>
-        <p
-            class="mt-5 text-lg md:text-xl text-slate-600 dark:text-slate-300 text-pretty"
-        >
-            <span class="font-semibold">basin</span> is a solver framework in the
-            spirit of argmin: a generic executor loop over pluggable solvers, multiple
-            linear-algebra backends, first-class constraints, and a wasm-first design.
+        <p class="mt-5 text-lg md:text-xl text-slate-600 dark:text-slate-300 text-pretty">
+            <span class="font-semibold">Basin</span> is a solver framework with
+            a generic executor loop over pluggable solvers, multiple
+            linear-algebra backends, first-class constraints, and a wasm-first
+            design.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
             <a
@@ -110,6 +107,12 @@ println!("x = {:?}, f = {}", result.param(), result.cost());`;
                 GitHub
             </a>
         </div>
+    </div>
+    <div class="flex flex-col">
+        <img
+            src="{base}/logo.svg"
+            alt="Visualization of optimization trajectories on the Rosenbrock function, a common test problem in optimization."
+            class="mt-10 w-full object-cover">
     </div>
 </section>
 
