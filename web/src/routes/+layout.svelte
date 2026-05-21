@@ -2,6 +2,7 @@
 import "../app.css";
 import { base } from "$app/paths";
 import { page } from "$app/state";
+import { afterNavigate } from "$app/navigation";
 import ThemeToggle from "$lib/ThemeToggle.svelte";
 import { theme } from "$lib/theme.svelte";
 import { NAV_LINKS, activeSection } from "$lib/nav";
@@ -9,6 +10,15 @@ import { NAV_LINKS, activeSection } from "$lib/nav";
 let { children } = $props();
 
 let current = $derived(activeSection(page.url.pathname, base));
+
+// Mobile nav disclosure. The links live inline at `md+`; below that
+// they collapse behind a menu button into the panel under the header.
+// Close on navigation (afterNavigate also fires once on mount) and on
+// Escape so the panel never lingers across pages or traps focus.
+let menuOpen = $state(false);
+afterNavigate(() => {
+    menuOpen = false;
+});
 
 // Reflect the resolved (light/dark) theme onto `<html>` so Tailwind
 // dark: variants apply everywhere. Lives in the root layout so it
@@ -30,12 +40,49 @@ $effect(() => {
 });
 </script>
 
+<svelte:window
+    onkeydown={(e) => {
+        if (e.key === "Escape") menuOpen = false;
+    }}
+/>
+
+<!-- Shared nav links, rendered both inline (md+) and in the mobile panel.
+     `extra` lets the mobile copy go full-width (`block`) while the inline
+     copy stays inline. -->
+{#snippet navItems(extra: string)}
+    {#each NAV_LINKS as link}
+        <li>
+            {#if link.external}
+                <a
+                    href={link.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    class="{extra} px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                    {link.label}
+                </a>
+            {:else}
+                <a
+                    href="{base}{link.href}"
+                    aria-current={current === link.section ? "page" : undefined}
+                    class="{extra} px-3 py-1.5 rounded-md transition-colors {current ===
+                    link.section
+                        ? 'text-slate-900 bg-slate-100 dark:text-slate-100 dark:bg-slate-800'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800'}"
+                >
+                    {link.label}
+                </a>
+            {/if}
+        </li>
+    {/each}
+{/snippet}
+
 <div class="min-h-screen flex flex-col">
     <header
         class="border-b border-slate-200 dark:border-slate-800 sticky top-0 z-20 bg-white/80 dark:bg-slate-950/80 backdrop-blur"
     >
         <nav
-            class="max-w-screen-2xl mx-auto px-4 md:px-8 h-14 flex items-center gap-6"
+            class="max-w-screen-2xl mx-auto px-4 md:px-8 h-14 flex items-center gap-3 md:gap-6"
         >
             <!-- Logo slot. Swap this wordmark for an <img> once a logo
                  asset lands in `static/` (e.g.
@@ -49,40 +96,64 @@ $effect(() => {
 
             <div class="flex-1"></div>
 
-            <ul class="flex items-center gap-1 text-sm">
-                {#each NAV_LINKS as link}
-                    <li>
-                        {#if link.external}
-                            <a
-                                href={link.href}
-                                target="_blank"
-                                rel="noreferrer"
-                                class="px-3 py-1.5 rounded-md text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
-                            >
-                                {link.label}
-                            </a>
-                        {:else}
-                            <a
-                                href="{base}{link.href}"
-                                aria-current={current === link.section
-                                    ? 'page'
-                                    : undefined}
-                                class="px-3 py-1.5 rounded-md transition-colors {current ===
-                                link.section
-                                    ? 'text-slate-900 bg-slate-100 dark:text-slate-100 dark:bg-slate-800'
-                                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800'}"
-                            >
-                                {link.label}
-                            </a>
-                        {/if}
-                    </li>
-                {/each}
+            <!-- Inline links at md+; collapse behind the menu button below. -->
+            <ul class="hidden md:flex items-center gap-1 text-sm">
+                {@render navItems("")}
             </ul>
 
             <div class="pl-2 border-l border-slate-200 dark:border-slate-800">
                 <ThemeToggle />
             </div>
+
+            <button
+                type="button"
+                class="md:hidden inline-flex items-center justify-center rounded-md p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+                aria-label="Toggle navigation menu"
+                aria-expanded={menuOpen}
+                aria-controls="mobile-nav"
+                onclick={() => (menuOpen = !menuOpen)}
+            >
+                {#if menuOpen}
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        aria-hidden="true"
+                    >
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                    </svg>
+                {:else}
+                    <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        aria-hidden="true"
+                    >
+                        <line x1="3" y1="6" x2="21" y2="6" />
+                        <line x1="3" y1="12" x2="21" y2="12" />
+                        <line x1="3" y1="18" x2="21" y2="18" />
+                    </svg>
+                {/if}
+            </button>
         </nav>
+
+        {#if menuOpen}
+            <ul
+                id="mobile-nav"
+                class="md:hidden border-t border-slate-200 dark:border-slate-800 px-4 py-2 flex flex-col gap-1 text-sm"
+            >
+                {@render navItems("block")}
+            </ul>
+        {/if}
     </header>
 
     <main class="flex-1">
