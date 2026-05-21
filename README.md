@@ -12,9 +12,8 @@ Solvers are generic over the linear-algebra backend, constraints are
 first-class, and the default build compiles to `wasm32-unknown-unknown` with no
 BLAS/LAPACK or threads.
 
-Narrative documentation lives at [basin.bz/docs]; the rustdoc
-reference is at [docs.rs/basin]. There is also an in-browser [solver
-visualizer].
+Narrative documentation lives at [basin.bz/docs]; the rustdoc reference is at
+[docs.rs/basin]. There is also an in-browser [solver visualizer].
 
 ## Install
 
@@ -59,8 +58,7 @@ impl Gradient for Rosenbrock {
 }
 
 let result = Executor::new(Rosenbrock, GradientDescent::new(1e-3), BasicState::new(vec![-1.2, 1.0]))
-    .max_iter(50_000)
-    .terminate_on(GradientTolerance(1e-6))
+    .max_iter(50_000).terminate_on(GradientTolerance(1e-6))
     .run();
 
 println!("x = {:?}, f = {}, stopped: {:?}", result.param(), result.cost(), result.reason);
@@ -93,9 +91,8 @@ pinning a single major version. First-order and derivative-free solvers run on
 any backend; linear-algebra-heavy solvers may require a specific one and say so
 in their docs.
 
-The default build is wasm-friendly: no BLAS/LAPACK and no threads.
-Parallelism and BLAS-backed paths are behind opt-in features (`parallel`,
-`ndarray-blas`).
+The default build is wasm-friendly: no BLAS/LAPACK and no threads. Parallelism
+and BLAS-backed paths are behind opt-in features (`parallel`, `ndarray-blas`).
 
 ## Status
 
