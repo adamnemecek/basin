@@ -2,9 +2,9 @@ use crate::core::constraint::BoxConstrained;
 use crate::core::executor::OptimizationResult;
 use crate::core::inner::InnerExecutor;
 use crate::core::math::{
-    ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity,
-    NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd, SymmetricEigen,
-    VectorLen,
+    ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,
+    MatrixIdentity, NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd,
+    SymmetricEigen, VectorLen,
 };
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
@@ -156,6 +156,7 @@ where
         + std::ops::Index<usize, Output = f64>
         + std::ops::IndexMut<usize, Output = f64>,
     M: MatrixIdentity
+        + MatrixFromDiagonal<V>
         + MatVec<V>
         + MatTransposeVec<V>
         + MatDiagonal<V>

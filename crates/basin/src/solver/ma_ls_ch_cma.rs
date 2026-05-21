@@ -3,8 +3,9 @@ use std::marker::PhantomData;
 use crate::core::constraint::BoxConstrained;
 use crate::core::executor::run_loop;
 use crate::core::math::{
-    ComponentMulAssign, MatTransposeVec, MatVec, MatrixIdentity, NormSquared, RankOneUpdate,
-    SampleStandardNormal, SampleUniformBox, ScaleInPlace, ScaledAdd, SymmetricEigen, VectorLen,
+    ComponentMulAssign, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity, NormSquared,
+    RankOneUpdate, SampleStandardNormal, SampleUniformBox, ScaleInPlace, ScaledAdd, SymmetricEigen,
+    VectorLen,
 };
 use crate::core::problem::CostFunction;
 use crate::core::rng::{ChaCha8Rng, RngExt, SeedableRng};
@@ -443,6 +444,7 @@ where
         + std::ops::Index<usize, Output = f64>
         + std::ops::IndexMut<usize, Output = f64>,
     M: MatrixIdentity
+        + MatrixFromDiagonal<V>
         + MatVec<V>
         + MatTransposeVec<V>
         + ScaleInPlace

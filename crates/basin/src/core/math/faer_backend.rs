@@ -10,8 +10,8 @@ use super::cl_scaling::{
 };
 use super::linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
-    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity, MaxDiagonal,
-    RankOneUpdate, SymmetricEigen, SymmetricEigenError,
+    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity,
+    MaxDiagonal, RankOneUpdate, SymmetricEigen, SymmetricEigenError,
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
@@ -381,6 +381,13 @@ impl MatrixIdentity for Mat<f64> {
     }
 }
 
+impl MatrixFromDiagonal<Col<f64>> for Mat<f64> {
+    fn from_diagonal(diag: &Col<f64>) -> Self {
+        let n = diag.nrows();
+        Mat::from_fn(n, n, |i, j| if i == j { diag[i] } else { 0.0 })
+    }
+}
+
 impl DenseMatrixFromFn for Col<f64> {
     type Matrix = Mat<f64>;
     fn dense_from_fn<F: FnMut(usize, usize) -> f64>(rows: usize, cols: usize, f: F) -> Mat<f64> {
@@ -579,6 +586,19 @@ mod tests {
             for c in 0..3 {
                 let want = if r == c { 1.0 } else { 0.0 };
                 assert!(approx_eq(i[(r, c)], want, 1e-12));
+            }
+        }
+    }
+
+    #[test]
+    fn matrix_from_diagonal_places_vector_on_diagonal() {
+        let d = Col::<f64>::from_fn(3, |i| [2.0, 3.0, 5.0][i]);
+        let m: Mat<f64> = MatrixFromDiagonal::from_diagonal(&d);
+        assert_eq!((m.nrows(), m.ncols()), (3, 3));
+        for r in 0..3 {
+            for c in 0..3 {
+                let want = if r == c { d[r] } else { 0.0 };
+                assert!(approx_eq(m[(r, c)], want, 1e-12));
             }
         }
     }

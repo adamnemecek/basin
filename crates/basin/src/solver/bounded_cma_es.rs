@@ -2,9 +2,9 @@ use std::collections::VecDeque;
 
 use crate::core::constraint::BoxConstrained;
 use crate::core::math::{
-    ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixIdentity,
-    NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd, SymmetricEigen,
-    VectorLen,
+    ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,
+    MatrixIdentity, NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd,
+    SymmetricEigen, VectorLen,
 };
 use crate::core::problem::CostFunction;
 use crate::core::rng::{ChaCha8Rng, SeedableRng};
@@ -124,6 +124,10 @@ pub struct BoundedCmaEs<V, M> {
     lambda_override: Option<usize>,
     seed: u64,
     tol_x_override: Option<f64>,
+    /// Per-coordinate initial standard deviations (pycma's `CMA_stds`).
+    /// `None` keeps the isotropic `C = I` default; `Some(stds)` seeds the
+    /// initial covariance to `diag(stds²)`. Set via [`with_stds`](Self::with_stds).
+    stds_override: Option<V>,
 
     state: Option<Working<V, M>>,
 }
@@ -224,6 +228,7 @@ impl<V, M> BoundedCmaEs<V, M> {
             lambda_override: None,
             seed,
             tol_x_override: None,
+            stds_override: None,
             state: None,
         }
     }
@@ -249,7 +254,8 @@ impl<V, M> BoundedCmaEs<V, M> {
         self
     }
 
-    /// Override the default TolX (`1e−12 · initial_sigma`); see
+    /// Override the default TolX (`1e−12 · initial_sigma`, scaled by
+    /// `maxᵢ stdsᵢ` when [`with_stds`](Self::with_stds) is set); see
     /// [`CmaEs::with_tol_x`](super::cma_es::CmaEs::with_tol_x).
     pub fn with_tol_x(mut self, tol_x: f64) -> Self {
         self.tol_x_override = Some(tol_x);
@@ -276,8 +282,45 @@ impl<V, M> BoundedCmaEs<V, M> {
 
 impl<V, M> BoundedCmaEs<V, M>
 where
-    V: VectorLen + Clone + std::ops::IndexMut<usize, Output = f64>,
-    M: MatrixIdentity,
+    V: VectorLen + std::ops::Index<usize, Output = f64>,
+{
+    /// Set per-coordinate initial standard deviations (pycma's
+    /// `CMA_stds`), seeding an anisotropic initial covariance
+    /// `C = diag(stds²)` instead of the isotropic default `C = I`. See
+    /// [`CmaEs::with_stds`](super::cma_es::CmaEs::with_stds) for the full
+    /// semantics; the adaptive boundary penalty benefits from the same
+    /// per-coordinate scale (its γ-update reads `σ² · diag(C)`).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `stds.len() != initial_mean.len()` or if any entry is not
+    /// strictly positive.
+    pub fn with_stds(mut self, stds: V) -> Self {
+        let n = self.initial_mean.vec_len();
+        assert_eq!(
+            stds.vec_len(),
+            n,
+            "BoundedCmaEs::with_stds requires stds.len() == initial_mean.len(), got {} vs {}",
+            stds.vec_len(),
+            n
+        );
+        for i in 0..n {
+            assert!(
+                stds[i] > 0.0,
+                "BoundedCmaEs::with_stds requires every std > 0, got stds[{}] = {}",
+                i,
+                stds[i]
+            );
+        }
+        self.stds_override = Some(stds);
+        self
+    }
+}
+
+impl<V, M> BoundedCmaEs<V, M>
+where
+    V: VectorLen + Clone + ComponentMulAssign + std::ops::IndexMut<usize, Output = f64>,
+    M: MatrixIdentity + MatrixFromDiagonal<V>,
 {
     /// Build [`Working`] from `self`'s user-provided settings. Called
     /// once from [`Solver::init`].
@@ -317,7 +360,17 @@ where
 
         let expected_norm = expected_norm_n01(n);
         let h_sigma_threshold = (1.4 + 2.0 / (n as f64 + 1.0)) * expected_norm;
-        let tol_x = self.tol_x_override.unwrap_or(1e-12 * self.initial_sigma);
+        // Default TolX scales with the largest initial axis std (see
+        // `CmaEs::build_working`); reduces to `1e−12 · initial_sigma`
+        // without stds. An explicit override still wins.
+        let max_std = self
+            .stds_override
+            .as_ref()
+            .map(|s| (0..n).map(|i| s[i]).fold(0.0_f64, f64::max))
+            .unwrap_or(1.0);
+        let tol_x = self
+            .tol_x_override
+            .unwrap_or(1e-12 * self.initial_sigma * max_std);
 
         // BoundPenalty constants: damp, edist threshold, hist cap.
         let damp = (mu_eff / (10.0 * n as f64)).min(1.0);
@@ -334,6 +387,18 @@ where
         for i in 0..n {
             gamma[i] = 1.0;
         }
+
+        // Initial covariance: isotropic `C = I` by default, or anisotropic
+        // `C = diag(stds²)` when per-coordinate stds are set (eigendecomp is
+        // exactly B = I, D = diag(stds), seeded directly in `init`).
+        let c = match self.stds_override.as_ref() {
+            Some(stds) => {
+                let mut sq = stds.clone();
+                sq.component_mul_assign(stds);
+                M::from_diagonal(&sq)
+            }
+            None => M::identity(n),
+        };
 
         Working {
             n,
@@ -357,7 +422,7 @@ where
             sigma: self.initial_sigma,
             p_sigma: self.initial_mean.clone(),
             p_c: self.initial_mean.clone(),
-            c: M::identity(n),
+            c,
             b: M::identity(n),
             d: self.initial_mean.clone(),
             d_inv: self.initial_mean.clone(),
@@ -521,6 +586,7 @@ where
         + std::ops::Index<usize, Output = f64>
         + std::ops::IndexMut<usize, Output = f64>,
     M: MatrixIdentity
+        + MatrixFromDiagonal<V>
         + MatVec<V>
         + MatTransposeVec<V>
         + MatDiagonal<V>
@@ -538,11 +604,22 @@ where
             return state;
         }
         let mut w = self.build_working();
+        // Seed (b, d, d_inv): isotropic (1, …, 1) by default, or
+        // (d, d_inv) = (stds, 1/stds) for the diagonal `C = diag(stds²)`
+        // (b stays identity). See `CmaEs::init` for why no eigensolve runs
+        // here — the diagonal decomposition is exact and order-preserving.
         w.p_sigma.scale_in_place(0.0);
         w.p_c.scale_in_place(0.0);
-        for i in 0..w.n {
-            w.d[i] = 1.0;
-            w.d_inv[i] = 1.0;
+        if let Some(stds) = self.stds_override.as_ref() {
+            for i in 0..w.n {
+                w.d[i] = stds[i];
+                w.d_inv[i] = 1.0 / stds[i];
+            }
+        } else {
+            for i in 0..w.n {
+                w.d[i] = 1.0;
+                w.d_inv[i] = 1.0;
+            }
         }
 
         // Project an infeasible initial mean once at iter 0 so the iter-0
@@ -554,14 +631,24 @@ where
         // when the user passes an out-of-box starting mean.
         w.m.clamp_in_place(problem.lower(), problem.upper());
 
-        // First generation. C = I so y_k = z_k; x_k = m + σ z_k.
+        // First generation: x_k = m + σ B (D ⊙ z_k). Isotropic default keeps
+        // the fast path x_k = m + σ z_k (bit-identical when B = I, D = 1);
+        // the anisotropic case applies the B·D map.
+        let anisotropic = self.stds_override.is_some();
         state.candidates.clear();
         state.costs.clear();
         w.raw_costs.clear();
         for _k in 0..w.lambda {
             let z_k = V::sample_standard_normal(&w.m, &mut w.rng);
             let mut x_k = w.m.clone();
-            x_k.scaled_add(w.sigma, &z_k);
+            if anisotropic {
+                let mut bd_z = z_k;
+                bd_z.component_mul_assign(&w.d);
+                let bd_z = w.b.matvec(&bd_z);
+                x_k.scaled_add(w.sigma, &bd_z);
+            } else {
+                x_k.scaled_add(w.sigma, &z_k);
+            }
             let (raw, pen) = evaluate_with_penalty(
                 problem,
                 &x_k,

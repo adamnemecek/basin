@@ -267,8 +267,9 @@ pub trait AddDiagonalVectorInPlace<V> {
 
 /// `n × n` identity matrix constructor. The smallest piece of matrix
 /// "fabric" needed by CMA-ES, which initializes its covariance as
-/// `C = I` (Hansen 2016, "Initialization" in Figure 6) but is generic
-/// over the matrix type.
+/// `C = I` by default (Hansen 2016, "Initialization" in Figure 6) but is
+/// generic over the matrix type. (An anisotropic initial covariance from
+/// per-coordinate stds uses [`MatrixFromDiagonal`] instead.)
 ///
 /// # Contract
 ///
@@ -284,6 +285,33 @@ pub trait AddDiagonalVectorInPlace<V> {
 pub trait MatrixIdentity {
     /// Build the `n × n` identity matrix.
     fn identity(n: usize) -> Self;
+}
+
+/// `n × n` diagonal-matrix constructor from a vector: builds the matrix
+/// with `diag[i]` on the diagonal and `0` elsewhere. The constructor
+/// counterpart of [`MatDiagonal::diagonal`] (which extracts the diagonal).
+/// CMA-ES uses it to seed an anisotropic initial covariance
+/// `C = diag(stds²)` from a per-coordinate initial step-size vector
+/// (`CmaEs::with_stds`); the isotropic default still uses
+/// [`MatrixIdentity::identity`].
+///
+/// # Contract
+///
+/// - **Implementor must:** return a square `n × n` matrix (`n = diag`'s
+///   length) with `out[(i, i)] = diag[i]` and `0` off the diagonal.
+///   Allocates fresh storage per call. The op is `O(n²)` (dense fill).
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`) and
+/// `faer::Mat<f64>` (over `Col<f64>`) — the dense matrix backends that
+/// support [`SymmetricEigen`], which is CMA-ES's gating requirement.
+/// Sparse counterparts are intentionally unimplemented, matching
+/// [`MatrixIdentity`].
+pub trait MatrixFromDiagonal<V> {
+    /// Build the `n × n` matrix with `diag[i]` on the diagonal, `0`
+    /// elsewhere.
+    fn from_diagonal(diag: &V) -> Self;
 }
 
 /// Maps a vector backend to its canonical dense matrix type and builds a

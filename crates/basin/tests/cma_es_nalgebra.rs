@@ -2,7 +2,8 @@
 
 use basin::problems::{Rosenbrock, Sphere};
 use basin::{
-    BasicPopulationState, CmaEs, Executor, PopulationState, StepOutcome, TerminationReason,
+    BasicPopulationState, CmaEs, CostFunction, Executor, PopulationState, StepOutcome,
+    TerminationReason,
 };
 use nalgebra::{DMatrix, DVector};
 
@@ -130,6 +131,115 @@ fn sphere_terminates_solver_converged_on_tol_x() {
     .run();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
+}
+
+/// `with_stds(ones)` must reproduce the isotropic `C = I` default
+/// bit-for-bit: the only difference is the first-generation sampling path
+/// (`m + σ B (D ⊙ z)` vs `m + σ z`), which is exactly identical when
+/// `B = I` and `D = 1`. Guards the bit-identity claim that lets existing
+/// users keep today's behavior unchanged.
+#[test]
+fn with_stds_ones_matches_default() {
+    let m0 = DVector::from_vec(vec![0.5, 0.5, 0.5, 0.5, 0.5]);
+    let lambda = CmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(5);
+    let ones = DVector::from_element(5, 1.0);
+
+    let default = Executor::new(
+        Sphere::<DVector<f64>>::new(),
+        CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0.clone(), 0.3, 42),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    let with_ones = Executor::new(
+        Sphere::<DVector<f64>>::new(),
+        CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 42).with_stds(ones),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    assert_eq!(default.cost(), with_ones.cost());
+    assert_eq!(default.param(), with_ones.param());
+    assert_eq!(default.reason, with_ones.reason);
+}
+
+/// Anisotropic stds on the (well-conditioned) Sphere must still converge:
+/// per-coordinate scaling rescales the initial distribution but does not
+/// break the adaptation. Correctness check, not a speedup claim.
+#[test]
+fn with_stds_anisotropic_converges_on_sphere() {
+    let m0 = DVector::from_vec(vec![1.0; 5]);
+    let lambda = CmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(5);
+    let stds = DVector::from_vec(vec![1.0, 0.1, 10.0, 0.5, 2.0]);
+
+    let result = Executor::new(
+        Sphere::<DVector<f64>>::new(),
+        CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 7).with_stds(stds),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(120)
+    .run();
+
+    assert!(
+        result.cost() < 1e-6,
+        "anisotropic sphere 5-D cost = {}, expected < 1e-6",
+        result.cost()
+    );
+}
+
+/// The motivating case: an ill-scaled quadratic `f(x) = x₀² + 1e6 · x₁²`.
+/// Preconditioning with `with_stds([1, 1e-3])` rescales the search to ~unit
+/// conditioning, so CMA-ES reaches a low cost within a modest budget
+/// instead of spending generations learning the 1e6 scale ratio.
+#[test]
+fn with_stds_preconditions_ill_scaled_quadratic() {
+    struct IllScaledQuadratic;
+    impl CostFunction for IllScaledQuadratic {
+        type Param = DVector<f64>;
+        type Output = f64;
+        fn cost(&self, x: &DVector<f64>) -> f64 {
+            x[0] * x[0] + 1e6 * x[1] * x[1]
+        }
+    }
+
+    let m0 = DVector::from_vec(vec![2.0, 2.0]);
+    let lambda = CmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(2);
+    let stds = DVector::from_vec(vec![1.0, 1e-3]);
+
+    let result = Executor::new(
+        IllScaledQuadratic,
+        CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 7).with_stds(stds),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(300)
+    .run();
+
+    assert!(
+        result.cost() < 1e-6,
+        "preconditioned ill-scaled quadratic cost = {}, expected < 1e-6",
+        result.cost()
+    );
+}
+
+/// `with_stds` panics when the std vector length doesn't match the mean.
+#[test]
+#[should_panic(expected = "stds.len() == initial_mean.len()")]
+fn with_stds_panics_on_length_mismatch() {
+    let m0 = DVector::from_vec(vec![0.0, 0.0, 0.0]);
+    let _ = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 42)
+        .with_stds(DVector::from_vec(vec![1.0, 1.0]));
+}
+
+/// `with_stds` panics on a non-positive std (would make `1/std` non-finite
+/// in the `C^{−1/2}` factor).
+#[test]
+#[should_panic(expected = "every std > 0")]
+fn with_stds_panics_on_nonpositive() {
+    let m0 = DVector::from_vec(vec![0.0, 0.0]);
+    let _ = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 42)
+        .with_stds(DVector::from_vec(vec![1.0, 0.0]));
 }
 
 /// Sort + length invariants survive iteration. PopulationState's

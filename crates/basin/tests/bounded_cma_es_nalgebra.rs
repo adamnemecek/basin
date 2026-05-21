@@ -36,6 +36,76 @@ fn same_seed_yields_identical_trajectory() {
     assert_eq!(result_a.param(), result_b.param());
 }
 
+/// `with_stds(ones)` reproduces the isotropic default bit-for-bit on the
+/// bounded variant: the adaptive boundary penalty reads `σ² · diag(C)`,
+/// which is unchanged when `C = diag(1²) = I`, so the full trajectory
+/// matches.
+#[test]
+fn with_stds_ones_matches_default() {
+    let lower = DVector::from_vec(vec![-5.0, -5.0]);
+    let upper = DVector::from_vec(vec![5.0, 5.0]);
+    let m0 = DVector::from_vec(vec![0.0, 0.0]);
+    let lambda = BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(2);
+    let ones = DVector::from_element(2, 1.0);
+
+    let default = Executor::new(
+        BoothBoxed::<DVector<f64>>::new(lower.clone(), upper.clone()),
+        BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::new(m0.clone(), 0.5, 42),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    let with_ones = Executor::new(
+        BoothBoxed::<DVector<f64>>::new(lower, upper),
+        BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 42).with_stds(ones),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    assert_eq!(default.cost(), with_ones.cost());
+    assert_eq!(default.param(), with_ones.param());
+    assert_eq!(default.reason, with_ones.reason);
+}
+
+/// Anisotropic stds on the bounded variant still recover the interior
+/// Booth minimum (1, 3) within budget — the per-coordinate scale flows
+/// through the penalty's `σ² · diag(C)` without breaking convergence.
+#[test]
+fn with_stds_anisotropic_recovers_minimum() {
+    let lower = DVector::from_vec(vec![-5.0, -5.0]);
+    let upper = DVector::from_vec(vec![5.0, 5.0]);
+    let m0 = DVector::from_vec(vec![0.0, 0.0]);
+    let lambda = BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::default_lambda(2);
+    let stds = DVector::from_vec(vec![0.5, 2.0]);
+
+    let result = Executor::new(
+        BoothBoxed::<DVector<f64>>::new(lower, upper),
+        BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 7).with_stds(stds),
+        BasicPopulationState::<DVector<f64>>::with_size(lambda),
+    )
+    .max_iter(400)
+    .run();
+
+    let p = result.param();
+    assert!(
+        (p[0] - 1.0).abs() < 1e-2 && (p[1] - 3.0).abs() < 1e-2,
+        "iterate = ({}, {}), expected ≈ (1, 3)",
+        p[0],
+        p[1]
+    );
+}
+
+/// `with_stds` panics on a length mismatch (bounded variant).
+#[test]
+#[should_panic(expected = "stds.len() == initial_mean.len()")]
+fn with_stds_panics_on_length_mismatch() {
+    let m0 = DVector::from_vec(vec![0.0, 0.0]);
+    let _ = BoundedCmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 42)
+        .with_stds(DVector::from_vec(vec![1.0]));
+}
+
 /// Slack bounds: the unconstrained Booth minimum (1, 3) is interior to
 /// [-5, 5]², so the bounded solver must reach it. Tests that the
 /// adaptive penalty machinery doesn't get in the way when the bounds

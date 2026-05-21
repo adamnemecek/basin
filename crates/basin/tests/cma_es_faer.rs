@@ -102,6 +102,62 @@ fn sphere_terminates_solver_converged_on_tol_x() {
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
 
+/// `with_stds(ones)` reproduces the isotropic default bit-for-bit on the
+/// faer backend (the identity matvec / unit component-mul are exact, so
+/// the `m + σ B (D ⊙ z)` path equals `m + σ z`).
+#[test]
+fn with_stds_ones_matches_default() {
+    let m0 = Col::<f64>::from_fn(5, |_| 0.5);
+    let lambda = CmaEs::<Col<f64>, Mat<f64>>::default_lambda(5);
+    let ones = Col::<f64>::from_fn(5, |_| 1.0);
+
+    let default = Executor::new(
+        Sphere::<Col<f64>>::new(),
+        CmaEs::<Col<f64>, Mat<f64>>::new(m0.clone(), 0.3, 42),
+        BasicPopulationState::<Col<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    let with_ones = Executor::new(
+        Sphere::<Col<f64>>::new(),
+        CmaEs::<Col<f64>, Mat<f64>>::new(m0, 0.3, 42).with_stds(ones),
+        BasicPopulationState::<Col<f64>>::with_size(lambda),
+    )
+    .max_iter(40)
+    .run();
+
+    assert_eq!(default.cost(), with_ones.cost());
+    let (a, b) = (default.param(), with_ones.param());
+    assert_eq!(a.nrows(), b.nrows());
+    for i in 0..a.nrows() {
+        assert_eq!(a[i], b[i]);
+    }
+    assert_eq!(default.reason, with_ones.reason);
+}
+
+/// Anisotropic stds still converge on Sphere (faer backend).
+#[test]
+fn with_stds_anisotropic_converges_on_sphere() {
+    let m0 = Col::<f64>::from_fn(5, |_| 1.0);
+    let lambda = CmaEs::<Col<f64>, Mat<f64>>::default_lambda(5);
+    let stds = Col::<f64>::from_fn(5, |i| [1.0, 0.1, 10.0, 0.5, 2.0][i]);
+
+    let result = Executor::new(
+        Sphere::<Col<f64>>::new(),
+        CmaEs::<Col<f64>, Mat<f64>>::new(m0, 0.5, 7).with_stds(stds),
+        BasicPopulationState::<Col<f64>>::with_size(lambda),
+    )
+    .max_iter(120)
+    .run();
+
+    assert!(
+        result.cost() < 1e-6,
+        "anisotropic sphere 5-D cost = {}, expected < 1e-6",
+        result.cost()
+    );
+}
+
 /// PopulationState invariants survive iteration on faer.
 #[test]
 fn population_invariants_hold_after_iteration() {
