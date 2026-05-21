@@ -287,7 +287,7 @@ export function smoothChaikin(chain: number[], iterations: number): number[] {
     return pts;
 }
 
-function transform(c: number, intensity: 'linear' | 'sqrt' | 'log1p'): number {
+export function transform(c: number, intensity: 'linear' | 'sqrt' | 'log1p'): number {
     if (!Number.isFinite(c) || c < 0) return 0;
     switch (intensity) {
         case 'sqrt':

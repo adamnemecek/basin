@@ -1,4 +1,5 @@
 <script lang="ts">
+import type { Component } from "svelte";
 import Prism from "prismjs";
 import "prismjs/components/prism-rust";
 import {
@@ -8,11 +9,13 @@ import {
     BETA_STEP,
     DEFAULT_CONFIG,
     MAXITER_STEPS,
+    buildOutputLine,
     generateSnippet,
     nearestIndex,
     rustFloat,
     rustInt,
     type PlaygroundConfig,
+    type RunOutput,
 } from "./codegen";
 
 // We highlight by hand (per line), so stop Prism from auto-scanning the
@@ -88,9 +91,60 @@ async function copyCode() {
         // Clipboard unavailable (e.g. insecure context) — no-op.
     }
 }
+
+// --- Live contour (Phase 2) ------------------------------------------
+// The contour component pulls in wasm + ContourPlot, so it is loaded
+// lazily and client-only — never imported on the server or in the hero
+// bundle. An IntersectionObserver boots it the first time the plot
+// scrolls into view, protecting the landing page's load/LCP.
+type ContourProps = {
+    alpha: number;
+    beta: number;
+    maxIter: number;
+    start: [number, number];
+    onPick: (p: { x: number; y: number }) => void;
+    onResult: (o: RunOutput) => void;
+};
+let contourEl = $state<HTMLElement>();
+let ContourComp = $state<Component<ContourProps> | null>(null);
+
+// Latest run result for the live output console. Null until the contour
+// has booted and reported (so SSR / pre-scroll shows a placeholder).
+let output = $state<RunOutput | null>(null);
+function handleResult(o: RunOutput) {
+    output = o;
+}
+const outputText = $derived(
+    output
+        ? buildOutputLine(output.paramDebug, output.costDisplay)
+        : "Run output appears here once the solver runs.",
+);
+
+$effect(() => {
+    if (!contourEl || ContourComp) return;
+    const io = new IntersectionObserver(
+        (entries) => {
+            if (entries.some((e) => e.isIntersecting)) {
+                io.disconnect();
+                import("./PlaygroundContour.svelte").then((m) => {
+                    ContourComp = m.default as Component<ContourProps>;
+                });
+            }
+        },
+        { rootMargin: "200px" },
+    );
+    io.observe(contourEl);
+    return () => io.disconnect();
+});
+
+// Clicking the contour moves the start point — rounded for a clean code
+// literal — which re-runs the solve and rewrites `BasicState::new(...)`.
+function handlePick(p: { x: number; y: number }) {
+    cfg.start = [Math.round(p.x * 100) / 100, Math.round(p.y * 100) / 100];
+}
 </script>
 
-<div class="grid lg:grid-cols-[1fr_1.4fr] gap-8 items-start">
+<div class="grid xl:grid-cols-2 gap-8 items-start">
     <div>
         <h2 class="text-2xl font-semibold tracking-tight">A Small Example</h2>
         <p class="mt-3 text-slate-600 dark:text-slate-300">
@@ -98,13 +152,34 @@ async function copyCode() {
             <code class="font-mono text-sm">Gradient</code>, then hand your
             problem, a solver, and a starting point to the
             <code class="font-mono text-sm">Executor</code>. Here it's gradient
-            descent on the Rosenbrock valley — turn up momentum or change the
-            step size, and watch the code rewrite itself.
+            descent on the Rosenbrock valley — drag the sliders, or click the
+            plot to move the start, and watch the run and the code update
+            together.
         </p>
-        <p class="mt-3 text-slate-600 dark:text-slate-300">
-            Every snippet this playground can produce is built by CI against
-            the real API — so the demo can't drift from the library.
-        </p>
+
+        <!-- Live solver. Lazily booted on scroll (see the IntersectionObserver
+             above) so the wasm never weighs on the hero's initial load. -->
+        <div
+            bind:this={contourEl}
+            class="relative mt-6 w-full max-w-2xl aspect-[3/2] mx-auto xl:max-w-none xl:mx-0 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 overflow-hidden"
+        >
+            {#if ContourComp}
+                <ContourComp
+                    alpha={cfg.alpha}
+                    beta={cfg.beta}
+                    maxIter={cfg.maxIter}
+                    start={cfg.start}
+                    onPick={handlePick}
+                    onResult={handleResult}
+                />
+            {:else}
+                <div
+                    class="absolute inset-0 grid place-items-center px-6 text-center text-xs text-slate-500 dark:text-slate-400"
+                >
+                    Live solver — animates as it scrolls into view.
+                </div>
+            {/if}
+        </div>
 
         <div class="mt-6 flex flex-col gap-4 text-sm">
             <label class="flex flex-col gap-1">
@@ -186,6 +261,7 @@ async function copyCode() {
         </div>
     </div>
 
+    <div class="flex flex-col gap-4">
     <div
         class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden"
     >
@@ -205,6 +281,34 @@ async function copyCode() {
         </div>
         <!-- prettier-ignore -->
         <pre class="p-4 overflow-x-auto text-sm leading-relaxed"><code class="rust-hl font-mono">{#each highlightedLines as html, i (i)}<span class="code-line" class:flash={flashed.has(i)}>{@html html}</span>{/each}</code></pre>
+    </div>
+
+    <!-- Live program output. The values are Rust-formatted in wasm
+         (Run.paramDebug / costDisplay), so this is the snippet's real
+         stdout, not a JS approximation. -->
+    <div
+        class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden"
+    >
+        <div
+            class="px-4 py-2 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3"
+        >
+            <span class="text-xs font-mono text-slate-500 dark:text-slate-400"
+                >Output</span
+            >
+            {#if output}
+                <span
+                    class="text-[10px] font-mono uppercase tracking-wide text-slate-400 dark:text-slate-500"
+                    >{output.done ? "done" : "running…"}</span
+                >
+            {/if}
+        </div>
+        <pre
+            class="px-4 py-3 overflow-x-auto text-sm leading-relaxed"><code
+                class="font-mono {output
+                    ? 'text-slate-700 dark:text-slate-300'
+                    : 'text-slate-400 dark:text-slate-500'}">{outputText}</code
+            ></pre>
+    </div>
     </div>
 </div>
 

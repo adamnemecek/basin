@@ -83,7 +83,9 @@
             activeRun = null;
         }
 
-        const run = new Run(pk, sk, sx, sy, a, mi);
+        // β = 0: the visualizer has no momentum knob (the landing-page
+        // playground does). Plain steepest descent for the GD solvers.
+        const run = new Run(pk, sk, sx, sy, a, 0, mi);
         activeRun = run;
         trajectory = run.trajectoryXy();
         costs = run.costs();

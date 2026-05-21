@@ -218,9 +218,11 @@ impl Run {
     /// Construct a new run for the given `(problem, solver)` starting
     /// at `(x0, y0)`. `gd_alpha` is the constant step size for
     /// `GradientDescentConstant` (ignored for the other solvers; pass
-    /// any value, e.g. `0.0`). `max_iter` caps the total number of
-    /// iterations; subsequent `step_many` calls cumulatively count
-    /// against this cap.
+    /// any value, e.g. `0.0`). `gd_beta` is the heavy-ball momentum
+    /// coefficient for the gradient-descent solvers — `0.0` disables it
+    /// (plain steepest descent); ignored for Nelder–Mead. `max_iter` caps
+    /// the total number of iterations; subsequent `step_many` calls
+    /// cumulatively count against this cap.
     #[wasm_bindgen(constructor)]
     pub fn new(
         problem: ProblemKind,
@@ -228,6 +230,7 @@ impl Run {
         x0: f64,
         y0: f64,
         gd_alpha: f64,
+        gd_beta: f64,
         max_iter: u32,
     ) -> Run {
         install_panic_hook();
@@ -237,13 +240,13 @@ impl Run {
         let inner = match solver {
             SolverKind::GradientDescentConstant => Inner::GdConstant(make_stepper(
                 p,
-                GradientDescent::new(gd_alpha),
+                GradientDescent::new(gd_alpha).with_momentum(gd_beta),
                 &initial,
                 max_iter,
             )),
             SolverKind::GradientDescentBacktracking => Inner::GdBacktracking(make_stepper(
                 p,
-                GradientDescent::with_line_search(Backtracking::new()),
+                GradientDescent::with_line_search(Backtracking::new()).with_momentum(gd_beta),
                 &initial,
                 max_iter,
             )),
@@ -303,6 +306,29 @@ impl Run {
     /// Termination reason string, or empty if still running.
     pub fn reason(&self) -> String {
         self.finished.map(reason_str).unwrap_or("").to_string()
+    }
+
+    /// The current parameter vector, Debug-formatted by Rust exactly as
+    /// `println!("{:?}", result.param())` would print it. The landing-page
+    /// playground shows this in its live "output" console, so the console
+    /// is the program's real stdout (Rust formatting), not a JS guess.
+    #[wasm_bindgen(js_name = paramDebug)]
+    pub fn param_debug(&self) -> String {
+        let n = self.trajectory.len();
+        let param: &[f64] = if n >= 2 {
+            &self.trajectory[n - 2..n]
+        } else {
+            &[]
+        };
+        // Slice Debug matches `Vec<f64>` Debug: both print `[x, y]`.
+        format!("{param:?}")
+    }
+
+    /// The current cost, Display-formatted by Rust exactly as
+    /// `println!("{}", result.cost())` would print it. See [`Self::param_debug`].
+    #[wasm_bindgen(js_name = costDisplay)]
+    pub fn cost_display(&self) -> String {
+        format!("{}", self.costs.last().copied().unwrap_or(f64::NAN))
     }
 }
 
@@ -401,6 +427,7 @@ mod tests {
             -1.2,
             1.0,
             0.001,
+            0.0,
             500,
         );
         assert_eq!(run.iter(), 0);
@@ -421,6 +448,7 @@ mod tests {
             1.0,
             1.0,
             0.5,
+            0.0,
             5,
         );
         let r = run.step_many_inner(100);

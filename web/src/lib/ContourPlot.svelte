@@ -1,6 +1,12 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { chainSegments, chooseLevels, isoContour, smoothChaikin } from './contours';
+    import {
+        chainSegments,
+        chooseLevels,
+        isoContour,
+        smoothChaikin,
+        transform,
+    } from './contours';
     import { paletteFor, type Theme } from './palette';
     import type { Domain, ProblemMeta } from './problems';
 
@@ -13,6 +19,9 @@
         startPoint: { x: number; y: number };
         theme: Theme;
         onPick: (p: { x: number; y: number }) => void;
+        /** Draw contour lines as a grey topographic ramp instead of the
+         *  colored (viridis) palette. Trajectory/markers stay accented. */
+        monochrome?: boolean;
     };
 
     let {
@@ -24,9 +33,76 @@
         startPoint,
         theme,
         onPick,
+        monochrome = false,
     }: Props = $props();
 
     let palette = $derived(paletteFor(theme));
+
+    // White contour edges in monochrome mode. Fainter on dark so the
+    // (white) trajectory still reads over them; on light they sit over the
+    // grey heatmap fill. `t` is unused — depth comes from the per-level
+    // line width in `renderContours`.
+    function whiteEdge(_t: number): string {
+        return theme === 'dark'
+            ? 'rgba(255, 255, 255, 0.35)'
+            : 'rgba(255, 255, 255, 0.9)';
+    }
+    let contourStroke = $derived(monochrome ? whiteEdge : palette.contour);
+
+    // Light-grey (dark mode: dark-grey) heatmap fill from the cost grid,
+    // normalized through the same intensity transform the levels use. Drawn
+    // once per contour render (not per animation frame) onto the contour
+    // canvas, beneath the white edges.
+    function drawHeatmap(ctx: CanvasRenderingContext2D, w: number, h: number) {
+        let cmin = Infinity;
+        let cmax = -Infinity;
+        for (let i = 0; i < grid.length; i++) {
+            const v = grid[i];
+            if (!Number.isFinite(v)) continue;
+            if (v < cmin) cmin = v;
+            if (v > cmax) cmax = v;
+        }
+        const tmin = transform(Math.max(cmin, 0), problem.intensity);
+        const tmax = transform(cmax, problem.intensity);
+        const span = tmax - tmin || 1;
+        const dark = theme === 'dark';
+        const off = document.createElement('canvas');
+        off.width = nx;
+        off.height = ny;
+        const octx = off.getContext('2d');
+        if (!octx) return;
+        const img = octx.createImageData(nx, ny);
+        for (let j = 0; j < ny; j++) {
+            for (let i = 0; i < nx; i++) {
+                const v = grid[j * nx + i];
+                const t = Number.isFinite(v)
+                    ? Math.max(
+                          0,
+                          Math.min(
+                              1,
+                              (transform(v, problem.intensity) - tmin) / span,
+                          ),
+                      )
+                    : 0;
+                // Darker deeper in the valley: t = 0 is the lowest cost
+                // (basin floor), so grey rises with t. Kept in a light band
+                // overall, with the floor only moderately darker.
+                const grey = dark
+                    ? Math.round(45 + 45 * t)
+                    : Math.round(195 + 50 * t);
+                // ImageData row 0 is the top of the canvas (ymax); grid j = 0
+                // is ymin, so flip vertically.
+                const idx = ((ny - 1 - j) * nx + i) * 4;
+                img.data[idx] = grey;
+                img.data[idx + 1] = grey;
+                img.data[idx + 2] = grey;
+                img.data[idx + 3] = 255;
+            }
+        }
+        octx.putImageData(img, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(off, 0, 0, w, h);
+    }
 
     let canvas: HTMLCanvasElement | undefined = $state();
     let overlay: HTMLCanvasElement | undefined = $state();
@@ -65,7 +141,7 @@
     // Render contours when contours, sizing, theme, or domain change.
     $effect(() => {
         if (!canvas) return;
-        renderContours(canvas, problem.domain, isoLines, palette);
+        renderContours(canvas, problem.domain, isoLines, palette, contourStroke);
     });
 
     // Trajectory + markers go on a separate overlay so they redraw cheaply
@@ -127,6 +203,7 @@
         d: Domain,
         lines: { level: number; chains: number[][] }[],
         pal: ReturnType<typeof paletteFor>,
+        stroke: (t: number) => string,
     ) {
         const dpr = window.devicePixelRatio || 1;
         const w = containerWidth;
@@ -139,8 +216,12 @@
         if (!ctx) return;
         ctx.scale(dpr, dpr);
 
-        ctx.fillStyle = pal.surface;
-        ctx.fillRect(0, 0, w, h);
+        if (monochrome) {
+            drawHeatmap(ctx, w, h);
+        } else {
+            ctx.fillStyle = pal.surface;
+            ctx.fillRect(0, 0, w, h);
+        }
 
         if (lines.length === 0) return;
 
@@ -154,7 +235,7 @@
             const chains = lines[li].chains;
             if (chains.length === 0) continue;
             const t = li / Math.max(lines.length - 1, 1);
-            ctx.strokeStyle = pal.contour(1 - t);
+            ctx.strokeStyle = stroke(1 - t);
             // Inner contours a hair thicker so the basin reads.
             ctx.lineWidth = 1 + (1 - t) * 0.6;
             ctx.beginPath();
@@ -225,16 +306,26 @@
         ctx.strokeStyle = pal.startMarker;
         ctx.stroke();
 
-        // Known minimum (cross).
+        // Known minimum: an orange disc in monochrome mode (the optimum
+        // "target"); the original red cross otherwise (visualizer).
         const [mx, my] = dataToPixel(minimum.x, minimum.y, d, w, h);
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = pal.minimum;
-        ctx.beginPath();
-        ctx.moveTo(mx - 6, my);
-        ctx.lineTo(mx + 6, my);
-        ctx.moveTo(mx, my - 6);
-        ctx.lineTo(mx, my + 6);
-        ctx.stroke();
+        if (monochrome) {
+            // Orange ring marking the optimum.
+            ctx.beginPath();
+            ctx.arc(mx, my, 8, 0, Math.PI * 2);
+            ctx.lineWidth = 2.5;
+            ctx.strokeStyle = 'rgb(249, 115, 22)'; // orange-500
+            ctx.stroke();
+        } else {
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = pal.minimum;
+            ctx.beginPath();
+            ctx.moveTo(mx - 6, my);
+            ctx.lineTo(mx + 6, my);
+            ctx.moveTo(mx, my - 6);
+            ctx.lineTo(mx, my + 6);
+            ctx.stroke();
+        }
     }
 
     function handlePointer(ev: PointerEvent) {

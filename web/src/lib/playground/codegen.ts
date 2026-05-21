@@ -27,18 +27,21 @@ export interface PlaygroundConfig {
     beta: number;
     /** `max_iter` budget. */
     maxIter: number;
+    /** Initial point `[x, y]` — set by clicking the live contour. */
+    start: [number, number];
 }
 
 // Discrete, "nice" values for the sliders so the generated literals stay
 // clean (1-2-5 sequences rather than the messy output of a log slider).
+// α is capped at 0.002: on Rosenbrock from this start, larger constant
+// steps overshoot the valley and the trajectory diverges off the plotted
+// box. Momentum (β) is the knob for going faster, not a bigger α.
 export const ALPHA_STEPS: readonly number[] = [
-    1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3, 5e-3, 1e-2, 2e-2, 5e-2, 0.1,
-    0.2, 0.5, 1.0,
+    1e-5, 2e-5, 5e-5, 1e-4, 2e-4, 5e-4, 1e-3, 2e-3,
 ];
-// Capped at 5000: the snippet is illustrative today, but Phase 2 will run
-// it live beside the code, and tens of thousands of GD iterations would
-// make the animation sluggish. Keep the budget modest.
-export const MAXITER_STEPS: readonly number[] = [100, 200, 500, 1000, 2000, 5000];
+// Capped at 500: the live contour runs this on every change, so a modest
+// budget keeps the animation snappy (and it's plenty to show the descent).
+export const MAXITER_STEPS: readonly number[] = [100, 200, 300, 500];
 
 // Momentum β is a linear 0–1 knob, so it gets a plain fine-grained slider
 // (not the 1-2-5 index steps α / max_iter use for their multi-decade
@@ -50,11 +53,10 @@ export const BETA_STEP = 0.01;
 export const DEFAULT_CONFIG: PlaygroundConfig = {
     alpha: 1e-3,
     beta: 0,
-    maxIter: 1000,
+    maxIter: 500,
+    // The canonical Rosenbrock start, matching the hero illustration.
+    start: [-1.2, 1.0],
 };
-
-// The canonical Rosenbrock start, matching the hero illustration.
-const START: readonly [number, number] = [-1.2, 1.0];
 
 const COST_IMPL = `impl CostFunction for Rosenbrock {
     type Param = Vec<f64>;
@@ -109,6 +111,27 @@ export function rustInt(n: number): string {
 }
 
 /**
+ * Shape of the single line the snippet prints, shared by the generated
+ * `println!` and the live "output" console so the two can never disagree.
+ * The snippet fills the slots with Rust format specifiers (`{:?}`, `{}`);
+ * the console fills them with the matching Rust-formatted values pulled
+ * from the wasm run (`Run.paramDebug()` / `Run.costDisplay()`).
+ */
+export function buildOutputLine(param: string, cost: string): string {
+    return `x = ${param} (f = ${cost})`;
+}
+
+/** Live result reported by the contour, used to render the output console. */
+export type RunOutput = {
+    /** True once the run has finished (`.run()` returns / `println!` fires). */
+    done: boolean;
+    /** `result.param()` Debug-formatted by Rust (e.g. `[0.99, 0.98]`). */
+    paramDebug: string;
+    /** `result.cost()` Display-formatted by Rust. */
+    costDisplay: string;
+};
+
+/**
  * Generate a complete, copy-pasteable, compilable Rust program for the
  * given playground configuration.
  */
@@ -118,7 +141,7 @@ export function generateSnippet(cfg: PlaygroundConfig): string {
         solverExpr += `.with_momentum(${rustFloat(cfg.beta)})`;
     }
 
-    const startVec = `vec![${rustFloat(START[0])}, ${rustFloat(START[1])}]`;
+    const startVec = `vec![${rustFloat(cfg.start[0])}, ${rustFloat(cfg.start[1])}]`;
 
     return (
         [
@@ -138,9 +161,7 @@ export function generateSnippet(cfg: PlaygroundConfig): string {
             `        .max_iter(${rustInt(cfg.maxIter)})`,
             '        .run();',
             '',
-            '    println!("x = {:?}", result.param());',
-            '    println!("f = {}", result.cost());',
-            '    println!("stopped: {:?}", result.reason);',
+            `    println!("${buildOutputLine('{:?}', '{}')}", result.param(), result.cost());`,
             '}',
         ].join('\n') + '\n'
     );
