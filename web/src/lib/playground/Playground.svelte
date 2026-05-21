@@ -228,11 +228,6 @@ function handlePick(p: { x: number; y: number }) {
                                 ) * 100,
                             ) / 100)}
                 />
-                <span class="text-slate-500 dark:text-slate-400 text-xs">
-                    Far left (off) is plain steepest descent, which zig-zags
-                    across the valley; turn it up and momentum (Polyak 1964)
-                    glides along the floor.
-                </span>
             </label>
 
             <label class="flex flex-col gap-1">
