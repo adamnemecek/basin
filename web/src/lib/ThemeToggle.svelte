@@ -1,31 +1,40 @@
 <script lang="ts">
-    import { theme, type ThemePreference } from './theme.svelte';
+    import { theme } from './theme.svelte';
+    import IconSun from '~icons/lucide/sun';
+    import IconMoon from '~icons/lucide/moon';
 
-    const OPTIONS: { value: ThemePreference; label: string; title: string }[] = [
-        { value: 'light', label: 'Light', title: 'Force light theme' },
-        { value: 'auto', label: 'Auto', title: 'Follow system preference' },
-        { value: 'dark', label: 'Dark', title: 'Force dark theme' },
-    ];
+    // Single-button toggle: the icon shows the *current* effective theme
+    // and clicking flips to the explicit opposite. There's no "auto"
+    // button — `auto` (follow the OS) is the default for first-time
+    // visitors and stays in effect until the first click overrides it.
+    //
+    // Icon visibility is driven by the `dark:` variant (i.e. the `.dark`
+    // class on <html>), not by JS. The no-FOUC script in `app.html` sets
+    // that class before first paint, so the correct icon shows with no
+    // hydration flash.
 </script>
 
-<div
-    role="radiogroup"
-    aria-label="Color theme"
-    class="inline-flex rounded-md border border-slate-300 bg-slate-100 p-0.5 text-xs dark:border-slate-700 dark:bg-slate-800"
+<button
+    type="button"
+    class="inline-flex items-center justify-center rounded-md p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800 transition-colors"
+    aria-label={theme.effective === 'dark'
+        ? 'Switch to light theme'
+        : 'Switch to dark theme'}
+    title={theme.effective === 'dark'
+        ? 'Switch to light theme'
+        : 'Switch to dark theme'}
+    onclick={() => theme.set(theme.effective === 'dark' ? 'light' : 'dark')}
 >
-    {#each OPTIONS as opt}
-        <button
-            type="button"
-            role="radio"
-            aria-checked={theme.preference === opt.value}
-            title={opt.title}
-            onclick={() => theme.set(opt.value)}
-            class="px-2 py-1 rounded transition-colors {theme.preference ===
-            opt.value
-                ? 'bg-white text-slate-900 shadow-sm dark:bg-slate-950 dark:text-slate-100'
-                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100'}"
-        >
-            {opt.label}
-        </button>
-    {/each}
-</div>
+    <IconSun
+        width="18"
+        height="18"
+        class="block dark:hidden"
+        aria-hidden="true"
+    />
+    <IconMoon
+        width="18"
+        height="18"
+        class="hidden dark:block"
+        aria-hidden="true"
+    />
+</button>

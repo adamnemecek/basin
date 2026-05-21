@@ -20,8 +20,8 @@ const axes = [
 </script>
 
 <Seo
-    title="basin — benchmarks"
-    description="Benchmarks and solver comparisons for the basin optimization library (coming soon)."
+    title="Basin — benchmarks"
+    description="Benchmarks and solver comparisons for the Basin optimization library (coming soon)."
 />
 
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
@@ -34,7 +34,7 @@ const axes = [
         Benchmarks
     </h1>
     <p class="mt-4 max-w-2xl text-slate-600 dark:text-slate-300">
-        This page will publish basin's benchmark results and solver comparisons
+        This page will publish Basin's benchmark results and solver comparisons
         on classical optimization problems. The benchmark harness already exists
         in the repository; wiring its results into the site is the next step.
     </p>

@@ -21,11 +21,6 @@ export const NAV_LINKS: NavLink[] = [
     { label: 'Docs', href: '/docs/getting-started/', section: 'docs' },
     { label: 'Visualizer', href: '/visualizer/', section: 'visualizer' },
     { label: 'Benchmarks', href: '/benchmarks/', section: 'benchmarks' },
-    {
-        label: 'GitHub',
-        href: 'https://github.com/jolars/basin',
-        external: true,
-    },
 ];
 
 /** Sidebar links for the docs section. */

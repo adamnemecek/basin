@@ -1,46 +1,46 @@
 <script lang="ts">
-    import { base } from '$app/paths';
-    import { page } from '$app/state';
-    import { DOCS_LINKS } from '$lib/nav';
-    import Seo from '$lib/Seo.svelte';
+import { base } from "$app/paths";
+import { page } from "$app/state";
+import { DOCS_LINKS } from "$lib/nav";
+import Seo from "$lib/Seo.svelte";
 
-    let { children } = $props();
+let { children } = $props();
 
-    // Exact-match active state, tolerant of a missing/extra trailing
-    // slash so highlighting survives either URL form.
-    const strip = (s: string) => s.replace(/\/+$/, '');
-    let path = $derived(strip(page.url.pathname));
+// Exact-match active state, tolerant of a missing/extra trailing
+// slash so highlighting survives either URL form.
+const strip = (s: string) => s.replace(/\/+$/, "");
+let path = $derived(strip(page.url.pathname));
 
-    // Per-doc-page <title>/description. The docs `.svx` pages set no
-    // <svelte:head> of their own, so this layout is the single title
-    // source for the whole section (one tag per page, no duplicates).
-    // Keyed by `page.route.id`, which is base-independent (`/docs/solvers`,
-    // never `/basin/...`) — unlike `base` from `$app/paths`, which is a
-    // page-relative string (`../..`) under the default `paths.relative`.
-    const DOCS_META: Record<string, { title: string; description: string }> = {
-        '/docs': {
-            title: 'Documentation — basin',
-            description:
-                'Overview of basin: a generic executor loop drives a solver over a state, calling the problem traits you implement.',
-        },
-        '/docs/getting-started': {
-            title: 'Getting started — basin',
-            description:
-                'Install basin and run your first solve: implement CostFunction, add a Gradient when needed, then drive a solver with the Executor.',
-        },
-        '/docs/solvers': {
-            title: 'Solvers — basin',
-            description:
-                "basin's solver catalogue — first-order, derivative-free, nonlinear least-squares, and evolutionary methods — and the backend each supports.",
-        },
-    };
-    const FALLBACK_META = {
-        title: 'Documentation — basin',
+// Per-doc-page <title>/description. The docs `.svx` pages set no
+// <svelte:head> of their own, so this layout is the single title
+// source for the whole section (one tag per page, no duplicates).
+// Keyed by `page.route.id`, which is base-independent (`/docs/solvers`,
+// never `/basin/...`) — unlike `base` from `$app/paths`, which is a
+// page-relative string (`../..`) under the default `paths.relative`.
+const DOCS_META: Record<string, { title: string; description: string }> = {
+    "/docs": {
+        title: "Documentation — Basin",
         description:
-            'Documentation for basin, a numerical optimization library for Rust.',
-    };
+            "Overview of Basin: a generic executor loop drives a solver over a state, calling the problem traits you implement.",
+    },
+    "/docs/getting-started": {
+        title: "Getting started — Basin",
+        description:
+            "Install Basin and run your first solve: implement CostFunction, add a Gradient when needed, then drive a solver with the Executor.",
+    },
+    "/docs/solvers": {
+        title: "Solvers — Basin",
+        description:
+            "Basin's solver catalogue — first-order, derivative-free, nonlinear least-squares, and evolutionary methods — and the backend each supports.",
+    },
+};
+const FALLBACK_META = {
+    title: "Documentation — Basin",
+    description:
+        "Documentation for Basin, a numerical optimization library for Rust.",
+};
 
-    let meta = $derived(DOCS_META[page.route.id ?? ''] ?? FALLBACK_META);
+let meta = $derived(DOCS_META[page.route.id ?? ""] ?? FALLBACK_META);
 </script>
 
 <Seo title={meta.title} description={meta.description} />

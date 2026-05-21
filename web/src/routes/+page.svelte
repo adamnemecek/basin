@@ -1,5 +1,6 @@
 <script lang="ts">
 import { base } from "$app/paths";
+import IconGithub from "~icons/simple-icons/github";
 import Seo from "$lib/Seo.svelte";
 
 // Kept as a string so Svelte doesn't try to parse the braces in the
@@ -62,55 +63,53 @@ const features = [
 </script>
 
 <Seo
-    title="basin — numerical optimization for Rust"
-    description="basin is a numerical optimization library for Rust: pluggable solvers, multiple linear-algebra backends, first-class constraints, and a wasm-first design."
+    title="Basin — Numerical Optimization for Rust"
+    description="Basin is a numerical optimization library for Rust: pluggable solvers, multiple linear-algebra backends, first-class constraints, and a wasm-first design."
 />
 
-<!-- Hero -->
-<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16 flex gap-6">
-    <div class="max-w-3xl flex-col">
-        <span
-            class="inline-block text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400"
+<!-- Hero. `flow-root` contains the floated logo so it can't bleed into the
+     next section. Below `md` the logo stacks on top (centered); at `md`+ it
+     floats right and the heading/paragraph/buttons wrap around it. -->
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16 flow-root">
+    <img
+        src="{base}/logo.svg"
+        alt="Visualization of optimization trajectories on the Rosenbrock function, a common test problem in optimization."
+        class="mx-auto mb-8 w-3/4 max-w-sm h-auto md:float-right md:mx-0 md:mb-4 md:ml-10 md:w-2/5 md:max-w-sm"
+    />
+    <span
+        class="inline-block text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400"
+    >
+        Alpha · Rust
+    </span>
+    <h1 class="mt-3 text-4xl md:text-6xl font-semibold tracking-tight text-balance">
+        Numerical Optimization in Rust
+    </h1>
+    <p class="mt-5 max-w-2xl text-lg md:text-xl text-slate-600 dark:text-slate-300 text-pretty">
+        <span class="font-semibold">Basin</span> is a solver framework with a
+        generic executor loop over pluggable solvers, multiple linear-algebra
+        backends, first-class constraints, and a wasm-first design.
+    </p>
+    <div class="mt-8 flex flex-wrap gap-3">
+        <a
+            href="{base}/docs/getting-started/"
+            class="px-5 py-2.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white transition-colors"
         >
-            Alpha · Rust
-        </span>
-        <h1 class="mt-3 text-4xl md:text-6xl font-semibold tracking-tight text-balance">
-            Numerical Optimization in Rust
-        </h1>
-        <p class="mt-5 text-lg md:text-xl text-slate-600 dark:text-slate-300 text-pretty">
-            <span class="font-semibold">Basin</span> is a solver framework with
-            a generic executor loop over pluggable solvers, multiple
-            linear-algebra backends, first-class constraints, and a wasm-first
-            design.
-        </p>
-        <div class="mt-8 flex flex-wrap gap-3">
-            <a
-                href="{base}/docs/getting-started/"
-                class="px-5 py-2.5 rounded-lg bg-slate-900 text-white font-medium hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white transition-colors"
-            >
-                Get started
-            </a>
-            <a
-                href="{base}/visualizer/"
-                class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-                Open the visualizer
-            </a>
-            <a
-                href="https://github.com/jolars/basin"
-                target="_blank"
-                rel="noreferrer"
-                class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            >
-                GitHub
-            </a>
-        </div>
-    </div>
-    <div class="flex flex-col">
-        <img
-            src="{base}/logo.svg"
-            alt="Visualization of optimization trajectories on the Rosenbrock function, a common test problem in optimization."
-            class="mt-10 w-full object-cover">
+            Get started
+        </a>
+        <a
+            href="{base}/visualizer/"
+            class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        >
+            Open the visualizer
+        </a>
+        <a
+            href="https://github.com/jolars/basin"
+            target="_blank"
+            rel="noreferrer"
+            class="px-5 py-2.5 rounded-lg border border-slate-300 dark:border-slate-700 font-medium hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors inline-flex items-center gap-2"
+        >
+            <IconGithub class="w-4 h-4" aria-hidden="true" /> Source Code
+        </a>
     </div>
 </section>
 
@@ -118,7 +117,7 @@ const features = [
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 pb-16">
     <div class="grid lg:grid-cols-[1fr_1.4fr] gap-8 items-start">
         <div>
-            <h2 class="text-2xl font-semibold tracking-tight">A minimal solve</h2>
+            <h2 class="text-2xl font-semibold tracking-tight">A Small Example</h2>
             <p class="mt-3 text-slate-600 dark:text-slate-300">
                 Implement <code class="font-mono text-sm">CostFunction</code> (and
                 <code class="font-mono text-sm">Gradient</code>, when your solver
