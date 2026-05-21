@@ -100,3 +100,9 @@ tasks:
       # marker writes to references/<NAME>/source/source.md by default; flatten:
       - mv references/{{.NAME}}/source/source.md references/{{.NAME}}/source.marker.md
       - rm -rf references/{{.NAME}}/source
+
+  web-dev:
+    desc: Start Svelte development server
+    dir: web
+    cmds:
+      - pnpm dev
