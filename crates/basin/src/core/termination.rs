@@ -5,7 +5,7 @@
 
 use web_time::{Duration, Instant};
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{ClampInPlace, NormInfinity, NormSquared, ScaledAdd};
 use crate::core::state::{GradientState, SimplexState, State};
 
@@ -228,7 +228,7 @@ where
 /// always does.
 ///
 /// Construct from explicit bounds with [`new`](Self::new), or clone
-/// them off a [`BoxConstrained`] problem with
+/// them off a [`BoxConstraints`] problem with
 /// [`from_problem`](Self::from_problem). The bounds are stored once at
 /// construction; the criterion does not call back into the problem.
 ///
@@ -248,11 +248,11 @@ impl<P> ProjectedGradientTolerance<P> {
         Self { lower, upper, tol }
     }
 
-    /// New criterion that clones its bounds off a [`BoxConstrained`]
+    /// New criterion that clones its bounds off a [`BoxConstraints`]
     /// problem.
     pub fn from_problem<Pr>(problem: &Pr, tol: f64) -> Self
     where
-        Pr: BoxConstrained<Param = P>,
+        Pr: BoxConstraints<Param = P>,
         P: Clone,
     {
         Self {

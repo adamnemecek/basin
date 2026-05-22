@@ -40,7 +40,7 @@ pub(crate) mod subsm;
 
 use core::marker::PhantomData;
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{Dot, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
@@ -169,14 +169,14 @@ pub struct LBFGS<Mode = Bounded, S = MoreThuente> {
 
 /// Type-state marker for box-constrained L-BFGS-B (the default).
 /// Constructors live on [`LBFGS<Bounded, MoreThuente>`]; the
-/// [`Solver`] impl requires `P: BoxConstrained` and the full
+/// [`Solver`] impl requires `P: BoxConstraints` and the full
 /// [`backend::AsFloatSliceMut`] + [`Dot`] + [`ScaledAdd<f64>`] backend.
 /// [`LBFGSB`] is the canonical type alias for this mode.
 pub struct Bounded;
 
 /// Type-state marker for unconstrained L-BFGS. Constructors live on
 /// [`LBFGS<Unbounded, MoreThuente>`]; the [`Solver`] impl has the same
-/// backend bounds as [`Bounded`] but **no** [`BoxConstrained`]
+/// backend bounds as [`Bounded`] but **no** [`BoxConstraints`]
 /// requirement. The algorithm is Nocedal–Wright's two-loop recursion
 /// over the [`LbfgsState`] history with `H₀ = (1/θ)·I`.
 pub struct Unbounded;
@@ -287,7 +287,7 @@ impl<S> LBFGS<Unbounded, S> {
     /// Switch to box-constrained [`Bounded`] mode while preserving the
     /// configured line search, curvature threshold, and history
     /// capacity. The resulting solver requires the problem to
-    /// implement [`BoxConstrained`].
+    /// implement [`BoxConstraints`].
     pub fn bounded(self) -> LBFGS<Bounded, S> {
         LBFGS {
             line_search: self.line_search,
@@ -325,7 +325,7 @@ impl<Mode, S> LBFGS<Mode, S> {
 
 impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Bounded, S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstrained,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstraints,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
     S: LineSearch<P, V>,
 {
@@ -1157,7 +1157,7 @@ mod tests {
     /// formk + line search + matupd) returns the analytical answer.
     #[test]
     fn shifted_quadratic_in_box_converges_to_clamp() {
-        use crate::core::constraint::BoxConstrained;
+        use crate::core::constraint::BoxConstraints;
         use crate::core::problem::{CostFunction, Gradient};
 
         struct Quad {
@@ -1179,7 +1179,7 @@ mod tests {
                 x.iter().zip(&self.c).map(|(a, b)| 2.0 * (a - b)).collect()
             }
         }
-        impl BoxConstrained for Quad {
+        impl BoxConstraints for Quad {
             fn lower(&self) -> &Vec<f64> {
                 &self.l
             }
@@ -1214,7 +1214,7 @@ mod tests {
     /// skips GCP entirely after the first iteration.
     #[test]
     fn unbounded_rosenbrock_2d_converges() {
-        use crate::core::constraint::BoxConstrained;
+        use crate::core::constraint::BoxConstraints;
         use crate::core::problem::{CostFunction, Gradient};
 
         struct Rosen {
@@ -1237,7 +1237,7 @@ mod tests {
                 vec![dfdx0, dfdx1]
             }
         }
-        impl BoxConstrained for Rosen {
+        impl BoxConstraints for Rosen {
             fn lower(&self) -> &Vec<f64> {
                 &self.l
             }

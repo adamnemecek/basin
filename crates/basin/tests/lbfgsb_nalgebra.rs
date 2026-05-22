@@ -8,7 +8,7 @@
 
 use basin::problems::BoothBoxed;
 use basin::{
-    BoxConstrained, CostFunction, Executor, Gradient, LbfgsState, MaxIter, MoreThuente,
+    BoxConstraints, CostFunction, Executor, Gradient, LbfgsState, MaxIter, MoreThuente,
     ProjectedGradientTolerance, QuasiNewtonState, BFGS, LBFGSB,
 };
 use nalgebra::DVector;
@@ -33,7 +33,7 @@ impl Gradient for Rosen {
         DVector::from_vec(vec![dfdx0, dfdx1])
     }
 }
-impl BoxConstrained for Rosen {
+impl BoxConstraints for Rosen {
     fn lower(&self) -> &DVector<f64> {
         &self.l
     }

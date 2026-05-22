@@ -1,4 +1,4 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::SampleUniformBox;
 use crate::core::problem::CostFunction;
 use crate::core::rng::{ChaCha8Rng, SeedableRng};
@@ -48,7 +48,7 @@ use crate::core::termination::TerminationReason;
 ///
 /// # Contract
 ///
-/// - **Caller must:** implement [`BoxConstrained`] on the problem with
+/// - **Caller must:** implement [`BoxConstraints`] on the problem with
 ///   `lower[i] ≤ upper[i]` for every component. Equal bounds are
 ///   allowed (the corresponding component is pinned).
 /// - **Caller must:** hand in a [`BasicPopulationState`] sized to match
@@ -82,7 +82,7 @@ use crate::core::termination::TerminationReason;
 /// [`SampleUniformBox`] + `Clone`. That covers `Vec<f64>`,
 /// `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
-/// (feature `faer`). The problem must implement [`BoxConstrained`].
+/// (feature `faer`). The problem must implement [`BoxConstraints`].
 pub struct RandomSearch {
     lambda: usize,
     rng: ChaCha8Rng,
@@ -144,7 +144,7 @@ fn apply_permutation<T>(slice: &mut [T], idx: &[usize]) {
 
 impl<P, V> Solver<P, BasicPopulationState<V>> for RandomSearch
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained<Param = V>,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints<Param = V>,
     V: SampleUniformBox + Clone,
 {
     fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {

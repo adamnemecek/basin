@@ -103,7 +103,7 @@ These shape API decisions and are non-obvious from the code alone:
    (projection / penalty / barrier) to wrap unconstrained solvers when needed.
 
    **Status.** Two constraint kinds ship, both in `src/core/constraint.rs`:
-   - `BoxConstrained` (interval bounds), used by `Brent` (1D),
+   - `BoxConstraints` (interval bounds), used by `Brent` (1D),
      `ProjectedGradientDescent`, `LBFGSB`, `Trf`, `BoundedCmaEs` --- all via
      *projection* / clamping.
    - `LinearInequalityConstraints` (`A x ≤ b`, exposing `a()` / `b()`), used
@@ -126,7 +126,7 @@ These shape API decisions and are non-obvious from the code alone:
    problem to unconstrained solvers. If the wrapper also implemented the
    constraint trait, it would route back into constrained solvers and the
    whole adapter model collapses. (Contrast `FiniteDiff`, which *adds* a
-   capability and therefore *forwards* `BoxConstrained`.) Load-bearing and
+   capability and therefore *forwards* `BoxConstraints`.) Load-bearing and
    non-obvious; preserve it deliberately.
 
    **Do not design a `Constraint` supertrait or hierarchy until ≥2
@@ -135,7 +135,7 @@ These shape API decisions and are non-obvious from the code alone:
    landed (linear inequalities) and *confirms* the wait rather than ending it:
    the box family keeps feasibility by *projection* (`ClampInPlace`), the
    linear-inequality family by a *barrier* (`MatVec`/`MatTransposeVec`) --- they
-   share no operation beyond data accessors, so `BoxConstrained` and
+   share no operation beyond data accessors, so `BoxConstraints` and
    `LinearInequalityConstraints` stay sibling traits with no supertrait. A
    shared abstraction still waits for a constraint kind (nonlinear) that
    genuinely shares a feasibility-check or projection op. One-member (or

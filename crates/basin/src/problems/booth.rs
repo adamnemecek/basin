@@ -12,7 +12,7 @@
 use core::marker::PhantomData;
 
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
-use crate::{BoxConstrained, CostFunction, Gradient, Residual};
+use crate::{BoxConstraints, CostFunction, Gradient, Residual};
 
 /// Evaluates the Booth function at `x`. Requires `x.len() == 2`.
 pub fn booth(x: &[f64]) -> f64 {
@@ -175,7 +175,7 @@ impl Gradient for BoothBoxed<Vec<f64>> {
     }
 }
 
-impl BoxConstrained for BoothBoxed<Vec<f64>> {
+impl BoxConstraints for BoothBoxed<Vec<f64>> {
     fn lower(&self) -> &Vec<f64> {
         &self.lower
     }
@@ -275,7 +275,7 @@ impl Residual for BoothBoxedResiduals<Vec<f64>> {
     }
 }
 
-impl BoxConstrained for BoothBoxedResiduals<Vec<f64>> {
+impl BoxConstraints for BoothBoxedResiduals<Vec<f64>> {
     fn lower(&self) -> &Vec<f64> {
         &self.lower
     }
@@ -290,7 +290,7 @@ mod nalgebra_impl {
         booth, booth_gradient, booth_residuals, booth_residuals_jacobian, Booth, BoothBoxed,
         BoothBoxedResiduals, BoothResiduals,
     };
-    use crate::{BoxConstrained, CostFunction, Gradient, Jacobian, Residual};
+    use crate::{BoxConstraints, CostFunction, Gradient, Jacobian, Residual};
     use nalgebra::{DMatrix, DVector};
 
     impl CostFunction for Booth<DVector<f64>> {
@@ -329,7 +329,7 @@ mod nalgebra_impl {
         }
     }
 
-    impl BoxConstrained for BoothBoxed<DVector<f64>> {
+    impl BoxConstraints for BoothBoxed<DVector<f64>> {
         fn lower(&self) -> &DVector<f64> {
             &self.lower
         }
@@ -395,7 +395,7 @@ mod nalgebra_impl {
         }
     }
 
-    impl BoxConstrained for BoothBoxedResiduals<DVector<f64>> {
+    impl BoxConstraints for BoothBoxedResiduals<DVector<f64>> {
         fn lower(&self) -> &DVector<f64> {
             &self.lower
         }
@@ -408,7 +408,7 @@ mod nalgebra_impl {
 #[cfg(feature = "ndarray")]
 mod ndarray_impl {
     use super::{booth, booth_gradient, Booth, BoothBoxed};
-    use crate::{BoxConstrained, CostFunction, Gradient};
+    use crate::{BoxConstraints, CostFunction, Gradient};
     use ndarray::Array1;
 
     impl CostFunction for Booth<Array1<f64>> {
@@ -453,7 +453,7 @@ mod ndarray_impl {
         }
     }
 
-    impl BoxConstrained for BoothBoxed<Array1<f64>> {
+    impl BoxConstraints for BoothBoxed<Array1<f64>> {
         fn lower(&self) -> &Array1<f64> {
             &self.lower
         }
@@ -466,7 +466,7 @@ mod ndarray_impl {
 #[cfg(feature = "faer")]
 mod faer_impl {
     use super::{booth_residuals_jacobian, Booth, BoothBoxed, BoothBoxedResiduals, BoothResiduals};
-    use crate::{BoxConstrained, CostFunction, Gradient, Jacobian, Residual};
+    use crate::{BoxConstraints, CostFunction, Gradient, Jacobian, Residual};
     use faer::{Col, Mat};
 
     fn cost_inline(x: &Col<f64>) -> f64 {
@@ -522,7 +522,7 @@ mod faer_impl {
         }
     }
 
-    impl BoxConstrained for BoothBoxed<Col<f64>> {
+    impl BoxConstraints for BoothBoxed<Col<f64>> {
         fn lower(&self) -> &Col<f64> {
             &self.lower
         }
@@ -590,7 +590,7 @@ mod faer_impl {
         }
     }
 
-    impl BoxConstrained for BoothBoxedResiduals<Col<f64>> {
+    impl BoxConstraints for BoothBoxedResiduals<Col<f64>> {
         fn lower(&self) -> &Col<f64> {
             &self.lower
         }

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::executor::run_loop;
 use crate::core::math::{
     ComponentMulAssign, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity, NormSquared,
@@ -198,7 +198,7 @@ impl<V, M> Default for MaLsChState<V, M> {
 /// # Contract
 ///
 /// - **Caller must:** implement [`CostFunction<Param = V, Output = f64>`]
-///   *and* [`BoxConstrained<Param = V>`] on the problem. The SSGA needs
+///   *and* [`BoxConstraints<Param = V>`] on the problem. The SSGA needs
 ///   the box for initial sampling, BLX clipping, and BGA range; the
 ///   per-individual CMA-ES inner does not see the box (so the inner
 ///   CMA-ES is *unbounded* — chain individuals can drift outside the
@@ -432,7 +432,7 @@ where
 
 impl<P, V, M> Solver<P, MaLsChState<V, M>> for MaLsChCma<V, M>
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained<Param = V>,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints<Param = V>,
     V: VectorLen
         + Clone
         + SampleUniformBox

@@ -1,6 +1,6 @@
 use core::marker::PhantomData;
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{ClampInPlace, ScaledAdd};
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
@@ -22,7 +22,7 @@ use crate::core::termination::TerminationReason;
 /// ([`Projected`]). Construct unbounded NM with [`standard`](Self::standard),
 /// [`adaptive`](Self::adaptive), or [`with_params`](Self::with_params), then
 /// transition with [`projected`](Self::projected) when the problem carries
-/// box bounds. The projected `Solver` impl requires `P: BoxConstrained`
+/// box bounds. The projected `Solver` impl requires `P: BoxConstraints`
 /// and `V: ClampInPlace`, so handing a non-bounded problem to a projected
 /// `NelderMead` is a compile-time error per AGENTS.md tenet 4.
 ///
@@ -51,7 +51,7 @@ pub struct Unbounded;
 /// Type-state marker for the projection-style box-constrained
 /// Nelder-Mead variant. Obtain via
 /// [`NelderMead::projected`](NelderMead::projected). The `Solver` impl
-/// requires `P: BoxConstrained` and `V: ClampInPlace`.
+/// requires `P: BoxConstraints` and `V: ClampInPlace`.
 ///
 /// # Algorithm
 ///
@@ -138,7 +138,7 @@ impl NelderMead<Unbounded> {
     /// Switch to the projection-style box-constrained variant
     /// ([`Projected`]). The algorithm parameters configured on this
     /// builder are preserved; the resulting solver requires the problem
-    /// to implement [`BoxConstrained`] and projects every trial vertex
+    /// to implement [`BoxConstraints`] and projects every trial vertex
     /// element-wise into `[lower, upper]`. See the type-level rustdoc on
     /// [`Projected`] for the algorithm contract and limitations.
     pub fn projected(self) -> NelderMead<Projected> {
@@ -371,7 +371,7 @@ where
 
 impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead<Projected>
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints,
     V: Clone + ScaledAdd<f64> + ClampInPlace,
 {
     fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {

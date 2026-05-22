@@ -3,7 +3,7 @@
 //! The bounded counterpart is `tests/lbfgsb_{vec,nalgebra,faer}.rs`;
 //! this file mirrors the Rosenbrock 2D smoke test but on the
 //! Nocedal–Wright two-loop-recursion path that requires no
-//! [`BoxConstrained`](basin::BoxConstrained) impl.
+//! [`BoxConstraints`](basin::BoxConstraints) impl.
 
 use basin::solver::lbfgs::{Bounded, Unbounded};
 use basin::{

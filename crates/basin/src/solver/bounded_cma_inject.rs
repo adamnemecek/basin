@@ -1,4 +1,4 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::executor::OptimizationResult;
 use crate::core::inner::InnerExecutor;
 use crate::core::math::{
@@ -38,7 +38,7 @@ use crate::solver::cma_inject::{default_c_y, MemeticInner};
 /// [`NelderMead`](crate::solver::NelderMead),
 /// [`LevenbergMarquardt`](crate::solver::LevenbergMarquardt), and
 /// [`LBFGSB`](crate::solver::LBFGSB). L-BFGS-B is the natural inner
-/// here — its `P: BoxConstrained` bound matches the outer's, and the
+/// here — its `P: BoxConstraints` bound matches the outer's, and the
 /// same box flows through both ends of the composition.
 ///
 /// Note an asymmetry: NM and LM are unconstrained solvers, so even
@@ -142,7 +142,7 @@ where
 
 impl<P, I, V, M> Solver<P, BasicPopulationState<V>> for BoundedCmaInject<I, V, M>
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints,
     I: MemeticInner<V> + Solver<P, <I as MemeticInner<V>>::State>,
     I::State: State<Param = V, Float = f64>,
     V: VectorLen

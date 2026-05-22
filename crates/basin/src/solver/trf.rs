@@ -1,4 +1,4 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{
     AddDiagonalVectorInPlace, BoxAffineScaling, Dot, GramMatrix, LinearSolveSpd, MatTransposeVec,
     MaxDiagonal, NegInPlace, NormSquared, ScaledAdd,
@@ -48,7 +48,7 @@ use crate::core::termination::TerminationReason;
 /// — same iterates, same convergence. `Trf` strictly subsumes
 /// [`LevenbergMarquardt`](super::LevenbergMarquardt) at the trait-bound
 /// level (the reverse is a compile error: LM bounds on
-/// `Residual + Jacobian` only, not [`BoxConstrained`]).
+/// `Residual + Jacobian` only, not [`BoxConstraints`]).
 ///
 /// # What basin's S6 ships, and what it doesn't
 ///
@@ -137,7 +137,7 @@ use crate::core::termination::TerminationReason;
 ///
 /// Same as [`LevenbergMarquardt`](super::LevenbergMarquardt):
 /// `state.cost` carries the LM convention `½‖r‖²`. The bound on `P`
-/// includes [`BoxConstrained`] (which inherits
+/// includes [`BoxConstraints`] (which inherits
 /// [`CostFunction`](crate::core::problem::CostFunction)) but the solver
 /// never calls `cost()` — it computes `½‖r‖²` from the residual it
 /// evaluates itself. Problems whose user-facing `cost()` uses an
@@ -246,7 +246,7 @@ impl<P, V, M> Solver<P, BasicState<V>> for Trf<V, M>
 where
     P: Residual<Param = V, Output = V>
         + Jacobian<Param = V, Output = M>
-        + BoxConstrained<Param = V>,
+        + BoxConstraints<Param = V>,
     V: ScaledAdd<f64> + NormSquared + NegInPlace + Dot + BoxAffineScaling + Clone,
     M: GramMatrix
         + MatTransposeVec<V>

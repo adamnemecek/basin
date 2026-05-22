@@ -13,7 +13,7 @@
 //!   [`Hessian`](problem::Hessian) to a problem that only exposes
 //!   function values.
 //! - [`constraint`] — constraint markers carried on the problem (tenet 4
-//!   in `AGENTS.md`): [`BoxConstrained`](constraint::BoxConstrained) and
+//!   in `AGENTS.md`): [`BoxConstraints`](constraint::BoxConstraints) and
 //!   [`LinearInequalityConstraints`](constraint::LinearInequalityConstraints).
 //! - [`barrier`] — the [`LogBarrier`](barrier::LogBarrier) adapter that
 //!   rewrites a linearly-constrained problem as the unconstrained

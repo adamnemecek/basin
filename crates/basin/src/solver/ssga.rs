@@ -1,4 +1,4 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{NormSquared, SampleUniformBox, ScaledAdd, VectorLen};
 use crate::core::problem::CostFunction;
 use crate::core::rng::{ChaCha8Rng, Rng, RngExt, SeedableRng};
@@ -66,7 +66,7 @@ use crate::solver::cma_es::sort_population_ascending;
 /// # Contract
 ///
 /// - **Caller must:** implement [`CostFunction<Param = V, Output = f64>`]
-///   *and* [`BoxConstrained<Param = V>`] on the problem. SSGA is a
+///   *and* [`BoxConstraints<Param = V>`] on the problem. SSGA is a
 ///   bounded-search method by construction.
 /// - **Caller must:** hand in a [`BasicPopulationState::with_size(pop_size)`]
 ///   matching the solver's `pop_size`.
@@ -398,7 +398,7 @@ pub(crate) fn replace_worst_if_better<V>(
 
 impl<P, V> Solver<P, BasicPopulationState<V>> for Ssga
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained<Param = V>,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints<Param = V>,
     V: VectorLen
         + Clone
         + SampleUniformBox

@@ -1,11 +1,11 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::problem::CostFunction;
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
 
 /// Brent's method for 1D minimization on a closed interval `[lower, upper]`
-/// supplied via `BoxConstrained`. Combines parabolic interpolation through
+/// supplied via `BoxConstraints`. Combines parabolic interpolation through
 /// the three best points so far with a golden-section fallback when the
 /// parabolic step is unacceptable. Brent (1973), as transcribed in
 /// Numerical Recipes §10.2.
@@ -70,7 +70,7 @@ impl Brent {
 
 impl<P> Solver<P, BasicState<f64>> for Brent
 where
-    P: CostFunction<Param = f64, Output = f64> + BoxConstrained,
+    P: CostFunction<Param = f64, Output = f64> + BoxConstraints,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<f64>) -> BasicState<f64> {
         let a = *problem.lower();
@@ -223,7 +223,7 @@ mod tests {
             (x - 2.0).powi(2)
         }
     }
-    impl BoxConstrained for Quadratic {
+    impl BoxConstraints for Quadratic {
         fn lower(&self) -> &f64 {
             &self.lo
         }
@@ -285,7 +285,7 @@ mod tests {
             x.powi(3) - 3.0 * x
         }
     }
-    impl BoxConstrained for Cubic {
+    impl BoxConstraints for Cubic {
         fn lower(&self) -> &f64 {
             &self.lo
         }

@@ -1,7 +1,7 @@
 //! basin — a numerical optimization library.
 //!
 //! The framework lives in [`core`]: problem traits the user implements
-//! ([`CostFunction`], [`Gradient`], [`BoxConstrained`],
+//! ([`CostFunction`], [`Gradient`], [`BoxConstraints`],
 //! [`LinearInequalityConstraints`]), state shapes
 //! solvers iterate over ([`State`], [`GradientState`], [`SimplexState`]),
 //! the [`Solver`] trait, and a pluggable termination layer
@@ -26,7 +26,7 @@ pub mod problems;
 pub mod solver;
 
 pub use crate::core::barrier::LogBarrier;
-pub use crate::core::constraint::{BoxConstrained, LinearInequalityConstraints};
+pub use crate::core::constraint::{BoxConstraints, LinearInequalityConstraints};
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::inner::InnerExecutor;
 pub use crate::core::math::{

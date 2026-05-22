@@ -40,7 +40,7 @@ impl CostFunction for BoxedSphere {
     }
 }
 
-impl basin::BoxConstrained for BoxedSphere {
+impl basin::BoxConstraints for BoxedSphere {
     fn lower(&self) -> &DVector<f64> {
         &self.lower
     }

@@ -8,7 +8,7 @@
 //! problem, so a values-only problem flows straight into the existing
 //! solvers via basin's type-system dispatch.
 //!
-//! The wrapper *forwards* [`BoxConstrained`] when the inner problem carries
+//! The wrapper *forwards* [`BoxConstraints`] when the inner problem carries
 //! box bounds — adding derivatives must not silently un-constrain a problem
 //! (tenet 4 in `AGENTS.md`: an adapter that *adds* a capability preserves
 //! the rest).
@@ -45,7 +45,7 @@
 //!   the domain (e.g. via [`FiniteDiff::function_precision`] or
 //!   [`FiniteDiff::with_step`]) is the caller's responsibility.
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{DenseMatrixFromFn, VectorIndex, VectorLen};
 use crate::core::problem::{CostFunction, Gradient, Hessian, Jacobian, Residual};
 
@@ -65,7 +65,7 @@ pub enum Method {
 /// Construct with [`FiniteDiff::new`] (central gradient/Hessian, forward
 /// Jacobian — see the [module docs](self)) and adjust with the builder
 /// methods. The wrapper delegates [`CostFunction`] / [`Residual`] /
-/// [`BoxConstrained`] to the inner problem and implements [`Gradient`] /
+/// [`BoxConstraints`] to the inner problem and implements [`Gradient`] /
 /// [`Jacobian`] / [`Hessian`] via finite differences.
 ///
 /// # Backends
@@ -167,11 +167,11 @@ impl<P: Residual> Residual for FiniteDiff<P> {
     }
 }
 
-// Forward box bounds so a `CostFunction + BoxConstrained` problem wrapped
+// Forward box bounds so a `CostFunction + BoxConstraints` problem wrapped
 // in `FiniteDiff` still routes to the constrained solvers (ProjectedGD,
 // TRF). Per tenet 4 this is correct precisely because `FiniteDiff` *adds* a
 // capability and preserves the constraint — it does not consume it.
-impl<P: BoxConstrained> BoxConstrained for FiniteDiff<P> {
+impl<P: BoxConstraints> BoxConstraints for FiniteDiff<P> {
     fn lower(&self) -> &Self::Param {
         self.problem.lower()
     }
@@ -633,15 +633,15 @@ mod tests {
         }
     }
 
-    // BoxConstrained forwarding: a wrapped boxed problem stays constrained
+    // BoxConstraints forwarding: a wrapped boxed problem stays constrained
     // and still satisfies the gradient-solver bound.
     #[cfg(feature = "problems")]
     #[test]
     fn box_constrained_is_forwarded() {
-        use crate::core::constraint::BoxConstrained;
+        use crate::core::constraint::BoxConstraints;
         use crate::problems::rastrigin::RastriginBoxed;
 
-        fn _assert_constrained_and_differentiable<T: BoxConstrained + Gradient>() {}
+        fn _assert_constrained_and_differentiable<T: BoxConstraints + Gradient>() {}
         _assert_constrained_and_differentiable::<FiniteDiff<RastriginBoxed<Vec<f64>>>>();
 
         let lower = vec![-5.12, -5.12];

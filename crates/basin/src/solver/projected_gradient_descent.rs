@@ -1,4 +1,4 @@
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{ClampInPlace, NegInPlace, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
@@ -11,7 +11,7 @@ use crate::line_search::{Constant, LineSearch};
 /// Steepest-descent step along `−∇f` followed by an element-wise
 /// projection back into `[lower, upper]`. The first n-D constrained
 /// solver in basin and the smallest vehicle for the
-/// [`BoxConstrained`] trait — handing this solver an unconstrained
+/// [`BoxConstraints`] trait — handing this solver an unconstrained
 /// problem is a compile error per tenet 4.
 ///
 /// # Algorithm
@@ -31,7 +31,7 @@ use crate::line_search::{Constant, LineSearch};
 ///
 /// # Contract
 ///
-/// - **Caller must:** implement [`BoxConstrained`] on the problem with
+/// - **Caller must:** implement [`BoxConstraints`] on the problem with
 ///   `lower[i] ≤ upper[i]` for every component. Equal bounds are
 ///   allowed (the corresponding component is pinned).
 /// - **Caller must:** pair with a feasible **or** infeasible initial
@@ -67,7 +67,7 @@ use crate::line_search::{Constant, LineSearch};
 /// [`NegInPlace`] + [`ClampInPlace`] + `Clone`. That covers
 /// `Vec<f64>`, `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
-/// (feature `faer`). The problem must implement [`BoxConstrained`].
+/// (feature `faer`). The problem must implement [`BoxConstraints`].
 pub struct ProjectedGradientDescent<S> {
     line_search: S,
 }
@@ -98,7 +98,7 @@ impl<S> ProjectedGradientDescent<S> {
 
 impl<P, V, S> Solver<P, BasicState<V>> for ProjectedGradientDescent<S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstrained,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstraints,
     V: ScaledAdd<f64> + NegInPlace + ClampInPlace + Clone,
     S: LineSearch<P, V>,
 {

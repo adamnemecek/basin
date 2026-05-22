@@ -5,7 +5,7 @@ the previous lands.
 
 ## General design
 
-- [ ] **Constraints (tenet 4).** Box bounds shipped (`BoxConstrained`,
+- [ ] **Constraints (tenet 4).** Box bounds shipped (`BoxConstraints`,
       consumed by `ProjectedGradientDescent` / `LBFGSB` / `Trf` /
       `BoundedCmaEs`). Linear inequalities `A x ≤ b` shipped
       (`LinearInequalityConstraints` + the `LogBarrier` adapter + the

@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::core::constraint::BoxConstrained;
+use crate::core::constraint::BoxConstraints;
 use crate::core::math::{
     ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,
     MatrixIdentity, NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd,
@@ -71,9 +71,9 @@ use super::cma_es::{compute_weights, expected_norm_n01, sort_population_ascendin
 ///
 /// - **Caller must:** implement
 ///   [`CostFunction<Param = V, Output = f64>`] **and**
-///   [`BoxConstrained`] on the same problem type. The bounds live on
+///   [`BoxConstraints`] on the same problem type. The bounds live on
 ///   the problem (tenet 4 in `AGENTS.md`); handing this solver a
-///   problem without `BoxConstrained` is a compile-time error.
+///   problem without `BoxConstraints` is a compile-time error.
 /// - **Caller must:** ensure `lower[i] ≤ upper[i]` for every component
 ///   ([`f64::clamp`] panics otherwise) and `initial_sigma > 0`.
 /// - **Caller must:** hand in a [`BasicPopulationState::with_size(λ)`]
@@ -478,7 +478,7 @@ where
 /// `w.weights_initialized`, and `w.hist`.
 fn update_gamma<P, V, M>(w: &mut Working<V, M>, problem: &P)
 where
-    P: BoxConstrained<Param = V>,
+    P: BoxConstraints<Param = V>,
     V: Clone
         + ClampInPlace
         + std::ops::Index<usize, Output = f64>
@@ -574,7 +574,7 @@ where
 
 impl<P, V, M> Solver<P, BasicPopulationState<V>> for BoundedCmaEs<V, M>
 where
-    P: CostFunction<Param = V, Output = f64> + BoxConstrained,
+    P: CostFunction<Param = V, Output = f64> + BoxConstraints,
     V: VectorLen
         + Clone
         + ScaledAdd<f64>

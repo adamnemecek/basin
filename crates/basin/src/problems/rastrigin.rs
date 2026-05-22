@@ -25,7 +25,7 @@
 use core::marker::PhantomData;
 
 use super::spec::{Dimensionality, HasSpec, ProblemSpec, Properties, Reference};
-use crate::{BoxConstrained, CostFunction};
+use crate::{BoxConstraints, CostFunction};
 
 /// Rastrigin amplitude constant. Fixed at 10 by Mühlenbein et al.
 /// (1991); essentially every paper that benchmarks on Rastrigin uses
@@ -185,13 +185,13 @@ mod faer_impl {
 // Boxed (constrained) form
 // ----------------------------------------------------------------------
 // Carries element-wise bounds on the struct so it can implement
-// `BoxConstrained` for solvers that require explicit box constraints
+// `BoxConstraints` for solvers that require explicit box constraints
 // (CMA-ES variants, projected methods). The standard `[−5.12, 5.12]ⁿ`
 // search domain is the most common choice; `with_standard_bounds(n)`
 // is a shortcut for that case.
 
 /// Rastrigin function with explicit element-wise box bounds, suitable
-/// for solvers that require [`BoxConstrained`] (e.g. CMA-ES variants
+/// for solvers that require [`BoxConstraints`] (e.g. CMA-ES variants
 /// like MA-LSCh-CMA). Carries the bounds as data on the problem (tenet
 /// 4 in `crate::core` / `AGENTS.md`) and routes the cost through the
 /// same raw [`rastrigin`] free function as the unconstrained
@@ -236,7 +236,7 @@ impl CostFunction for RastriginBoxed<Vec<f64>> {
     }
 }
 
-impl BoxConstrained for RastriginBoxed<Vec<f64>> {
+impl BoxConstraints for RastriginBoxed<Vec<f64>> {
     fn lower(&self) -> &Vec<f64> {
         &self.lower
     }
@@ -248,7 +248,7 @@ impl BoxConstrained for RastriginBoxed<Vec<f64>> {
 #[cfg(feature = "nalgebra")]
 mod nalgebra_boxed_impl {
     use super::{rastrigin, RastriginBoxed, STANDARD_LOWER, STANDARD_UPPER};
-    use crate::{BoxConstrained, CostFunction};
+    use crate::{BoxConstraints, CostFunction};
     use nalgebra::DVector;
 
     impl RastriginBoxed<DVector<f64>> {
@@ -270,7 +270,7 @@ mod nalgebra_boxed_impl {
         }
     }
 
-    impl BoxConstrained for RastriginBoxed<DVector<f64>> {
+    impl BoxConstraints for RastriginBoxed<DVector<f64>> {
         fn lower(&self) -> &DVector<f64> {
             &self.lower
         }
@@ -283,7 +283,7 @@ mod nalgebra_boxed_impl {
 #[cfg(feature = "ndarray")]
 mod ndarray_boxed_impl {
     use super::{rastrigin, RastriginBoxed, STANDARD_LOWER, STANDARD_UPPER};
-    use crate::{BoxConstrained, CostFunction};
+    use crate::{BoxConstraints, CostFunction};
     use ndarray::Array1;
 
     impl RastriginBoxed<Array1<f64>> {
@@ -305,7 +305,7 @@ mod ndarray_boxed_impl {
         }
     }
 
-    impl BoxConstrained for RastriginBoxed<Array1<f64>> {
+    impl BoxConstraints for RastriginBoxed<Array1<f64>> {
         fn lower(&self) -> &Array1<f64> {
             &self.lower
         }
@@ -318,7 +318,7 @@ mod ndarray_boxed_impl {
 #[cfg(feature = "faer")]
 mod faer_boxed_impl {
     use super::{RastriginBoxed, A, STANDARD_LOWER, STANDARD_UPPER};
-    use crate::{BoxConstrained, CostFunction};
+    use crate::{BoxConstraints, CostFunction};
     use faer::Col;
 
     impl RastriginBoxed<Col<f64>> {
@@ -347,7 +347,7 @@ mod faer_boxed_impl {
         }
     }
 
-    impl BoxConstrained for RastriginBoxed<Col<f64>> {
+    impl BoxConstraints for RastriginBoxed<Col<f64>> {
         fn lower(&self) -> &Col<f64> {
             &self.lower
         }
@@ -423,8 +423,8 @@ mod tests {
     #[test]
     fn boxed_form_exposes_standard_bounds() {
         let p = RastriginBoxed::<Vec<f64>>::with_standard_bounds(10);
-        let lo = <RastriginBoxed<Vec<f64>> as BoxConstrained>::lower(&p);
-        let hi = <RastriginBoxed<Vec<f64>> as BoxConstrained>::upper(&p);
+        let lo = <RastriginBoxed<Vec<f64>> as BoxConstraints>::lower(&p);
+        let hi = <RastriginBoxed<Vec<f64>> as BoxConstraints>::upper(&p);
         assert_eq!(lo.len(), 10);
         assert_eq!(hi.len(), 10);
         for &v in lo {

@@ -24,7 +24,7 @@
 //! re-exposed the constraint trait it would route straight back into
 //! constrained solvers and the adapter model would collapse. (Contrast
 //! [`FiniteDiff`](crate::core::numdiff::FiniteDiff), which *adds* a
-//! capability and therefore *forwards* [`BoxConstrained`](crate::core::constraint::BoxConstrained).)
+//! capability and therefore *forwards* [`BoxConstraints`](crate::core::constraint::BoxConstraints).)
 //!
 //! # Feasibility
 //!

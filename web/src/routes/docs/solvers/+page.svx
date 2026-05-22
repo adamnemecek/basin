@@ -56,7 +56,7 @@ composition primitives:
 Two design rules shape which solver you can use where:
 
 - **Constraints are first-class and type-checked.** Box bounds live on the
-  *problem* (`BoxConstrained`). Handing a constrained problem to an
+  *problem* (`BoxConstraints`). Handing a constrained problem to an
   unconstrained solver is a compile error, not a runtime surprise.
 - **Backends are tiered.** First-order and derivative-free solvers stay generic
   over the parameter type (`Vec<f64>`, nalgebra, ndarray, faer). Linear-algebra

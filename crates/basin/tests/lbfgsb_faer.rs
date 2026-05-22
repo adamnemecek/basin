@@ -6,7 +6,7 @@
 
 use basin::problems::BoothBoxed;
 use basin::{
-    BoxConstrained, CostFunction, Executor, Gradient, LbfgsState, MaxIter,
+    BoxConstraints, CostFunction, Executor, Gradient, LbfgsState, MaxIter,
     ProjectedGradientTolerance, LBFGSB,
 };
 use faer::Col;
@@ -31,7 +31,7 @@ impl Gradient for Rosen {
         Col::from_fn(2, |i| if i == 0 { dfdx0 } else { dfdx1 })
     }
 }
-impl BoxConstrained for Rosen {
+impl BoxConstraints for Rosen {
     fn lower(&self) -> &Col<f64> {
         &self.l
     }

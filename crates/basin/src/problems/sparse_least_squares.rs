@@ -98,7 +98,7 @@ impl<M, V> HasSpec for SparseLeastSquaresBoxed<M, V> {
 mod nalgebra_impl {
     use super::{SparseLeastSquares, SparseLeastSquaresBoxed};
     use crate::core::math::{MatVec, ScaledAdd};
-    use crate::{BoxConstrained, CostFunction, Jacobian, Residual};
+    use crate::{BoxConstraints, CostFunction, Jacobian, Residual};
     use nalgebra::DVector;
     use nalgebra_sparse::CscMatrix;
 
@@ -160,7 +160,7 @@ mod nalgebra_impl {
         }
     }
 
-    impl BoxConstrained for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
+    impl BoxConstraints for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
         fn lower(&self) -> &DVector<f64> {
             &self.lower
         }
@@ -174,7 +174,7 @@ mod nalgebra_impl {
 mod faer_impl {
     use super::{SparseLeastSquares, SparseLeastSquaresBoxed};
     use crate::core::math::{MatVec, ScaledAdd};
-    use crate::{BoxConstrained, CostFunction, Jacobian, Residual};
+    use crate::{BoxConstraints, CostFunction, Jacobian, Residual};
     use faer::sparse::SparseColMat;
     use faer::Col;
 
@@ -244,7 +244,7 @@ mod faer_impl {
         }
     }
 
-    impl BoxConstrained for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
+    impl BoxConstraints for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
         fn lower(&self) -> &Col<f64> {
             &self.lower
         }
