@@ -1,7 +1,8 @@
 //! basin — a numerical optimization library.
 //!
 //! The framework lives in [`core`]: problem traits the user implements
-//! ([`CostFunction`], [`Gradient`], [`BoxConstrained`]), state shapes
+//! ([`CostFunction`], [`Gradient`], [`BoxConstrained`],
+//! [`LinearInequalityConstraints`]), state shapes
 //! solvers iterate over ([`State`], [`GradientState`], [`SimplexState`]),
 //! the [`Solver`] trait, and a pluggable termination layer
 //! ([`TerminationCriterion`]). Concrete solvers are in [`solver`];
@@ -24,7 +25,8 @@ pub mod problems;
 /// Concrete solver implementations.
 pub mod solver;
 
-pub use crate::core::constraint::BoxConstrained;
+pub use crate::core::barrier::LogBarrier;
+pub use crate::core::constraint::{BoxConstrained, LinearInequalityConstraints};
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::inner::InnerExecutor;
 pub use crate::core::math::{
@@ -57,7 +59,7 @@ pub use crate::solver::lbfgs::{LBFGS, LBFGSB};
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{
-    BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner, CmaEs, CmaInject, GaussNewton,
-    GradientDescent, LevenbergMarquardt, MaLsChCma, MaLsChState, MemeticInner, NelderMead,
-    ProjectedGradientDescent, RandomSearch, Ssga, Trf,
+    BarrierMethod, BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner, CmaEs, CmaInject,
+    GaussNewton, GradientDescent, LevenbergMarquardt, MaLsChCma, MaLsChState, MemeticInner,
+    NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
 };

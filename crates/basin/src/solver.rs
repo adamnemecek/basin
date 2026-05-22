@@ -1,3 +1,6 @@
+/// Log-barrier method for linear inequality constraints `A x ≤ b`
+/// (`constrOptim`-style layer over any unconstrained inner solver).
+pub mod barrier_method;
 /// Box-constrained CMA-ES with adaptive quadratic boundary penalty
 /// (Hansen `BoundPenalty`, the default in pycma).
 pub mod bounded_cma_es;
@@ -43,6 +46,7 @@ pub mod trf;
 #[cfg(feature = "nalgebra")]
 pub mod bfgs;
 
+pub use barrier_method::BarrierMethod;
 #[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;
 pub use bounded_cma_es::BoundedCmaEs;

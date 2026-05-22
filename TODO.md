@@ -5,9 +5,20 @@ the previous lands.
 
 ## General design
 
-- [ ] **Constraints (tenet 4).** Trait design deferred until the first
-      constrained solver is being written (likely projected gradient on box
-      bounds).
+- [ ] **Constraints (tenet 4).** Box bounds shipped (`BoxConstrained`,
+      consumed by `ProjectedGradientDescent` / `LBFGSB` / `Trf` /
+      `BoundedCmaEs`). Linear inequalities `A x ≤ b` shipped
+      (`LinearInequalityConstraints` + the `LogBarrier` adapter + the
+      log-barrier `BarrierMethod`, a `constrOptim`-style layer over an inner
+      `GradientDescent`; nalgebra/faer via `MatVec`/`MatTransposeVec`).
+      Remaining: phase-1 feasibility (the barrier needs a strictly feasible
+      start today); broadening the barrier's inner solver beyond
+      `BasicState`/`GradientDescent` (L-BFGS, Nelder-Mead — needs a
+      state-seeding abstraction); `MatVec`/`MatTransposeVec` impls for
+      `Vec<f64>`/`ndarray` to lift the barrier's backend gate; equality and
+      nonlinear constraints. Keep deferring a `Constraint` supertrait —
+      box (projection) and linear-inequality (barrier) still share no op
+      beyond accessors (tenet 4).
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
       provisional-choices section in `AGENTS.md`. The first stochastic solver
       (S7 `RandomSearch`) landed without forcing this --- the bound-boilerplate

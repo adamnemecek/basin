@@ -102,29 +102,45 @@ These shape API decisions and are non-obvious from the code alone:
    unconstrained solvers are a compile-time error, with an opt-in adapter
    (projection / penalty / barrier) to wrap unconstrained solvers when needed.
 
-   **Status.** Box bounds ship as `BoxConstrained` in
-   `src/core/constraint.rs`, used by `Brent` (1D) and
-   `ProjectedGradientDescent` (n-D). Linear and nonlinear constraint kinds are
-   not yet designed --- the second kind is what reveals the right shared
-   abstraction (see below), so it waits for a real solver that needs it.
+   **Status.** Two constraint kinds ship, both in `src/core/constraint.rs`:
+   - `BoxConstrained` (interval bounds), used by `Brent` (1D),
+     `ProjectedGradientDescent`, `LBFGSB`, `Trf`, `BoundedCmaEs` --- all via
+     *projection* / clamping.
+   - `LinearInequalityConstraints` (`A x ≤ b`, exposing `a()` / `b()`), used
+     by the log-barrier `BarrierMethod` (`src/solver/barrier_method.rs`) via
+     the `LogBarrier` adapter (`src/core/barrier.rs`) --- via a *barrier*, no
+     projection. `BarrierMethod` is a `constrOptim`-style continuation loop
+     over an inner unconstrained solver; v1 requires a strictly feasible
+     start (phase 1 deferred) and an Armijo-backtracking inner line search
+     (the barrier's `+∞` wall is the only feasibility guard). Backend-gated
+     to nalgebra/faer because it needs `MatVec` + `MatTransposeVec` (never a
+     solve) --- `Vec`/`ndarray` can join later by implementing those two ops.
+   Nonlinear and equality constraint kinds are not yet designed.
 
    **Adapters must not re-implement the constraint trait they consumed.** A
    wrapper that converts a constrained problem into an unconstrained one (log
-   barrier, quadratic penalty) exposes `CostFunction + Gradient` *only*. E.g.
-   `LogBarrier<P: BoxConstrained>` does not impl `BoxConstrained` itself ---
-   that asymmetry is what flows the wrapped problem to unconstrained solvers.
-   If the wrapper also implemented `BoxConstrained`, it would route back into
-   constrained solvers and the whole adapter model collapses. Load-bearing and
+   barrier, quadratic penalty) exposes `CostFunction + Gradient` *only*. The
+   shipped `LogBarrier<'a, P: LinearInequalityConstraints>` does exactly this:
+   it impls `CostFunction + Gradient` and pointedly does **not** impl
+   `LinearInequalityConstraints` --- that asymmetry is what flows the wrapped
+   problem to unconstrained solvers. If the wrapper also implemented the
+   constraint trait, it would route back into constrained solvers and the
+   whole adapter model collapses. (Contrast `FiniteDiff`, which *adds* a
+   capability and therefore *forwards* `BoxConstrained`.) Load-bearing and
    non-obvious; preserve it deliberately.
 
    **Do not design a `Constraint` supertrait or hierarchy until ≥2
    fundamentally different constrained solvers exist that share more than
-   `lower()` / `upper()` accessors.** The second constraint kind (linear
-   inequalities, then nonlinear) reveals whether the shared abstraction is "all
-   constraints have a feasibility check" or "all constraints have a projection"
-   or something else entirely. One-member hierarchies are overhead with no
-   value; designing on paper without a solver to validate against tends to need
-   redoing.
+   `lower()` / `upper()` accessors.** The second constraint kind has now
+   landed (linear inequalities) and *confirms* the wait rather than ending it:
+   the box family keeps feasibility by *projection* (`ClampInPlace`), the
+   linear-inequality family by a *barrier* (`MatVec`/`MatTransposeVec`) --- they
+   share no operation beyond data accessors, so `BoxConstrained` and
+   `LinearInequalityConstraints` stay sibling traits with no supertrait. A
+   shared abstraction still waits for a constraint kind (nonlinear) that
+   genuinely shares a feasibility-check or projection op. One-member (or
+   no-shared-op two-member) hierarchies are overhead with no value; designing
+   on paper without a solver to validate against tends to need redoing.
 
    **Constraints live on the problem, never on state.** Don't put `lower` /
    `upper` on `BasicState` "for convenience". State carries iteration history;

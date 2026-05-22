@@ -21,6 +21,7 @@
 
 pub mod beale;
 pub mod booth;
+pub mod constrained_quadratic;
 pub mod exponential_fit;
 pub mod goldstein_price;
 pub mod matyas;
@@ -37,6 +38,7 @@ pub use booth::{
     booth, booth_gradient, booth_residuals, booth_residuals_jacobian, Booth, BoothBoxed,
     BoothBoxedResiduals, BoothResiduals, BOOTH_SPEC,
 };
+pub use constrained_quadratic::{ConstrainedQuadratic, CONSTRAINED_QUADRATIC_SPEC};
 pub use exponential_fit::{
     exponential_fit, exponential_fit_jacobian, exponential_fit_residuals, ExponentialFit,
     EXPONENTIAL_FIT_SPEC,
@@ -68,6 +70,7 @@ pub static ALL_SPECS: &[&ProblemSpec] = &[
     &SPHERE_SPEC,
     &BEALE_SPEC,
     &BOOTH_SPEC,
+    &CONSTRAINED_QUADRATIC_SPEC,
     &MATYAS_SPEC,
     &MCCORMICK_SPEC,
     &GOLDSTEIN_PRICE_SPEC,

@@ -13,8 +13,12 @@
 //!   [`Hessian`](problem::Hessian) to a problem that only exposes
 //!   function values.
 //! - [`constraint`] — constraint markers carried on the problem (tenet 4
-//!   in `AGENTS.md`). Currently
-//!   [`BoxConstrained`](constraint::BoxConstrained).
+//!   in `AGENTS.md`): [`BoxConstrained`](constraint::BoxConstrained) and
+//!   [`LinearInequalityConstraints`](constraint::LinearInequalityConstraints).
+//! - [`barrier`] — the [`LogBarrier`](barrier::LogBarrier) adapter that
+//!   rewrites a linearly-constrained problem as the unconstrained
+//!   log-barrier objective consumed by the
+//!   [`BarrierMethod`](crate::solver::BarrierMethod).
 //! - [`state`] — what a solver carries between iterations:
 //!   [`State`](state::State) for the minimum,
 //!   [`GradientState`](state::GradientState) /
@@ -42,6 +46,7 @@
 //!   honest: only ops every backend can implement well live here. LA-heavy
 //!   ops will live in a separate tier when the first solver wants them.
 
+pub mod barrier;
 pub mod constraint;
 pub mod executor;
 pub mod inner;
