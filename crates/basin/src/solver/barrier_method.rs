@@ -4,6 +4,7 @@
 use crate::core::barrier::LogBarrier;
 use crate::core::constraint::LinearInequalityConstraints;
 use crate::core::executor::run_loop;
+use crate::core::inner::WarmStart;
 use crate::core::math::{
     MatTransposeVec, MatVec, NegInPlace, NormSquared, ScaledAdd, VectorIndex, VectorLen,
 };
@@ -24,27 +25,35 @@ use crate::core::termination::{
 /// shrinks `μ`. As `μ → 0` the central path converges to the constrained
 /// optimum.
 ///
-/// The method is generic over the inner solver `So`, which must minimize
-/// over [`BasicState`] — today that is [`GradientDescent`](crate::solver::GradientDescent).
+/// The method is generic over the inner solver `So`: any gradient-based
+/// solver that implements [`WarmStart`] and
+/// iterates over its own [`GradientState`]. The inner state is seeded at the
+/// current iterate via [`WarmStart::seed`],
+/// so each of [`GradientDescent`](crate::solver::GradientDescent)
+/// ([`BasicState`]), [`BFGS`](crate::solver::BFGS)
+/// ([`QuasiNewtonState`](crate::core::state::QuasiNewtonState)), and unbounded
+/// [`LBFGS`](crate::solver::lbfgs::LBFGS)
+/// ([`LbfgsState`](crate::core::state::LbfgsState)) is usable. Two inner kinds
+/// are deliberately excluded: a least-squares solver
+/// ([`LevenbergMarquardt`](crate::solver::LevenbergMarquardt)) — the barrier
+/// objective is not a sum of squares and the [`LogBarrier`] adapter exposes
+/// only `CostFunction + Gradient`, not `Residual + Jacobian` — and a
+/// derivative-free solver (Nelder-Mead), ruled out by the [`GradientState`]
+/// bound.
 ///
 /// **The inner solver must keep iterates feasible.** Feasibility is enforced
 /// only by the barrier returning `+∞` outside the feasible set, so the inner
-/// solver's step acceptance has to honor that wall: pair `GradientDescent`
-/// with an **Armijo backtracking** line search
+/// solver's step acceptance has to honor that wall: pair the inner with an
+/// **Armijo backtracking** line search
 /// ([`Backtracking`](crate::line_search::Backtracking)), which shrinks any
 /// step whose cost is `+∞`. A fixed step ([`Constant`](crate::line_search::Constant))
-/// can overshoot the boundary, strong-Wolfe searches
+/// can overshoot the boundary, and strong-Wolfe searches
 /// ([`MoreThuente`](crate::line_search::MoreThuente),
 /// [`Wolfe`](crate::line_search::Wolfe)) can stall bracketing on the `+∞`
-/// wall, and momentum ([`with_momentum`](crate::solver::GradientDescent::with_momentum))
-/// adds velocity outside the line search's control and can carry the iterate
-/// straight through the barrier. Solvers that carry their own state type
-/// (L-BFGS, BFGS) don't fit the [`BasicState`] slot directly; lifting that
-/// restriction with a state-seeding abstraction (à la
-/// [`MemeticInner`](crate::solver::MemeticInner)) — which would also admit a
-/// Nelder-Mead inner like R's `constrOptim` default — is a deliberate
-/// future extension, deferred until there's a second consumer to validate
-/// the shape against.
+/// wall; for `GradientDescent`, momentum
+/// ([`with_momentum`](crate::solver::GradientDescent::with_momentum)) adds
+/// velocity outside the line search's control and can carry the iterate
+/// straight through the barrier.
 ///
 /// # Algorithm
 ///
@@ -108,11 +117,12 @@ use crate::core::termination::{
 /// [`run_loop`](crate::core::executor::run_loop) with a **fresh** criteria
 /// vector each outer iteration (`MaxIter` + `GradientTolerance` on the
 /// barrier objective). Building criteria per call — rather than storing an
-/// [`InnerExecutor`](crate::core::inner::InnerExecutor) — keeps the param
-/// type out of this struct and sidesteps the `MaxTime` cross-call
-/// statelessness caveat (see `AGENTS.md` "Solver composition"). Inner
-/// cost/gradient evaluations accumulate onto the outer state because the
-/// same [`BasicState`] is threaded through `run_loop`.
+/// [`InnerExecutor`](crate::core::inner::InnerExecutor) — sidesteps the
+/// `MaxTime` cross-call statelessness caveat (see `AGENTS.md` "Solver
+/// composition"). The inner runs on its own `So::State` (seeded via
+/// [`WarmStart`]); its cost/gradient eval
+/// counts are rolled onto the outer state with `increment_cost_evals` /
+/// `increment_gradient_evals` after each solve (composition rule 1).
 pub struct BarrierMethod<So> {
     inner_solver: So,
     inner_max_iter: u64,
@@ -235,7 +245,8 @@ where
         + LinearInequalityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
     V: ScaledAdd<f64> + NegInPlace + VectorIndex + VectorLen + NormSquared + Clone,
-    So: for<'a> Solver<LogBarrier<'a, P>, BasicState<V>>,
+    So: WarmStart<V> + for<'a> Solver<LogBarrier<'a, P>, So::State>,
+    So::State: GradientState<Param = V>,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
         self.mu = self.mu0;
@@ -272,11 +283,11 @@ where
         // inner solver's iteration counter from polluting the outer's.
         // Fresh criteria each call satisfies the statelessness contract.
         let barrier = LogBarrier::new(problem, self.mu);
-        let mut criteria: Vec<Box<dyn TerminationCriterion<BasicState<V>>>> = vec![
+        let mut criteria: Vec<Box<dyn TerminationCriterion<So::State>>> = vec![
             Box::new(MaxIter(self.inner_max_iter)),
             Box::new(GradientTolerance(self.inner_grad_tol)),
         ];
-        let inner_state = BasicState::new(state.param().clone());
+        let inner_state = self.inner_solver.seed(state.param());
         let result = run_loop(
             &barrier,
             inner_state,
@@ -296,7 +307,7 @@ where
 
         // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
         // (the inner left cost/gradient at the barrier objective).
-        state.param = result.state.param;
+        state.param = result.state.param().clone();
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;

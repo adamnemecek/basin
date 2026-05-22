@@ -19,6 +19,41 @@ use crate::core::solver::Solver;
 use crate::core::state::State;
 use crate::core::termination::TerminationCriterion;
 
+/// Construct a fresh inner-solver [`State`] seeded at a point.
+///
+/// Implemented by solvers that can serve as the *inner* of a composed
+/// solver — one that repeatedly minimizes a wrapped subproblem starting
+/// from the current outer iterate (e.g.
+/// [`BarrierMethod`](crate::solver::BarrierMethod) and
+/// [`AugmentedLagrangianMethod`](crate::solver::AugmentedLagrangianMethod)
+/// re-solving their barrier / augmented-Lagrangian subproblem at each
+/// continuation step). The outer solver calls [`seed`](Self::seed) to
+/// build a private inner state at the warm-start point, drives the inner
+/// over it, then reads the refined iterate back via
+/// [`State::param`].
+///
+/// [`seed`](Self::seed) uses the solver's *natural default scale*: there
+/// is no outer step-size to track, so a simplex solver picks its own
+/// default edge, a Hessian-history solver starts from the identity, and so
+/// on. The CMA-flavored, step-size-scaled variant lives on the
+/// [`MemeticInner`](crate::solver::MemeticInner) sub-trait, which extends
+/// this one.
+///
+/// # Contract
+///
+/// **Implementor must:** return a state whose
+/// [`State::param`] equals `x` (a fresh
+/// seed, not a continuation of any previous solve), so the outer solver's
+/// warm start is honored.
+pub trait WarmStart<V> {
+    /// State shape this solver iterates against.
+    type State: State<Param = V>;
+
+    /// Build a fresh inner state seeded at `x` using the solver's natural
+    /// default scale.
+    fn seed(&self, x: &V) -> Self::State;
+}
+
 /// Pre-configured inner solver an outer solver drives once per outer
 /// iteration.
 ///

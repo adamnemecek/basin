@@ -110,11 +110,16 @@ These shape API decisions and are non-obvious from the code alone:
      by the log-barrier `BarrierMethod` (`src/solver/barrier_method.rs`) via
      the `LogBarrier` adapter (`src/core/barrier.rs`) --- via a *barrier*, no
      projection. `BarrierMethod` is a `constrOptim`-style continuation loop
-     over an inner unconstrained solver; v1 requires a strictly feasible
-     start (phase 1 deferred) and an Armijo-backtracking inner line search
-     (the barrier's `+∞` wall is the only feasibility guard). Backend-gated
-     to nalgebra/faer because it needs `MatVec` + `MatTransposeVec` (never a
-     solve) --- `Vec`/`ndarray` can join later by implementing those two ops.
+     over **any gradient inner solver** (bound `So: WarmStart<V>`, with
+     `So::State: GradientState`: `GradientDescent`, `BFGS`, or unbounded
+     `LBFGS`; seeded at the current iterate via `WarmStart::seed`). v1
+     requires a strictly feasible start (phase 1 deferred) and an
+     Armijo-backtracking inner line search (the barrier's `+∞` wall is the
+     only feasibility guard --- so a Wolfe/More-Thuente inner can step
+     through it; pair `BFGS`/`LBFGS` with `Backtracking` for the barrier).
+     Backend-gated to nalgebra/faer because it needs `MatVec` +
+     `MatTransposeVec` (never a solve) --- `Vec`/`ndarray` can join later by
+     implementing those two ops.
    - `LinearEqualityConstraints` (`A x = b`, exposing `a()` / `b()` --- same
      *shape* as the inequality trait but a distinct *type*, so `≤` and `=`
      problems can't be confused by the type system), used by the
@@ -122,11 +127,12 @@ These shape API decisions and are non-obvious from the code alone:
      via the `AugmentedLagrangian` adapter (`src/core/augmented_lagrangian.rs`)
      --- via a *quadratic penalty plus multiplier updates*
      (`L_ρ = f + λᵀc + (ρ/2)‖c‖²`, `c = A x − b`), no projection and no
-     barrier. The outer loop minimizes `L_ρ` with an inner unconstrained
-     solver, then updates `λ ← λ + ρ c` (or increases `ρ` when feasibility
-     stalls). Unlike the barrier, `L_ρ` is finite everywhere, so it tolerates
-     an **infeasible start** and any inner line search (no `+∞` wall, no
-     phase 1). Convergence (`‖A x − b‖ ≤ tol`) lives in the solver's
+     barrier. The outer loop minimizes `L_ρ` with **any gradient inner
+     solver** (same `So: WarmStart<V>` + `So::State: GradientState` bound as
+     the barrier), then updates `λ ← λ + ρ c` (or increases `ρ` when
+     feasibility stalls). Unlike the barrier, `L_ρ` is finite everywhere, so
+     it tolerates an **infeasible start** and any inner line search (no `+∞`
+     wall, no phase 1). Convergence (`‖A x − b‖ ≤ tol`) lives in the solver's
      `terminate` hook, mirroring the barrier's gap test (tenet 3: a
      framework-level `FeasibilityTolerance` waits for a 2nd equality solver).
      Backend-gated to nalgebra/faer for the same `MatVec` + `MatTransposeVec`
@@ -235,10 +241,34 @@ for raw `run_loop` when the outer needs to reconstruct criteria each
 call (statefulness escape hatch) or when it wants per-call criteria the
 user passes through a different surface.
 
-**Don't grow a `Composed<Outer, Inner>` type or a composition trait
-hierarchy until ≥2 concrete composed solvers exist.** Same spirit as
-tenet 4's "no `Constraint` supertrait until two consumers": one example
-(S11's CMA + LM) doesn't reveal which abstraction wants to be shared.
+**Seeding an inner's state: `WarmStart` (+ `MemeticInner`).** An outer
+that re-solves a subproblem from the current iterate needs to *build* the
+inner's state, not just drive it — and inners carry different state
+shapes (`BasicState`, `LbfgsState`, `QuasiNewtonState`, `BasicSimplexState`).
+`WarmStart<V>` (`src/core/inner.rs`) is the minimal primitive for this:
+`type State: State<Param=V>` + `seed(&self, x) -> State` (σ-free, the
+solver's natural default scale). `MemeticInner<V>: WarmStart<V>`
+(`src/solver/cma_inject.rs`) extends it with `seed_scaled(x, σ)` (defaults
+to `seed`; only Nelder-Mead's σ-scaled simplex overrides it) and
+`work_units` for CMA-injection eval aggregation. Two consumer families
+validate the split: the barrier / AL methods bound `So: WarmStart<V>`
+with `So::State: GradientState` (gradient inners only — they read
+`cost_evals`/`gradient_evals` directly, so they don't need `work_units`,
+and the `GradientState` bound excludes the only σ-sensitive inner,
+Nelder-Mead, which makes the σ-free `seed` exactly right); CMA-injection
+(`CmaInject`/`BoundedCmaInject`) bound `I: MemeticInner<V>` and call
+`seed_scaled`. This split is what resolved the "dummy-σ wrinkle" — barrier
+/ AL never pass a meaningless σ.
+
+**Don't grow a `Composed<Outer, Inner>` type until ≥2 concrete composed
+solvers want it.** Same spirit as tenet 4's "no `Constraint` supertrait
+until two consumers". `WarmStart` / `MemeticInner` cover *state seeding*
+for both memetic CMA and the barrier/AL family, but they are not a
+`Composed` abstraction: they say nothing about the outer loop, eval
+aggregation routing, or failure bubbling (those stay the three contracts
+above). A coarser `Composed` marker is still unmotivated — the shipped
+composed solvers share the three contracts and (some of them) `WarmStart`,
+and nothing more.
 
 ## WASM as a hard constraint
 

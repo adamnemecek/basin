@@ -3,6 +3,7 @@
 use crate::core::augmented_lagrangian::AugmentedLagrangian;
 use crate::core::constraint::LinearEqualityConstraints;
 use crate::core::executor::run_loop;
+use crate::core::inner::WarmStart;
 use crate::core::math::{Dot, MatTransposeVec, MatVec, NormSquared, ScaleInPlace, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
@@ -25,9 +26,19 @@ use crate::core::termination::{
 /// approaches the true multipliers `λ*`, the unconstrained minimizer of
 /// `L_ρ` approaches the constrained optimum.
 ///
-/// The method is generic over the inner solver `So`, which must minimize
-/// over [`BasicState`] — today that is
-/// [`GradientDescent`](crate::solver::GradientDescent).
+/// The method is generic over the inner solver `So`: any gradient-based
+/// solver that implements [`WarmStart`] and
+/// iterates over its own [`GradientState`], seeded at the current iterate via
+/// [`WarmStart::seed`]. That covers
+/// [`GradientDescent`](crate::solver::GradientDescent) ([`BasicState`]),
+/// [`BFGS`](crate::solver::BFGS)
+/// ([`QuasiNewtonState`](crate::core::state::QuasiNewtonState)), and unbounded
+/// [`LBFGS`](crate::solver::lbfgs::LBFGS)
+/// ([`LbfgsState`](crate::core::state::LbfgsState)). A least-squares inner
+/// ([`LevenbergMarquardt`](crate::solver::LevenbergMarquardt)) does not fit —
+/// `L_ρ` is not a sum of squares and the [`AugmentedLagrangian`] adapter
+/// exposes only `CostFunction + Gradient` — and a derivative-free inner
+/// (Nelder-Mead) is excluded by the [`GradientState`] bound.
 ///
 /// # Infeasible starts are fine
 ///
@@ -222,7 +233,8 @@ where
         + LinearEqualityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
     V: ScaledAdd<f64> + Dot + NormSquared + ScaleInPlace + Clone,
-    So: for<'a> Solver<AugmentedLagrangian<'a, P, V>, BasicState<V>>,
+    So: WarmStart<V> + for<'a> Solver<AugmentedLagrangian<'a, P, V>, So::State>,
+    So::State: GradientState<Param = V>,
 {
     fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
         self.rho = self.rho0;
@@ -259,11 +271,11 @@ where
         // coexist for the `run_loop` call.
         let lambda = self.lambda.as_ref().expect("init populates lambda");
         let al = AugmentedLagrangian::new(problem, lambda, self.rho);
-        let mut criteria: Vec<Box<dyn TerminationCriterion<BasicState<V>>>> = vec![
+        let mut criteria: Vec<Box<dyn TerminationCriterion<So::State>>> = vec![
             Box::new(MaxIter(self.inner_max_iter)),
             Box::new(GradientTolerance(self.inner_grad_tol)),
         ];
-        let inner_state = BasicState::new(state.param().clone());
+        let inner_state = self.inner_solver.seed(state.param());
         let result = run_loop(
             &al,
             inner_state,
@@ -283,7 +295,7 @@ where
 
         // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
         // (the inner left cost/gradient at the augmented-Lagrangian value).
-        state.param = result.state.param;
+        state.param = result.state.param().clone();
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;

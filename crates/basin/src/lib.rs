@@ -31,7 +31,7 @@ pub use crate::core::constraint::{
     BoxConstraints, LinearEqualityConstraints, LinearInequalityConstraints,
 };
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
-pub use crate::core::inner::InnerExecutor;
+pub use crate::core::inner::{InnerExecutor, WarmStart};
 pub use crate::core::math::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, BoxAffineScaling, ClampInPlace,
     DenseMatrixFromFn, Dot, GramMatrix, LinearSolveError, LinearSolveSpd, MatTransposeVec, MatVec,

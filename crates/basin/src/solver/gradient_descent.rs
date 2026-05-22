@@ -1,3 +1,4 @@
+use crate::core::inner::WarmStart;
 use crate::core::math::{NegInPlace, ScaleInPlace, ScaledAdd};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
@@ -162,6 +163,20 @@ where
         state.cost_evals += 1;
         state.gradient_evals += 1;
         (state, None)
+    }
+}
+
+/// Lets [`GradientDescent`] serve as the inner of a composed solver
+/// (e.g. [`BarrierMethod`](crate::solver::BarrierMethod) /
+/// [`AugmentedLagrangianMethod`](crate::solver::AugmentedLagrangianMethod)),
+/// seeding a fresh [`BasicState`] at the warm-start point.
+impl<L, V> WarmStart<V> for GradientDescent<L, V>
+where
+    V: Clone,
+{
+    type State = BasicState<V>;
+    fn seed(&self, x: &V) -> BasicState<V> {
+        BasicState::new(x.clone())
     }
 }
 

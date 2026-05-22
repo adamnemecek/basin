@@ -1,6 +1,6 @@
 use crate::core::constraint::BoxConstraints;
 use crate::core::executor::OptimizationResult;
-use crate::core::inner::InnerExecutor;
+use crate::core::inner::{InnerExecutor, WarmStart};
 use crate::core::math::{
     ClampInPlace, ComponentMulAssign, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,
     MatrixIdentity, NormSquared, RankOneUpdate, SampleStandardNormal, ScaleInPlace, ScaledAdd,
@@ -143,7 +143,7 @@ where
 impl<P, I, V, M> Solver<P, BasicPopulationState<V>> for BoundedCmaInject<I, V, M>
 where
     P: CostFunction<Param = V, Output = f64> + BoxConstraints,
-    I: MemeticInner<V> + Solver<P, <I as MemeticInner<V>>::State>,
+    I: MemeticInner<V> + Solver<P, <I as WarmStart<V>>::State>,
     I::State: State<Param = V, Float = f64>,
     V: VectorLen
         + Clone
@@ -193,7 +193,7 @@ where
 
         for i in 0..refine {
             // 2. Seed inner state via the trait.
-            let inner_state = self.inner.solver().seed(&state.candidates[i], sigma);
+            let inner_state = self.inner.solver().seed_scaled(&state.candidates[i], sigma);
 
             // 3. Drive the inner solver.
             let inner_result: OptimizationResult<I::State> = self.inner.run(problem, inner_state);

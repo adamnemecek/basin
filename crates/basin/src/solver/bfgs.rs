@@ -1,5 +1,6 @@
 use nalgebra::{DMatrix, DVector};
 
+use crate::core::inner::WarmStart;
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::QuasiNewtonState;
@@ -171,5 +172,17 @@ where
         state.cost_evals += 1;
         state.gradient = Some(g_new);
         (state, None)
+    }
+}
+
+/// Lets [`BFGS`] serve as the inner of a composed solver
+/// (e.g. [`BarrierMethod`](crate::solver::BarrierMethod) /
+/// [`AugmentedLagrangianMethod`](crate::solver::AugmentedLagrangianMethod)),
+/// seeding a fresh [`QuasiNewtonState`] (identity inverse-Hessian) at the
+/// warm-start point.
+impl<S> WarmStart<DVector<f64>> for BFGS<S> {
+    type State = QuasiNewtonState<DVector<f64>, DMatrix<f64>>;
+    fn seed(&self, x: &DVector<f64>) -> Self::State {
+        QuasiNewtonState::new(x.clone())
     }
 }

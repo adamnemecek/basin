@@ -15,72 +15,43 @@ the previous lands.
       `AugmentedLagrangian` adapter + `AugmentedLagrangianMethod`, a
       penalty-plus-multiplier outer loop over an inner `GradientDescent`;
       tolerates infeasible starts, nalgebra/faer via `MatVec`/`MatTransposeVec`).
+      Both are now inner-solver-agnostic over gradient inners (`So:
+      WarmStart<V>`, `So::State: GradientState`: `GradientDescent`/`BFGS`/
+      unbounded `LBFGS`) — see the completed inner-solver-agnostic item below.
       Remaining: phase-1 feasibility (the barrier needs a strictly feasible
-      start today; the augmented Lagrangian does not); broadening the inner
-      solver beyond `BasicState`/`GradientDescent` (see the dedicated
-      inner-solver-agnostic item below); `MatVec`/`MatTransposeVec` impls for
-      `Vec<f64>`/`ndarray` to lift the backend gate; a framework-level
-      `FeasibilityTolerance` once a 2nd equality-constrained solver justifies
-      it (tenet 3); nonlinear equality and nonlinear (in)equality constraints.
+      start today; the augmented Lagrangian does not);
+      `MatVec`/`MatTransposeVec` impls for `Vec<f64>`/`ndarray` to lift the
+      backend gate; a framework-level `FeasibilityTolerance` once a 2nd
+      equality-constrained solver justifies it (tenet 3); nonlinear equality
+      and nonlinear (in)equality constraints.
       Keep deferring a `Constraint` supertrait — box (projection),
       linear-inequality (barrier), and linear-equality (penalty+multipliers)
       still share no feasibility op beyond accessors (tenet 4).
-- [ ] **Make `BarrierMethod` / `AugmentedLagrangianMethod` inner-solver-agnostic.**
-      Both currently hard-code the inner solver as
-      `So: for<'a> Solver<Adapter<'a, P>, BasicState<V>>` (`Adapter` =
-      `LogBarrier` resp. `AugmentedLagrangian`), so in practice the *only*
-      usable inner is `GradientDescent` — you can swap its line search, but
-      that's the whole flexibility. The original intent was "wrap a barrier/AL
-      around L-BFGS, LM, Nelder-Mead, …"; that is **not** what ships. Two
-      orthogonal blockers, learned while shipping the AL method:
-
-  1. **State-type lock-in (fixable).** The `BasicState<V>` slot rejects, at
-     compile time, every solver that carries its own state: L-BFGS / L-BFGS-B
-     (`LbfgsState<V>`), BFGS (`QuasiNewtonState`), Nelder-Mead
-     (`BasicSimplexState<V>`). The state-seeding abstraction the `BarrierMethod`
-     doc gestures at *already exists*: `MemeticInner<V>` in
-     `src/solver/cma_inject.rs` —
-     `type State: State<Param=V>; fn seed(&self, x: &V, sigma: f64) -> State;
-     fn work_units(&self, &State) -> u64` — already impl'd for `NelderMead`,
-     `LevenbergMarquardt`, and `LBFGSB`. The lift: change the bound to
-     `So: MemeticInner<V> + for<'a> Solver<Adapter<'a, P>, So::State>`, swap
-     `BasicState::new(param)` for `inner.seed(&param, …)`, read the iterate back
-     from `So::State`, and bound `So::State: GradientState<Param=V>` so eval
-     aggregation (`cost_evals` / `gradient_evals`) still works.
-
-  2. **Least-squares inners are a category error (do *not* "fix").** LM /
-     Gauss-Newton / `Trf` already use `BasicState<V>` (state isn't what excludes
-     them) but require `P: Residual + Jacobian`, which the adapters deliberately
-     don't expose (`CostFunction + Gradient` only). A barrier `f − μ·Σ log sᵢ`
-     or Lagrangian `f + λᵀc + (ρ/2)‖c‖²` is not a sum of squares, so there's no
-     residual vector to hand LM — wrapping a barrier destroys the structure LM
-     exists to exploit. Constrained least-squares is a separate design (cf.
-     `Trf`, which bakes box bounds into the LM trust region).
-
-  **Trigger is met.** The `barrier_method.rs` doc deferred this "until there's a
-  second consumer to validate the shape against." `AugmentedLagrangianMethod` is
-  now that second consumer — both share the identical
-  `Solver<Adapter, BasicState<V>>` shape — so the project's ≥2-consumers rule
-  (tenet 4 / the "Solver composition" section in `AGENTS.md`) now permits the
-  generalization.
-
-  **Open design wrinkle to resolve first.** `MemeticInner::seed(&self, x, sigma)`
-  is CMA-flavored: `sigma` is the initial step / simplex scale — meaningful for
-  Nelder-Mead, meaningless for a barrier/AL subproblem (the `LevenbergMarquardt`
-  and `LBFGSB` impls already ignore it as `_sigma`). Passing a dummy `sigma`
-  silently mis-sizes a Nelder-Mead inner's simplex. So decide: (a) reuse
-  `MemeticInner` with a documented dummy and accept the Nelder-Mead caveat, or
-  (b) carve a slimmer sibling trait (e.g. `WarmStart<V> { type State; fn
-  seed(&self, x: &V) -> State; }`) that `MemeticInner` can supertrait. This is
-  exactly the "validate the abstraction against a 2nd consumer" call, and it
-  overlaps the `Composed<Outer, Inner>` question under *Cleanup / design debt*
-  below — resolve them together.
-
-  Files: `src/solver/barrier_method.rs`, `src/solver/augmented_lagrangian_method.rs`,
-  `src/solver/cma_inject.rs` (the `MemeticInner` trait + impls),
-  `src/core/state.rs` (`GradientState`). Integration-test templates:
-  `tests/barrier_method_*.rs`, `tests/augmented_lagrangian_*.rs`,
-  `tests/cma_inject_*.rs` (for the `MemeticInner` usage pattern).
+- [x] **Made `BarrierMethod` / `AugmentedLagrangianMethod` inner-solver-agnostic.**
+      Both now bound `So: WarmStart<V> + for<'a> Solver<Adapter<'a, P>,
+      So::State>` with `So::State: GradientState<Param=V>` (was hard-wired to
+      `BasicState<V>` ⇒ `GradientDescent` only). The state-seeding primitive is
+      the new `WarmStart<V>` trait (`src/core/inner.rs`):
+      `type State: State<Param=V>; fn seed(&self, x: &V) -> State`. The σ-free
+      `seed` resolved the "open design wrinkle" — option (b): `MemeticInner<V>:
+      WarmStart<V>` now extends it, adding the CMA-flavored `seed_scaled(x, σ)`
+      (defaults to `seed`; only Nelder-Mead overrides) + `work_units`;
+      `CmaInject`/`BoundedCmaInject` call sites switched `seed(x, σ)` →
+      `seed_scaled(x, σ)`. The barrier/AL methods read `cost_evals`/
+      `gradient_evals` off `So::State: GradientState` directly, so they need
+      neither `seed_scaled` nor `work_units`. Shipped `WarmStart` impls:
+      `GradientDescent`, `BFGS`, mode-generic `LBFGS` (covers `LBFGSB` +
+      unbounded), plus the split-out `NelderMead`/`LevenbergMarquardt` impls.
+      The two non-fixes held: **least-squares inners** (LM/Gauss-Newton/`Trf`)
+      are excluded automatically — the adapters expose `CostFunction + Gradient`,
+      not `Residual + Jacobian` (a barrier/Lagrangian is not a sum of squares);
+      **derivative-free inners** (Nelder-Mead) are excluded by the
+      `GradientState` bound, which is also exactly why the σ-free `seed` is the
+      right thing (the only σ-sensitive inner can't reach the barrier/AL).
+      Tests: `tests/barrier_method_nalgebra.rs` (`BFGS` + `Backtracking` inner,
+      Armijo respects the `+∞` wall) and `tests/augmented_lagrangian_nalgebra.rs`
+      (`BFGS` and unbounded `LBFGS` inners) prove a non-`BasicState` inner
+      converges to the same optimum as the `GradientDescent` inner.
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
       provisional-choices section in `AGENTS.md`. The first stochastic solver
       (S7 `RandomSearch`) landed without forcing this --- the bound-boilerplate
@@ -166,12 +137,17 @@ harder to fix as more code piles on.
       (per-generation top-k polish via `MemeticInner`, S11 + S13) and
       `MaLsChCma` (per-individual persistent LS chains, S12). The `MemeticInner`
       trait covers CMA-injection-style composition but doesn't model MA-LSCh's
-      persistent-state shape. Question: is there a shared `Composed` abstraction
-      (probably *not* `MemeticInner` --- something coarser like a "composed
-      solver" marker), or do these two memetic shapes genuinely have nothing in
-      common worth extracting? Resolve by either writing the trait or writing
-      the honest "no, these two don't share more than the AGENTS.md composition
-      contracts" comment in `core/inner.rs`.
+      persistent-state shape. Partial progress: the *state-seeding* slice was
+      extracted as `WarmStart<V>` (`core/inner.rs`), now shared by the
+      barrier/AL family and (via `MemeticInner: WarmStart`) CMA-injection — but
+      that is explicitly **not** a `Composed` abstraction (it says nothing about
+      the outer loop, eval routing, or failure bubbling; see the `WarmStart`
+      note in `AGENTS.md` "Solver composition"). Remaining question: is there a
+      shared `Composed` abstraction (coarser than `WarmStart` — a "composed
+      solver" marker), or do these memetic shapes genuinely share nothing beyond
+      the three AGENTS.md composition contracts (+ `WarmStart` for some)?
+      Resolve by either writing the trait or writing the honest "no" comment in
+      `core/inner.rs`.
 
 See `AGENTS.md` for the design tenets and constraints that shape these
 decisions.

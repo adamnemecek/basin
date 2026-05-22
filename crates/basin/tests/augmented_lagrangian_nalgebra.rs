@@ -5,7 +5,7 @@
 use basin::problems::EqualityConstrainedQuadratic;
 use basin::{
     AugmentedLagrangianMethod, Backtracking, BasicState, Executor, GradientDescent, GradientState,
-    TerminationReason,
+    TerminationReason, BFGS, LBFGSB,
 };
 use nalgebra::{DMatrix, DVector};
 
@@ -90,5 +90,53 @@ fn eval_counts_are_recorded() {
     assert!(
         result.state.gradient_evals() > 0,
         "no gradient evals recorded"
+    );
+}
+
+/// A `BFGS` inner (state `QuasiNewtonState`, not `BasicState`) proves the
+/// augmented-Lagrangian method is no longer locked to `BasicState<V>` /
+/// `GradientDescent`. `L_ρ` is finite everywhere, so the default Wolfe line
+/// search is fine. Converges to the same projection (1,1).
+#[test]
+fn bfgs_inner_converges_to_affine_projection() {
+    let problem = single_row_problem();
+    let initial = DVector::from_vec(vec![0.0, 0.0]); // infeasible start is fine
+
+    let result = Executor::new(
+        problem,
+        AugmentedLagrangianMethod::new(BFGS::new()),
+        BasicState::new(initial),
+    )
+    .max_iter(50)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(
+        (result.param()[0] - 1.0).abs() < 1e-4 && (result.param()[1] - 1.0).abs() < 1e-4,
+        "expected (1, 1), got {:?}",
+        result.param()
+    );
+}
+
+/// An unbounded `LBFGS` inner (state `LbfgsState`) exercises a third inner
+/// state shape. `L_ρ` is finite, so the More–Thuente line search is fine.
+#[test]
+fn lbfgs_inner_converges_to_affine_projection() {
+    let problem = single_row_problem();
+    let initial = DVector::from_vec(vec![0.0, 0.0]);
+
+    let result = Executor::new(
+        problem,
+        AugmentedLagrangianMethod::new(LBFGSB::new().unbounded()),
+        BasicState::new(initial),
+    )
+    .max_iter(50)
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::SolverConverged);
+    assert!(
+        (result.param()[0] - 1.0).abs() < 1e-4 && (result.param()[1] - 1.0).abs() < 1e-4,
+        "expected (1, 1), got {:?}",
+        result.param()
     );
 }
