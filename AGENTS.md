@@ -102,7 +102,7 @@ These shape API decisions and are non-obvious from the code alone:
    unconstrained solvers are a compile-time error, with an opt-in adapter
    (projection / penalty / barrier) to wrap unconstrained solvers when needed.
 
-   **Status.** Two constraint kinds ship, both in `src/core/constraint.rs`:
+   **Status.** Three constraint kinds ship, all in `src/core/constraint.rs`:
    - `BoxConstraints` (interval bounds), used by `Brent` (1D),
      `ProjectedGradientDescent`, `LBFGSB`, `Trf`, `BoundedCmaEs` --- all via
      *projection* / clamping.
@@ -115,32 +115,55 @@ These shape API decisions and are non-obvious from the code alone:
      (the barrier's `+∞` wall is the only feasibility guard). Backend-gated
      to nalgebra/faer because it needs `MatVec` + `MatTransposeVec` (never a
      solve) --- `Vec`/`ndarray` can join later by implementing those two ops.
-   Nonlinear and equality constraint kinds are not yet designed.
+   - `LinearEqualityConstraints` (`A x = b`, exposing `a()` / `b()` --- same
+     *shape* as the inequality trait but a distinct *type*, so `≤` and `=`
+     problems can't be confused by the type system), used by the
+     `AugmentedLagrangianMethod` (`src/solver/augmented_lagrangian_method.rs`)
+     via the `AugmentedLagrangian` adapter (`src/core/augmented_lagrangian.rs`)
+     --- via a *quadratic penalty plus multiplier updates*
+     (`L_ρ = f + λᵀc + (ρ/2)‖c‖²`, `c = A x − b`), no projection and no
+     barrier. The outer loop minimizes `L_ρ` with an inner unconstrained
+     solver, then updates `λ ← λ + ρ c` (or increases `ρ` when feasibility
+     stalls). Unlike the barrier, `L_ρ` is finite everywhere, so it tolerates
+     an **infeasible start** and any inner line search (no `+∞` wall, no
+     phase 1). Convergence (`‖A x − b‖ ≤ tol`) lives in the solver's
+     `terminate` hook, mirroring the barrier's gap test (tenet 3: a
+     framework-level `FeasibilityTolerance` waits for a 2nd equality solver).
+     Backend-gated to nalgebra/faer for the same `MatVec` + `MatTransposeVec`
+     reason as the barrier.
+   Nonlinear equality and nonlinear (in)equality constraint kinds are not yet
+   designed.
 
    **Adapters must not re-implement the constraint trait they consumed.** A
    wrapper that converts a constrained problem into an unconstrained one (log
-   barrier, quadratic penalty) exposes `CostFunction + Gradient` *only*. The
-   shipped `LogBarrier<'a, P: LinearInequalityConstraints>` does exactly this:
-   it impls `CostFunction + Gradient` and pointedly does **not** impl
-   `LinearInequalityConstraints` --- that asymmetry is what flows the wrapped
-   problem to unconstrained solvers. If the wrapper also implemented the
-   constraint trait, it would route back into constrained solvers and the
-   whole adapter model collapses. (Contrast `FiniteDiff`, which *adds* a
-   capability and therefore *forwards* `BoxConstraints`.) Load-bearing and
-   non-obvious; preserve it deliberately.
+   barrier, quadratic penalty) exposes `CostFunction + Gradient` *only*. Two
+   shipped adapters do exactly this: `LogBarrier<'a, P: LinearInequalityConstraints>`
+   and `AugmentedLagrangian<'a, P: LinearEqualityConstraints>` both impl
+   `CostFunction + Gradient` and pointedly do **not** impl the constraint
+   trait they consumed --- that asymmetry is what flows the wrapped problem to
+   unconstrained solvers. If a wrapper also implemented the constraint trait,
+   it would route back into constrained solvers and the whole adapter model
+   collapses. (Contrast `FiniteDiff`, which *adds* a capability and therefore
+   *forwards* `BoxConstraints`.) Load-bearing and non-obvious; preserve it
+   deliberately.
 
    **Do not design a `Constraint` supertrait or hierarchy until ≥2
    fundamentally different constrained solvers exist that share more than
-   `lower()` / `upper()` accessors.** The second constraint kind has now
-   landed (linear inequalities) and *confirms* the wait rather than ending it:
-   the box family keeps feasibility by *projection* (`ClampInPlace`), the
-   linear-inequality family by a *barrier* (`MatVec`/`MatTransposeVec`) --- they
-   share no operation beyond data accessors, so `BoxConstraints` and
-   `LinearInequalityConstraints` stay sibling traits with no supertrait. A
-   shared abstraction still waits for a constraint kind (nonlinear) that
-   genuinely shares a feasibility-check or projection op. One-member (or
-   no-shared-op two-member) hierarchies are overhead with no value; designing
-   on paper without a solver to validate against tends to need redoing.
+   `lower()` / `upper()` accessors.** Three constraint kinds have now landed
+   and *keep confirming* the wait rather than ending it. Each keeps feasibility
+   by a different mechanism: the box family by *projection* (`ClampInPlace`),
+   the linear-inequality family by a *barrier* (`MatVec`/`MatTransposeVec`),
+   and the linear-equality family by a *penalty plus multipliers* (also
+   `MatVec`/`MatTransposeVec`, but used to assemble `∇L_ρ`, not a barrier). The
+   two linear families happen to share the same *carrier ops* (`MatVec` +
+   `MatTransposeVec`), but they share no *feasibility* operation, and their
+   data accessors (`a()`/`b()`) are the only common surface --- so
+   `BoxConstraints`, `LinearInequalityConstraints`, and
+   `LinearEqualityConstraints` stay sibling traits with no supertrait. A shared
+   abstraction still waits for a constraint kind (nonlinear) that genuinely
+   shares a feasibility-check or projection op. One-member (or no-shared-op
+   multi-member) hierarchies are overhead with no value; designing on paper
+   without a solver to validate against tends to need redoing.
 
    **Constraints live on the problem, never on state.** Don't put `lower` /
    `upper` on `BasicState` "for convenience". State carries iteration history;

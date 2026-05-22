@@ -46,6 +46,7 @@
 //!   honest: only ops every backend can implement well live here. LA-heavy
 //!   ops will live in a separate tier when the first solver wants them.
 
+pub mod augmented_lagrangian;
 pub mod barrier;
 pub mod constraint;
 pub mod executor;

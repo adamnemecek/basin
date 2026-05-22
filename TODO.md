@@ -10,15 +10,21 @@ the previous lands.
       `BoundedCmaEs`). Linear inequalities `A x ≤ b` shipped
       (`LinearInequalityConstraints` + the `LogBarrier` adapter + the
       log-barrier `BarrierMethod`, a `constrOptim`-style layer over an inner
-      `GradientDescent`; nalgebra/faer via `MatVec`/`MatTransposeVec`).
+      `GradientDescent`; nalgebra/faer via `MatVec`/`MatTransposeVec`). Linear
+      equalities `A x = b` shipped (`LinearEqualityConstraints` + the
+      `AugmentedLagrangian` adapter + `AugmentedLagrangianMethod`, a
+      penalty-plus-multiplier outer loop over an inner `GradientDescent`;
+      tolerates infeasible starts, nalgebra/faer via `MatVec`/`MatTransposeVec`).
       Remaining: phase-1 feasibility (the barrier needs a strictly feasible
-      start today); broadening the barrier's inner solver beyond
-      `BasicState`/`GradientDescent` (L-BFGS, Nelder-Mead — needs a
-      state-seeding abstraction); `MatVec`/`MatTransposeVec` impls for
-      `Vec<f64>`/`ndarray` to lift the barrier's backend gate; equality and
-      nonlinear constraints. Keep deferring a `Constraint` supertrait —
-      box (projection) and linear-inequality (barrier) still share no op
-      beyond accessors (tenet 4).
+      start today; the augmented Lagrangian does not); broadening the inner
+      solver beyond `BasicState`/`GradientDescent` (L-BFGS, Nelder-Mead — needs
+      a state-seeding abstraction); `MatVec`/`MatTransposeVec` impls for
+      `Vec<f64>`/`ndarray` to lift the backend gate; a framework-level
+      `FeasibilityTolerance` once a 2nd equality-constrained solver justifies
+      it (tenet 3); nonlinear equality and nonlinear (in)equality constraints.
+      Keep deferring a `Constraint` supertrait — box (projection),
+      linear-inequality (barrier), and linear-equality (penalty+multipliers)
+      still share no feasibility op beyond accessors (tenet 4).
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
       provisional-choices section in `AGENTS.md`. The first stochastic solver
       (S7 `RandomSearch`) landed without forcing this --- the bound-boilerplate

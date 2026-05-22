@@ -1,3 +1,7 @@
+/// Augmented-Lagrangian method for linear equality constraints `A x = b`
+/// (penalty + multiplier updates over any unconstrained inner solver;
+/// tolerates infeasible starts).
+pub mod augmented_lagrangian_method;
 /// Log-barrier method for linear inequality constraints `A x ≤ b`
 /// (`constrOptim`-style layer over any unconstrained inner solver).
 pub mod barrier_method;
@@ -46,6 +50,7 @@ pub mod trf;
 #[cfg(feature = "nalgebra")]
 pub mod bfgs;
 
+pub use augmented_lagrangian_method::AugmentedLagrangianMethod;
 pub use barrier_method::BarrierMethod;
 #[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;

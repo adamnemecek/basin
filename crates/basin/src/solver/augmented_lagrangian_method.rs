@@ -1,0 +1,368 @@
+//! Augmented-Lagrangian method for linear equality constraints `A x = b`.
+
+use crate::core::augmented_lagrangian::AugmentedLagrangian;
+use crate::core::constraint::LinearEqualityConstraints;
+use crate::core::executor::run_loop;
+use crate::core::math::{Dot, MatTransposeVec, MatVec, NormSquared, ScaleInPlace, ScaledAdd};
+use crate::core::problem::{CostFunction, Gradient};
+use crate::core::solver::Solver;
+use crate::core::state::{BasicState, GradientState, State};
+use crate::core::termination::{
+    GradientTolerance, MaxIter, TerminationCriterion, TerminationReason,
+};
+
+/// Augmented-Lagrangian method for `min f(x) s.t. A x = b` — the
+/// equality-constrained analogue of the log-barrier
+/// [`BarrierMethod`](crate::solver::BarrierMethod), layering a quadratic
+/// penalty plus multiplier estimates on an unconstrained inner solver.
+///
+/// Each outer iteration minimizes the augmented Lagrangian
+/// `L_ρ(x, λ) = f(x) + λᵀ c(x) + (ρ/2)‖c(x)‖²` (with `c(x) = A x − b`, the
+/// [`AugmentedLagrangian`] adapter) over `x` with the inner solver `So`,
+/// warm-started from the current iterate, then updates the multiplier
+/// estimate `λ ← λ + ρ c(x)`. When feasibility fails to improve enough
+/// between outer iterations the penalty `ρ` is increased instead. As `λ`
+/// approaches the true multipliers `λ*`, the unconstrained minimizer of
+/// `L_ρ` approaches the constrained optimum.
+///
+/// The method is generic over the inner solver `So`, which must minimize
+/// over [`BasicState`] — today that is
+/// [`GradientDescent`](crate::solver::GradientDescent).
+///
+/// # Infeasible starts are fine
+///
+/// Unlike the [`BarrierMethod`](crate::solver::BarrierMethod), the augmented
+/// Lagrangian is finite and smooth *everywhere* — there is no `+∞`
+/// feasibility wall — so the starting point need **not** satisfy `A x₀ = b`,
+/// and the inner solver may use any line search (Armijo backtracking, Wolfe,
+/// Moré–Thuente) or momentum. No phase-1 feasibility solve is required.
+///
+/// # Algorithm
+///
+/// Nocedal & Wright, *Numerical Optimization* §17.3 (Alg. 17.4, the
+/// LANCELOT-style outer loop), simplified:
+///
+/// ```text
+/// λ ← 0 ∈ ℝᵐ ;  ρ ← rho0
+/// repeat:
+///   x ← argmin_x L_ρ(x, λ)            # inner solver, warm-started at x
+///   c ← A x − b
+///   if ‖c‖ ≤ tol: stop (SolverConverged)
+///   if ‖c‖ ≤ feasibility_decrease · ‖c_prev‖:
+///       λ ← λ + ρ c                    # sufficient feasibility improvement
+///   else:
+///       ρ ← rho_increase · ρ           # else tighten penalty, keep λ
+/// ```
+///
+/// # Termination
+///
+/// The outer feasibility test `‖A x − b‖ ≤ tol` is solver-specific and lives
+/// on the solver (tenet 3): it fires via [`terminate`](Solver::terminate) as
+/// [`SolverConverged`](TerminationReason::SolverConverged). Optimality is the
+/// inner solve's job — it drives `‖∇_x L_ρ‖` down — so once the iterate is
+/// feasible and the inner solve has converged, the KKT conditions hold. Pair
+/// with the executor's [`MaxIter`] as a safety net.
+///
+/// **Do not attach a gradient-norm criterion to the outer executor.** As with
+/// the barrier, at a constrained optimum the *true* objective gradient `∇f`
+/// does not vanish — it is balanced by `Aᵀλ*` — so a framework
+/// [`GradientTolerance`](crate::core::termination::GradientTolerance) on the
+/// outer loop would fire on the wrong point or never. (The outer state's
+/// gradient is the true `∇f`, seeded only so the state is well-formed; it is
+/// not a convergence signal.)
+///
+/// # Backends
+///
+/// Requires the constraint matrix to implement [`MatVec`] (`A x`) and
+/// [`MatTransposeVec`] (`Aᵀ v`) — never a linear solve. That covers nalgebra
+/// (`DMatrix`/`DVector`) and faer (`Mat`/`Col`); `Vec<f64>` and `ndarray` are
+/// a compile-time error until they grow the two matvec impls (tenet 5).
+///
+/// # Composition
+///
+/// Internally drives the inner solver via
+/// [`run_loop`](crate::core::executor::run_loop) with a **fresh** criteria
+/// vector each outer iteration (`MaxIter` + `GradientTolerance` on the
+/// augmented Lagrangian). Building criteria per call — rather than storing an
+/// [`InnerExecutor`](crate::core::inner::InnerExecutor) — sidesteps the
+/// `MaxTime` cross-call statelessness caveat (see `AGENTS.md` "Solver
+/// composition"). Inner cost/gradient evaluations accumulate onto the outer
+/// state via [`increment_cost_evals`](State::increment_cost_evals) /
+/// [`increment_gradient_evals`](GradientState::increment_gradient_evals).
+pub struct AugmentedLagrangianMethod<So, V> {
+    inner_solver: So,
+    inner_max_iter: u64,
+    inner_grad_tol: f64,
+    rho0: f64,
+    rho: f64,
+    rho_increase: f64,
+    feasibility_decrease: f64,
+    tol: f64,
+    /// Multiplier estimate `λ ∈ ℝᵐ`; populated in [`init`](Solver::init) with
+    /// a zero vector shaped like `b`, then carried across outer iterations.
+    lambda: Option<V>,
+    /// `‖c(x)‖` of the most recent inner solve; `+∞` until the first solve so
+    /// [`terminate`](Solver::terminate) cannot fire at iter 0.
+    c_norm: f64,
+    /// `‖c(x)‖` of the previous outer iteration, for the `ρ`-increase test.
+    c_norm_prev: f64,
+}
+
+impl<So, V> AugmentedLagrangianMethod<So, V> {
+    /// Build an augmented-Lagrangian method around an unconstrained inner
+    /// solver.
+    ///
+    /// Defaults: `rho0 = 10.0`, `rho_increase = 10.0`,
+    /// `feasibility_decrease = 0.25`, `tol = 1e-8`, `inner_max_iter = 50`,
+    /// `inner_grad_tol = 1e-8`.
+    pub fn new(inner_solver: So) -> Self {
+        Self {
+            inner_solver,
+            inner_max_iter: 50,
+            inner_grad_tol: 1e-8,
+            rho0: 10.0,
+            rho: 10.0,
+            rho_increase: 10.0,
+            feasibility_decrease: 0.25,
+            tol: 1e-8,
+            lambda: None,
+            c_norm: f64::INFINITY,
+            c_norm_prev: f64::INFINITY,
+        }
+    }
+
+    /// Initial penalty parameter `ρ` (default `10.0`).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `rho0 > 0` — a non-positive penalty is not a penalty.
+    pub fn rho0(mut self, rho0: f64) -> Self {
+        assert!(rho0 > 0.0, "rho0 must be > 0");
+        self.rho0 = rho0;
+        self
+    }
+
+    /// Penalty growth factor: `ρ ← rho_increase · ρ` when feasibility fails
+    /// to improve sufficiently (default `10.0`).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `rho_increase > 1` — otherwise the penalty would not
+    /// grow and a stalled iterate could never be pushed onto the feasible
+    /// set.
+    pub fn rho_increase(mut self, rho_increase: f64) -> Self {
+        assert!(rho_increase > 1.0, "rho_increase must be > 1");
+        self.rho_increase = rho_increase;
+        self
+    }
+
+    /// Required feasibility-decrease ratio `τ ∈ (0, 1)`: the multipliers are
+    /// updated only when `‖c(x_k)‖ ≤ τ · ‖c(x_{k−1})‖`; otherwise the penalty
+    /// is increased instead (default `0.25`).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `0 < feasibility_decrease < 1`.
+    pub fn feasibility_decrease(mut self, feasibility_decrease: f64) -> Self {
+        assert!(
+            feasibility_decrease > 0.0 && feasibility_decrease < 1.0,
+            "feasibility_decrease must be in (0, 1)"
+        );
+        self.feasibility_decrease = feasibility_decrease;
+        self
+    }
+
+    /// Outer feasibility tolerance: stop once `‖A x − b‖ ≤ tol` (default
+    /// `1e-8`).
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `tol > 0`.
+    pub fn tol(mut self, tol: f64) -> Self {
+        assert!(tol > 0.0, "tol must be > 0");
+        self.tol = tol;
+        self
+    }
+
+    /// Iteration budget for each inner subproblem solve (default `50`).
+    ///
+    /// As with the barrier, a first-order inner solver on the (increasingly
+    /// ill-conditioned) penalized objective typically exhausts this budget
+    /// rather than reaching [`inner_grad_tol`](Self::inner_grad_tol); the
+    /// outer multiplier updates still converge from loosely-minimized
+    /// subproblems. Raise it for hard / higher-dimensional problems.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `inner_max_iter ≥ 1` (a zero budget would never move the
+    /// iterate).
+    pub fn inner_max_iter(mut self, inner_max_iter: u64) -> Self {
+        assert!(inner_max_iter >= 1, "inner_max_iter must be ≥ 1");
+        self.inner_max_iter = inner_max_iter;
+        self
+    }
+
+    /// Gradient-norm tolerance for each inner subproblem solve (default
+    /// `1e-8`). Inner solves stop at `‖∇L_ρ‖ ≤ inner_grad_tol`.
+    ///
+    /// # Panics
+    ///
+    /// Panics unless `inner_grad_tol ≥ 0`.
+    pub fn inner_grad_tol(mut self, inner_grad_tol: f64) -> Self {
+        assert!(inner_grad_tol >= 0.0, "inner_grad_tol must be ≥ 0");
+        self.inner_grad_tol = inner_grad_tol;
+        self
+    }
+}
+
+impl<P, V, M, So> Solver<P, BasicState<V>> for AugmentedLagrangianMethod<So, V>
+where
+    P: CostFunction<Param = V, Output = f64>
+        + Gradient<Param = V, Gradient = V>
+        + LinearEqualityConstraints<Param = V, Matrix = M>,
+    M: MatVec<V> + MatTransposeVec<V>,
+    V: ScaledAdd<f64> + Dot + NormSquared + ScaleInPlace + Clone,
+    So: for<'a> Solver<AugmentedLagrangian<'a, P, V>, BasicState<V>>,
+{
+    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+        self.rho = self.rho0;
+        self.c_norm = f64::INFINITY;
+        self.c_norm_prev = f64::INFINITY;
+
+        // λ ← 0 ∈ ℝᵐ. Clone `b` for the right shape (m entries), then zero it
+        // — backend-generic with no "zeros_like" in the math layer. No
+        // feasibility precondition: the augmented Lagrangian tolerates an
+        // infeasible x₀.
+        let mut lambda = problem.b().clone();
+        lambda.scale_in_place(0.0);
+        self.lambda = Some(lambda);
+
+        // Seed the *true* objective so framework criteria and the public
+        // result read f, not the augmented-Lagrangian value.
+        state.cost = Some(problem.cost(state.param()));
+        state.gradient = Some(problem.gradient(state.param()));
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+        state
+    }
+
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> (BasicState<V>, Option<TerminationReason>) {
+        // Minimize the augmented Lagrangian at the current (λ, ρ) on a
+        // *separate* inner state seeded (warm-started) at the current
+        // iterate. Fresh criteria each call satisfies the statelessness
+        // contract. The adapter borrows `self.lambda`; the inner solver
+        // borrows `self.inner_solver` — disjoint fields, so both borrows
+        // coexist for the `run_loop` call.
+        let lambda = self.lambda.as_ref().expect("init populates lambda");
+        let al = AugmentedLagrangian::new(problem, lambda, self.rho);
+        let mut criteria: Vec<Box<dyn TerminationCriterion<BasicState<V>>>> = vec![
+            Box::new(MaxIter(self.inner_max_iter)),
+            Box::new(GradientTolerance(self.inner_grad_tol)),
+        ];
+        let inner_state = BasicState::new(state.param().clone());
+        let result = run_loop(
+            &al,
+            inner_state,
+            &mut self.inner_solver,
+            &mut criteria,
+            self.inner_max_iter,
+        );
+
+        // Eval aggregation (composition contract): roll the inner's counts
+        // into the outer state regardless of how the inner stopped.
+        state.increment_cost_evals(result.state.cost_evals());
+        state.increment_gradient_evals(result.state.gradient_evals());
+
+        if result.reason.is_failure() {
+            return (state, Some(TerminationReason::SolverFailed));
+        }
+
+        // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
+        // (the inner left cost/gradient at the augmented-Lagrangian value).
+        state.param = result.state.param;
+        state.cost = Some(problem.cost(&state.param));
+        state.gradient = Some(problem.gradient(&state.param));
+        state.cost_evals += 1;
+        state.gradient_evals += 1;
+
+        // Constraint residual c = A x − b at the new iterate.
+        let mut c = problem.a().matvec(&state.param);
+        c.scaled_add(-1.0, problem.b());
+        self.c_norm_prev = self.c_norm;
+        self.c_norm = c.norm_squared().sqrt();
+
+        // Multiplier update vs. penalty increase. The first solve
+        // (c_norm_prev = +∞) always takes the update branch.
+        if self.c_norm <= self.feasibility_decrease * self.c_norm_prev {
+            // Sufficient feasibility improvement: first-order multiplier
+            // update λ ← λ + ρ c.
+            let lambda = self.lambda.as_mut().expect("init populates lambda");
+            lambda.scaled_add(self.rho, &c);
+        } else {
+            // Feasibility stalled: tighten the penalty, keep λ.
+            self.rho *= self.rho_increase;
+        }
+
+        (state, None)
+    }
+
+    fn terminate(&self, _state: &BasicState<V>) -> Option<TerminationReason> {
+        // Feasibility bound ‖A x − b‖ from the most recent solve. Optimality
+        // is handled by the inner solve driving ‖∇L_ρ‖ down.
+        if self.c_norm <= self.tol {
+            Some(TerminationReason::SolverConverged)
+        } else {
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The builder validation is backend-independent, so a unit inner stand-in
+    // (`()`) suffices. The struct's `V` generic is unconstrained by the
+    // builders, so pin it to a dummy `Vec<f64>` via turbofish.
+    type Builder = AugmentedLagrangianMethod<(), Vec<f64>>;
+
+    #[test]
+    #[should_panic(expected = "rho0 must be > 0")]
+    fn rejects_nonpositive_rho0() {
+        let _ = Builder::new(()).rho0(0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "rho_increase must be > 1")]
+    fn rejects_rho_increase_not_greater_than_one() {
+        let _ = Builder::new(()).rho_increase(1.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "feasibility_decrease must be in (0, 1)")]
+    fn rejects_feasibility_decrease_out_of_range() {
+        let _ = Builder::new(()).feasibility_decrease(1.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "tol must be > 0")]
+    fn rejects_nonpositive_tol() {
+        let _ = Builder::new(()).tol(0.0);
+    }
+
+    #[test]
+    #[should_panic(expected = "inner_max_iter must be ≥ 1")]
+    fn rejects_zero_inner_max_iter() {
+        let _ = Builder::new(()).inner_max_iter(0);
+    }
+
+    #[test]
+    #[should_panic(expected = "inner_grad_tol must be ≥ 0")]
+    fn rejects_negative_inner_grad_tol() {
+        let _ = Builder::new(()).inner_grad_tol(-1.0);
+    }
+}

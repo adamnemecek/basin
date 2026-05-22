@@ -2,7 +2,7 @@
 //!
 //! The framework lives in [`core`]: problem traits the user implements
 //! ([`CostFunction`], [`Gradient`], [`BoxConstraints`],
-//! [`LinearInequalityConstraints`]), state shapes
+//! [`LinearInequalityConstraints`], [`LinearEqualityConstraints`]), state shapes
 //! solvers iterate over ([`State`], [`GradientState`], [`SimplexState`]),
 //! the [`Solver`] trait, and a pluggable termination layer
 //! ([`TerminationCriterion`]). Concrete solvers are in [`solver`];
@@ -25,8 +25,11 @@ pub mod problems;
 /// Concrete solver implementations.
 pub mod solver;
 
+pub use crate::core::augmented_lagrangian::AugmentedLagrangian;
 pub use crate::core::barrier::LogBarrier;
-pub use crate::core::constraint::{BoxConstraints, LinearInequalityConstraints};
+pub use crate::core::constraint::{
+    BoxConstraints, LinearEqualityConstraints, LinearInequalityConstraints,
+};
 pub use crate::core::executor::{run_loop, Executor, OptimizationResult, StepOutcome, Stepper};
 pub use crate::core::inner::InnerExecutor;
 pub use crate::core::math::{
@@ -59,7 +62,7 @@ pub use crate::solver::lbfgs::{LBFGS, LBFGSB};
 #[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{
-    BarrierMethod, BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner, CmaEs, CmaInject,
-    GaussNewton, GradientDescent, LevenbergMarquardt, MaLsChCma, MaLsChState, MemeticInner,
-    NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
+    AugmentedLagrangianMethod, BarrierMethod, BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner,
+    CmaEs, CmaInject, GaussNewton, GradientDescent, LevenbergMarquardt, MaLsChCma, MaLsChState,
+    MemeticInner, NelderMead, ProjectedGradientDescent, RandomSearch, Ssga, Trf,
 };

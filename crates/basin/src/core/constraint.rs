@@ -1,15 +1,17 @@
 //! Constraint markers carried on the problem (tenet 4 in `AGENTS.md`).
 //! [`BoxConstraints`] (interval bounds, consumed by projection-based
-//! solvers) and [`LinearInequalityConstraints`] (`A x ≤ b`, consumed by
-//! the log-barrier method).
+//! solvers), [`LinearInequalityConstraints`] (`A x ≤ b`, consumed by the
+//! log-barrier method), and [`LinearEqualityConstraints`] (`A x = b`,
+//! consumed by the augmented-Lagrangian method).
 //!
 //! These are deliberately *sibling* traits, not members of a `Constraint`
 //! supertrait/hierarchy. Per tenet 4, a shared abstraction waits until ≥2
 //! constrained solvers share more than data accessors — and they don't:
 //! the box family keeps feasibility by *projection*, the linear-inequality
-//! family by a *barrier*. The two share no operation beyond `lower()` /
-//! `upper()` resp. `a()` / `b()`, so a one-member hierarchy would be pure
-//! overhead.
+//! family by a *barrier*, and the linear-equality family by a *penalty plus
+//! multipliers* (the augmented Lagrangian). Three feasibility mechanisms,
+//! and the traits share no operation beyond `lower()` / `upper()` resp.
+//! `a()` / `b()`, so a one-member hierarchy would still be pure overhead.
 
 use crate::core::problem::CostFunction;
 
@@ -71,6 +73,53 @@ pub trait LinearInequalityConstraints: CostFunction {
     /// [`MatTransposeVec<Param>`](crate::core::math::MatTransposeVec).
     type Matrix;
     /// The constraint matrix `A` (`m` rows = number of inequalities).
+    fn a(&self) -> &Self::Matrix;
+    /// The right-hand side `b ∈ ℝᵐ`.
+    fn b(&self) -> &Self::Param;
+}
+
+/// Linear equality constraints `A x = b` in standard form.
+///
+/// `A` is the `m × n` constraint matrix and `b ∈ ℝᵐ`; the feasible set is
+/// the affine subspace `{ x ∈ ℝⁿ : A x = b }`. Like the sibling
+/// constraint traits, the data lives on the *problem* side (tenet 4 in
+/// `AGENTS.md`): solvers that handle linear equalities (currently the
+/// [`AugmentedLagrangianMethod`](crate::solver::AugmentedLagrangianMethod))
+/// bind on this trait, so handing them an unconstrained problem is a compile
+/// error.
+///
+/// This is a **distinct trait** from [`LinearInequalityConstraints`] even
+/// though the data shape (`A`, `b`) is identical: the semantics differ
+/// (`= b` vs `≤ b`), so the type system must keep them apart — an
+/// `A x ≤ b` problem must not be silently accepted by an equality solver,
+/// and vice versa.
+///
+/// `LinearEqualityConstraints` is a supertrait of [`CostFunction`] so the
+/// `Param` type is shared automatically.
+///
+/// # Shapes
+///
+/// `b` shares the parameter's vector *type* ([`Self::Param`]) but lives in
+/// `ℝᵐ` — one entry per constraint row — whereas the iterate lives in `ℝⁿ`.
+/// `m` and `n` need not match.
+///
+/// # Matrix type and consumers
+///
+/// The trait stays free of math bounds on [`Matrix`](Self::Matrix), the
+/// same way the sibling traits leave their carriers unbounded. Consumers add
+/// the operations they actually need: the augmented Lagrangian requires
+/// `Matrix: MatVec<Param> + MatTransposeVec<Param>` (for `A x` and `Aᵀ v`) —
+/// a strict subset of the LA tier that never includes a linear solve. With
+/// those bounds the method is available on the matrix-capable backends
+/// (nalgebra `DMatrix`/`DVector`, faer `Mat`/`Col`); `Vec<f64>` and
+/// `ndarray` produce a compile-time error until they grow the two matvec
+/// impls (tenet 5).
+pub trait LinearEqualityConstraints: CostFunction {
+    /// The `m × n` constraint-matrix type. Consumers bound this on
+    /// [`MatVec<Param>`](crate::core::math::MatVec) +
+    /// [`MatTransposeVec<Param>`](crate::core::math::MatTransposeVec).
+    type Matrix;
+    /// The constraint matrix `A` (`m` rows = number of equalities).
     fn a(&self) -> &Self::Matrix;
     /// The right-hand side `b ∈ ℝᵐ`.
     fn b(&self) -> &Self::Param;
