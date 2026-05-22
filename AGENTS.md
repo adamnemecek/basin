@@ -117,9 +117,11 @@ These shape API decisions and are non-obvious from the code alone:
      Armijo-backtracking inner line search (the barrier's `+∞` wall is the
      only feasibility guard --- so a Wolfe/More-Thuente inner can step
      through it; pair `BFGS`/`LBFGS` with `Backtracking` for the barrier).
-     Backend-gated to nalgebra/faer because it needs `MatVec` +
-     `MatTransposeVec` (never a solve) --- `Vec`/`ndarray` can join later by
-     implementing those two ops.
+     Runs on **every backend**: it needs only `MatVec` + `MatTransposeVec`
+     (never a solve), and those two ops now ship for `Vec<f64>` (via the
+     hand-rolled `DenseMatrix` in `src/core/math/dense.rs`), nalgebra, faer,
+     and `ndarray` (`Array2`). The backend gate that once limited it to
+     nalgebra/faer is lifted.
    - `LinearEqualityConstraints` (`A x = b`, exposing `a()` / `b()` --- same
      *shape* as the inequality trait but a distinct *type*, so `≤` and `=`
      problems can't be confused by the type system), used by the
@@ -135,8 +137,8 @@ These shape API decisions and are non-obvious from the code alone:
      wall, no phase 1). Convergence (`‖A x − b‖ ≤ tol`) lives in the solver's
      `terminate` hook, mirroring the barrier's gap test (tenet 3: a
      framework-level `FeasibilityTolerance` waits for a 2nd equality solver).
-     Backend-gated to nalgebra/faer for the same `MatVec` + `MatTransposeVec`
-     reason as the barrier.
+     Runs on every backend for the same `MatVec` + `MatTransposeVec` reason as
+     the barrier (`Vec<f64>` via `DenseMatrix`, plus nalgebra, faer, ndarray).
    Nonlinear equality and nonlinear (in)equality constraint kinds are not yet
    designed.
 

@@ -1,11 +1,16 @@
 //! Dense linear-algebra ops for LA-heavy solvers (Gauss-Newton,
 //! Levenberg-Marquardt, TRF). This is the second math tier per
-//! `AGENTS.md` tenet 5: only backends that can implement these
-//! operations honestly (currently nalgebra and faer) carry impls.
-//! `Vec<f64>` and `ndarray` deliberately do not — there's no honest
-//! `LinearSolveSpd` story for either at the dense level (no matrix
-//! type for `Vec`; `ndarray-linalg` requires system BLAS/LAPACK and
-//! breaks the wasm-default tenet).
+//! `AGENTS.md` tenet 5: most of these operations are carried only by
+//! backends that can implement them honestly (currently nalgebra and
+//! faer). The two matvec ops ([`MatVec`], [`MatTransposeVec`]) are the
+//! exception — they are cheap and honest on every backend, so `Vec<f64>`
+//! (via [`DenseMatrix`](super::DenseMatrix)) and `ndarray::Array2<f64>`
+//! implement them too; that is what lets the linear-constraint solvers
+//! run on every backend. The *factorization* ops do not generalize:
+//! `Vec<f64>` and `ndarray` deliberately omit [`LinearSolveSpd`] /
+//! [`GramMatrix`] / eigen — there's no honest dense-factorization story
+//! for either (`ndarray-linalg` requires system BLAS/LAPACK and breaks
+//! the wasm-default tenet).
 //!
 //! The op set covers what Gauss-Newton needs at minimum, plus a
 //! least-squares solve for sparse backends that ship QR:
@@ -34,9 +39,12 @@
 ///
 /// # Backends
 ///
-/// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`)
-/// and `faer::Mat<f64>` (with `V = faer::Col<f64>`) when the
-/// respective backend feature is enabled.
+/// Implemented on every backend's dense matrix type:
+/// [`DenseMatrix`](super::DenseMatrix) (with `V = Vec<f64>`, always
+/// available), `nalgebra::DMatrix<f64>` (`V = DVector<f64>`),
+/// `faer::Mat<f64>` (`V = faer::Col<f64>`), and `ndarray::Array2<f64>`
+/// (`V = Array1<f64>`) — each behind its backend feature where
+/// applicable.
 pub trait MatVec<V> {
     /// Compute `A x`, allocating a fresh `V` of length `self.nrows()`.
     fn matvec(&self, x: &V) -> V;

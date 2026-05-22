@@ -135,6 +135,77 @@ mod faer_impl {
     }
 }
 
+mod vec_impl {
+    use super::ConstrainedQuadratic;
+    use crate::core::math::DenseMatrix;
+    use crate::{CostFunction, Gradient, LinearInequalityConstraints};
+
+    impl CostFunction for ConstrainedQuadratic<DenseMatrix, Vec<f64>> {
+        type Param = Vec<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Vec<f64>) -> f64 {
+            x.iter()
+                .zip(&self.c)
+                .map(|(xi, ci)| (xi - ci).powi(2))
+                .sum()
+        }
+    }
+
+    impl Gradient for ConstrainedQuadratic<DenseMatrix, Vec<f64>> {
+        type Param = Vec<f64>;
+        type Gradient = Vec<f64>;
+        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+            x.iter()
+                .zip(&self.c)
+                .map(|(xi, ci)| 2.0 * (xi - ci))
+                .collect()
+        }
+    }
+
+    impl LinearInequalityConstraints for ConstrainedQuadratic<DenseMatrix, Vec<f64>> {
+        type Matrix = DenseMatrix;
+        fn a(&self) -> &DenseMatrix {
+            &self.a
+        }
+        fn b(&self) -> &Vec<f64> {
+            &self.b
+        }
+    }
+}
+
+#[cfg(feature = "ndarray")]
+mod ndarray_impl {
+    use super::ConstrainedQuadratic;
+    use crate::{CostFunction, Gradient, LinearInequalityConstraints};
+    use ndarray::{Array1, Array2};
+
+    impl CostFunction for ConstrainedQuadratic<Array2<f64>, Array1<f64>> {
+        type Param = Array1<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Array1<f64>) -> f64 {
+            (x - &self.c).mapv(|v| v * v).sum()
+        }
+    }
+
+    impl Gradient for ConstrainedQuadratic<Array2<f64>, Array1<f64>> {
+        type Param = Array1<f64>;
+        type Gradient = Array1<f64>;
+        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+            (x - &self.c).mapv(|v| 2.0 * v)
+        }
+    }
+
+    impl LinearInequalityConstraints for ConstrainedQuadratic<Array2<f64>, Array1<f64>> {
+        type Matrix = Array2<f64>;
+        fn a(&self) -> &Array2<f64> {
+            &self.a
+        }
+        fn b(&self) -> &Array1<f64> {
+            &self.b
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

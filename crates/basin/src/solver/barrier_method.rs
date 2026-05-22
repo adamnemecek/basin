@@ -105,11 +105,13 @@ use crate::core::termination::{
 ///
 /// Requires the constraint matrix to implement
 /// [`MatVec`] (`A x`) and [`MatTransposeVec`] (`Aᵀ v`) — never a linear
-/// solve. That covers nalgebra (`DMatrix`/`DVector`) and faer
-/// (`Mat`/`Col`); `Vec<f64>` and `ndarray` are a compile-time error until
-/// they grow the two matvec impls (tenet 5). A future primal-dual interior
-/// point method *would* need [`LinearSolveSpd`](crate::core::math::LinearSolveSpd)
-/// (Newton on the KKT system) and so would stay nalgebra/faer-only.
+/// solve. All backends supply those two ops, so the method runs on every
+/// backend: `Vec<f64>` (via
+/// [`DenseMatrix`](crate::core::math::DenseMatrix)), nalgebra
+/// (`DMatrix`/`DVector`), faer (`Mat`/`Col`), and `ndarray`
+/// (`Array2`/`Array1`). A future primal-dual interior point method *would*
+/// need [`LinearSolveSpd`](crate::core::math::LinearSolveSpd) (Newton on the
+/// KKT system) and so would stay nalgebra/faer-only.
 ///
 /// # Composition
 ///

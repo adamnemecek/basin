@@ -1,4 +1,4 @@
-use ndarray::{Array1, ArrayBase, Data, DataMut, Dimension};
+use ndarray::{Array1, Array2, ArrayBase, Data, DataMut, Dimension};
 use rand::{Rng, RngExt};
 use rand_distr::{Distribution, StandardNormal};
 
@@ -9,8 +9,8 @@ use super::cl_scaling::{
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
     ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
-    FloorZerosInPlace, NegInPlace, NormInfinity, NormSquared, ScaleInPlace, ScaledAdd, VectorIndex,
-    VectorLen,
+    FloorZerosInPlace, MatTransposeVec, MatVec, NegInPlace, NormInfinity, NormSquared,
+    ScaleInPlace, ScaledAdd, VectorIndex, VectorLen,
 };
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
@@ -79,6 +79,50 @@ impl SampleUniformBox for Array1<f64> {
 impl VectorLen for Array1<f64> {
     fn vec_len(&self) -> usize {
         self.len()
+    }
+}
+
+// Matrix-vector ops (the only `linalg`-tier traits ndarray implements). They
+// lift the backend gate on the linear-constraint solvers; the factorization
+// ops stay nalgebra/faer-only, since `ndarray-linalg` needs system BLAS/LAPACK
+// (breaks the wasm-default tenet).
+//
+// These iterate rows/columns explicitly rather than calling ndarray's inherent
+// `.dot()`: with basin's own [`Dot`] trait in scope, the bare `dot` method name
+// makes inference explore ndarray's recursive `Dot`/`Not` bounds and overflow.
+// `assert_eq!` on the lengths matches the panic-on-shape-mismatch contract.
+
+impl MatVec<Array1<f64>> for Array2<f64> {
+    fn matvec(&self, x: &Array1<f64>) -> Array1<f64> {
+        assert_eq!(
+            x.len(),
+            self.ncols(),
+            "matvec: x has length {} but the matrix has {} columns",
+            x.len(),
+            self.ncols()
+        );
+        Array1::from_shape_fn(self.nrows(), |i| {
+            self.row(i).iter().zip(x.iter()).map(|(a, xj)| a * xj).sum()
+        })
+    }
+}
+
+impl MatTransposeVec<Array1<f64>> for Array2<f64> {
+    fn mat_transpose_vec(&self, x: &Array1<f64>) -> Array1<f64> {
+        assert_eq!(
+            x.len(),
+            self.nrows(),
+            "mat_transpose_vec: x has length {} but the matrix has {} rows",
+            x.len(),
+            self.nrows()
+        );
+        Array1::from_shape_fn(self.ncols(), |j| {
+            self.column(j)
+                .iter()
+                .zip(x.iter())
+                .map(|(a, xi)| a * xi)
+                .sum()
+        })
     }
 }
 

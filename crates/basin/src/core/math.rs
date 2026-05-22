@@ -11,7 +11,13 @@
 //!   [`LinearSolveLstsq`] — that only the matrix-capable backends
 //!   (nalgebra, faer; sparse counterparts in S2b) implement. LA-heavy
 //!   solvers (Gauss-Newton, LM) bound on these so other backends
-//!   produce compile-time errors instead of runtime surprises.
+//!   produce compile-time errors instead of runtime surprises. The two
+//!   matvec ops ([`MatVec`], [`MatTransposeVec`]) are the exception: they
+//!   are *also* implemented for the `Vec<f64>` backend (via the
+//!   hand-rolled [`DenseMatrix`]) and `ndarray::Array2<f64>`, so the
+//!   linear-constraint solvers run on every backend. The factorization
+//!   ops ([`LinearSolveSpd`], [`GramMatrix`], [`SymmetricEigen`], …) stay
+//!   nalgebra/faer-only.
 
 /// In-place `self ← self + scalar · other`. Backend-generic vector update.
 pub trait ScaledAdd<S> {
@@ -152,6 +158,7 @@ pub trait VectorIndex {
 
 mod cl_scaling;
 mod clamp;
+mod dense;
 mod linalg;
 mod sample;
 mod scalar;
@@ -174,6 +181,7 @@ mod faer_sparse_backend;
 
 pub use cl_scaling::BoxAffineScaling;
 pub use clamp::ClampInPlace;
+pub use dense::DenseMatrix;
 pub use linalg::{
     AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
     LinearSolveLstsq, LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,

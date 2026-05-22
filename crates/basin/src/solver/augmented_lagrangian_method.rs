@@ -85,9 +85,11 @@ use crate::core::termination::{
 /// # Backends
 ///
 /// Requires the constraint matrix to implement [`MatVec`] (`A x`) and
-/// [`MatTransposeVec`] (`Aᵀ v`) — never a linear solve. That covers nalgebra
-/// (`DMatrix`/`DVector`) and faer (`Mat`/`Col`); `Vec<f64>` and `ndarray` are
-/// a compile-time error until they grow the two matvec impls (tenet 5).
+/// [`MatTransposeVec`] (`Aᵀ v`) — never a linear solve. All backends supply
+/// those two ops, so the method runs on every backend: `Vec<f64>` (via
+/// [`DenseMatrix`](crate::core::math::DenseMatrix)), nalgebra
+/// (`DMatrix`/`DVector`), faer (`Mat`/`Col`), and `ndarray`
+/// (`Array2`/`Array1`).
 ///
 /// # Composition
 ///

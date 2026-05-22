@@ -10,18 +10,21 @@ the previous lands.
       `BoundedCmaEs`). Linear inequalities `A x ≤ b` shipped
       (`LinearInequalityConstraints` + the `LogBarrier` adapter + the
       log-barrier `BarrierMethod`, a `constrOptim`-style layer over an inner
-      `GradientDescent`; nalgebra/faer via `MatVec`/`MatTransposeVec`). Linear
+      `GradientDescent`; all backends via `MatVec`/`MatTransposeVec`). Linear
       equalities `A x = b` shipped (`LinearEqualityConstraints` + the
       `AugmentedLagrangian` adapter + `AugmentedLagrangianMethod`, a
       penalty-plus-multiplier outer loop over an inner `GradientDescent`;
-      tolerates infeasible starts, nalgebra/faer via `MatVec`/`MatTransposeVec`).
+      tolerates infeasible starts, all backends via `MatVec`/`MatTransposeVec`).
       Both are now inner-solver-agnostic over gradient inners (`So:
       WarmStart<V>`, `So::State: GradientState`: `GradientDescent`/`BFGS`/
       unbounded `LBFGS`) — see the completed inner-solver-agnostic item below.
+      The backend gate is now lifted: `MatVec`/`MatTransposeVec` ship for
+      every backend — `Vec<f64>` (via the hand-rolled `DenseMatrix`),
+      nalgebra, faer, and `ndarray` (`Array2`) — so both methods run on the
+      default backend with no external LA crate.
       Remaining: phase-1 feasibility (the barrier needs a strictly feasible
       start today; the augmented Lagrangian does not);
-      `MatVec`/`MatTransposeVec` impls for `Vec<f64>`/`ndarray` to lift the
-      backend gate; a framework-level `FeasibilityTolerance` once a 2nd
+      a framework-level `FeasibilityTolerance` once a 2nd
       equality-constrained solver justifies it (tenet 3); nonlinear equality
       and nonlinear (in)equality constraints.
       Keep deferring a `Constraint` supertrait — box (projection),
