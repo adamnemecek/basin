@@ -145,7 +145,7 @@ function handlePick(p: { x: number; y: number }) {
 </script>
 
 <div class="grid xl:grid-cols-2 gap-8 items-start">
-    <div>
+    <div class="min-w-0">
         <h2 class="text-2xl font-semibold tracking-tight">A Small Example</h2>
         <p class="mt-3 text-slate-600 dark:text-slate-300">
             Implement <code class="font-mono text-sm">CostFunction</code> and
@@ -256,7 +256,7 @@ function handlePick(p: { x: number; y: number }) {
         </div>
     </div>
 
-    <div class="flex flex-col gap-4">
+    <div class="flex flex-col gap-4 min-w-0">
     <div
         class="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 overflow-hidden"
     >
