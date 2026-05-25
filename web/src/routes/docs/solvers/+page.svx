@@ -51,6 +51,16 @@ composition primitives:
   polishing of the best individuals.
 - **`MaLsChCma`** — a memetic algorithm with persistent local-search chains.
 
+## Constrained (composed)
+
+These wrap any gradient inner solver in an outer loop that handles linear
+constraints:
+
+- **`BarrierMethod`** — log-barrier interior-point continuation for linear
+  inequality constraints (`A x ≤ b`); needs a strictly feasible start.
+- **`AugmentedLagrangianMethod`** — quadratic penalty plus multiplier updates
+  for linear equality constraints (`A x = b`); tolerates an infeasible start.
+
 ## Backends and constraints
 
 Two design rules shape which solver you can use where:
@@ -63,6 +73,34 @@ Two design rules shape which solver you can use where:
   heavy solvers (the quasi-Newton and least-squares families) require a backend
   that implements the richer math they need — so an unsupported parameter type
   fails to compile rather than at runtime.
+
+The matrix below summarizes support: ✓ means it compiles and runs on that
+parameter type, ✗ means it is a compile-time error (the tiering rule above).
+
+| Solver | Family | `Vec<f64>` | nalgebra | ndarray | faer |
+| --- | --- | :---: | :---: | :---: | :---: |
+| `GradientDescent` | First-order | ✓ | ✓ | ✓ | ✓ |
+| `ProjectedGradientDescent` | First-order | ✓ | ✓ | ✓ | ✓ |
+| `NelderMead` | Derivative-free | ✓ | ✓ | ✓ | ✓ |
+| `Brent` | Derivative-free | — | — | — | — |
+| `BFGS` | Quasi-Newton | ✗ | ✓ | ✗ | ✗ |
+| `LBFGS` | Quasi-Newton | ✓ | ✓ | ✗ | ✓ |
+| `LBFGSB` | Quasi-Newton | ✓ | ✓ | ✗ | ✓ |
+| `GaussNewton` | Least squares | ✗ | ✓ | ✗ | ✓ |
+| `LevenbergMarquardt` | Least squares | ✗ | ✓ | ✗ | ✓ |
+| `Trf` | Least squares | ✗ | ✓ | ✗ | ✓ |
+| `CmaEs` | Global | ✗ | ✓ | ✗ | ✓ |
+| `BoundedCmaEs` | Global | ✗ | ✓ | ✗ | ✓ |
+| `RandomSearch` | Global | ✓ | ✓ | ✓ | ✓ |
+| `Ssga` | Global | ✓ | ✓ | ✓ | ✓ |
+| `CmaInject` | Memetic | ✗ | ✓ | ✗ | ✓ |
+| `BoundedCmaInject` | Memetic | ✗ | ✓ | ✗ | ✓ |
+| `MaLsChCma` | Memetic | ✗ | ✓ | ✗ | ✓ |
+| `BarrierMethod` | Constrained | ✓ | ✓ | ✓ | ✓ |
+| `AugmentedLagrangianMethod` | Constrained | ✓ | ✓ | ✓ | ✓ |
+
+`Brent` minimizes over a scalar `f64` interval (1-D), so the vector-backend
+choice does not apply.
 
 Each solver's page on [docs.rs](https://docs.rs/basin) carries a **Backends**
 note listing exactly which parameter types it supports.

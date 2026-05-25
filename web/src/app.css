@@ -6,6 +6,15 @@
  * `theme` store toggles `.dark` on `<html>` based on preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* @tailwindcss/typography decorates inline <code> with literal backtick
+ * glyphs (code::before/after { content: "`" }). Strip them so inline code
+ * — solver names in prose and the solver/backend table — renders without
+ * surrounding `marks. (Unlayered, so it beats the plugin's layered rule.) */
+.prose :where(code)::before,
+.prose :where(code)::after {
+    content: '';
+}
+
 html,
 body {
     height: 100%;
