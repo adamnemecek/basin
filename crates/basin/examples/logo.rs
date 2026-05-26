@@ -81,20 +81,21 @@ const RIVER_START: [f64; 2] = [-3.7, -2.5];
 const RIVER_ALPHA: f64 = 0.02;
 const RIVER_BETA: f64 = 0.10;
 const RIVER_ITERS: usize = 1100;
-const RIVER_POINTS: usize = 500; // polyline vertices before shoreline clip
+const RIVER_POINTS: usize = 500; // trajectory vertices captured
 
-/// River is drawn as a tapered filled ribbon (not a stroked line): it emerges
-/// thin at the source and widens downstream, and its mouth runs *past* the
-/// shoreline into the pool so the water fills merge seamlessly. Widths in
-/// screen px.
-const RIVER_W_SRC: f64 = 1.2; // ribbon width at the source (≈ a point)
-const RIVER_W_MOUTH: f64 = 9.0; // ribbon width where it meets the pool
-const RIVER_MOUTH_REACH: f64 = 0.55; // how far the mouth extends toward the pool centre
+/// River carved into the terrain mesh along the descent trajectory — the same
+/// intersect-into-the-mesh treatment as the favicon. A ribbon tessellated to
+/// `RIVER_SEGS` segments (so its edge is smooth, independent of `GRID`) tapers
+/// from `RIVER_W_SRC` at the source to `RIVER_W_MOUTH` at the mouth (problem
+/// units), and is intersected with each terrain triangle so the river is real
+/// slope-lit sub-faces of the surface, not a flat ribbon laid on top.
+const RIVER_W_SRC: f64 = 0.08;
+const RIVER_W_MOUTH: f64 = 0.55;
+const RIVER_SEGS: usize = 56;
 
-/// Source spring at the start point x₀: a small pool the river flows *out* of,
-/// mirroring the lake at the optimum (spring = x₀, lake = x*). Half-extents are
-/// `SPRING_SCALE` × the iso tile, so it reads a touch smaller than one tile.
-const SPRING_SCALE: f64 = 0.6;
+/// Source spring at x₀: a round pool (problem-space radius) the river wells out
+/// of, unioned into the ribbon and likewise carved into the mesh.
+const SPRING_R: f64 = 0.3;
 
 /// Trees: scattered at random over *plantable* ground — above the shoreline,
 /// below the upper walls, and on gentle enough slopes to read as planted.
@@ -469,7 +470,7 @@ fn main() {
 
     let mut svg = Svg::new();
     draw_sky(&mut svg, &pal);
-    draw_terrain(&mut svg, &surf, &pal, &river, pool_center);
+    draw_terrain(&mut svg, &surf, &pal, &river);
     let n_rocks = draw_rocks(&mut svg, &surf, &pal);
     let n_trees = draw_trees(&mut svg, &surf, &pal);
     draw_creature(&mut svg, &surf, &pal); // butterfly (day) / owl (night), on top
@@ -581,19 +582,14 @@ fn oklab_to_rgb(lab: [f64; 3]) -> Rgb {
     Rgb(q(r), q(g), q(b))
 }
 
-fn draw_terrain(
-    svg: &mut Svg,
-    surf: &Surface,
-    pal: &Palette,
-    river: &[[f64; 2]],
-    center: [f64; 2],
-) {
+fn draw_terrain(svg: &mut Svg, surf: &Surface, pal: &Palette, river: &[[f64; 2]]) {
     let wl = surf.water;
-    // True normalised height per node, plus the same clamped up to the water
-    // line. The clamped heights give the geometry — a flat lake surface at the
-    // water line — while the true heights say which facets are submerged (and
-    // how deep), so the lake is coloured as water *within the same mesh*: its
-    // shoreline is the grid-aligned facet boundary, not a shape laid on top.
+    // True normalised height per node. The lake is carved into *this* mesh by
+    // clipping every triangle against the water plane `z = wl`; the river is the
+    // smooth ribbon along the descent trajectory ([`river_shapes`]) intersected
+    // with each triangle, so both lake and river are real sub-faces of the
+    // surface — not shapes laid on top. The river follows the ground's curvature
+    // and is lit by the same slope normal; the lake is flat at the water line.
     let ht: Vec<Vec<f64>> = (0..=GRID)
         .map(|j| {
             (0..=GRID)
@@ -604,174 +600,299 @@ fn draw_terrain(
                 .collect()
         })
         .collect();
-    let hh: Vec<Vec<f64>> = ht
-        .iter()
-        .map(|row| row.iter().map(|&h| h.max(wl)).collect())
-        .collect();
 
     let light = normalize3(LIGHT);
-    let world = |i: usize, j: usize| [i as f64, j as f64, hh[j][i] * Z_WORLD];
-    let screen = |i: usize, j: usize| project(i as f64, j as f64, hh[j][i]);
+    let water_flat = pal.water.shade(0.70 + 0.5 * light[2].max(0.0));
+    let shapes = river_shapes(river);
 
-    // Lake + river + spring as screen-space polygons, carved into the faces
-    // they cross (not drawn on top). Each face keeps its terrain colour; the
-    // slivers a water shape covers are re-emitted in one flat water shade.
-    // Water is a horizontal surface, so it gets a *single* shade (lit as a flat
-    // facet) rather than each underlying face's — otherwise the terrain
-    // faceting shows through the river/lake.
-    let water = water_shapes(surf, river, center);
-    let water_color = pal.water.shade(0.70 + 0.5 * light[2].max(0.0));
-
-    let mut facets: Vec<Facet> = Vec::with_capacity(GRID * GRID * 2);
+    let mut terr: Vec<Facet> = Vec::with_capacity(GRID * GRID * 2);
+    let mut rivr: Vec<Facet> = Vec::new();
+    let mut lake: Vec<Facet> = Vec::new();
     for j in 0..GRID {
         for i in 0..GRID {
             for tri in [
                 [(i, j), (i + 1, j), (i, j + 1)],
                 [(i + 1, j), (i + 1, j + 1), (i, j + 1)],
             ] {
-                let w: Vec<[f64; 3]> = tri.iter().map(|&(a, b)| world(a, b)).collect();
-                let mut n = normalize3(cross(sub(w[1], w[0]), sub(w[2], w[0])));
+                // Triangle vertices in grid coords carrying their true height.
+                let verts: [[f64; 3]; 3] = [
+                    [tri[0].0 as f64, tri[0].1 as f64, ht[tri[0].1][tri[0].0]],
+                    [tri[1].0 as f64, tri[1].1 as f64, ht[tri[1].1][tri[1].0]],
+                    [tri[2].0 as f64, tri[2].1 as f64, ht[tri[2].1][tri[2].0]],
+                ];
+                let depth = verts.iter().map(|v| v[0] + v[1]).sum::<f64>() / 3.0;
+
+                // Terrain shade from the true-height surface normal.
+                let scaled = |v: [f64; 3]| [v[0], v[1], v[2] * Z_WORLD];
+                let mut n = normalize3(cross(
+                    sub(scaled(verts[1]), scaled(verts[0])),
+                    sub(scaled(verts[2]), scaled(verts[0])),
+                ));
                 if n[2] < 0.0 {
                     n = [-n[0], -n[1], -n[2]];
                 }
                 let ndotl = (n[0] * light[0] + n[1] * light[1] + n[2] * light[2]).max(0.0);
 
-                // Terrain colour: the elevation ramp shaded by this face. The
-                // lake/river/spring are carved on top (below) as clipped water.
-                let elev = tri.iter().map(|&(a, b)| hh[b][a]).sum::<f64>() / 3.0;
-                let color = ramp_sample(&pal.terrain, elev).shade(0.70 + 0.5 * ndotl);
+                // Terrain (above water) and lake (below water), via the height clip.
+                let land = clip_to_water(&verts, wl, true);
+                if land.len() >= 3 {
+                    let elev = land.iter().map(|v| v[2]).sum::<f64>() / land.len() as f64;
+                    let pts = land.iter().map(|v| project(v[0], v[1], v[2])).collect();
+                    terr.push(Facet {
+                        pts,
+                        depth,
+                        color: ramp_sample(&pal.terrain, elev).shade(0.70 + 0.5 * ndotl),
+                    });
+                }
+                let below = clip_to_water(&verts, wl, false);
+                if below.len() >= 3 {
+                    let pts = below.iter().map(|v| project(v[0], v[1], wl)).collect();
+                    lake.push(Facet {
+                        pts,
+                        depth,
+                        color: water_flat,
+                    });
+                }
 
-                let pts: Vec<(f64, f64)> = vec![
-                    screen(tri[0].0, tri[0].1),
-                    screen(tri[1].0, tri[1].1),
-                    screen(tri[2].0, tri[2].1),
+                // River: intersect this triangle's footprint with the ribbon
+                // polygons; each piece rides on the terrain plane (heights
+                // barycentric) and is shaded by the same slope normal.
+                let tri2 = [
+                    [verts[0][0], verts[0][1]],
+                    [verts[1][0], verts[1][1]],
+                    [verts[2][0], verts[2][1]],
                 ];
-                let depth = tri.iter().map(|&(a, b)| (a + b) as f64).sum::<f64>() / 3.0;
-                facets.push(Facet { pts, depth, color });
+                let (tx0, ty0, tx1, ty1) = tri_bbox(&tri2);
+                let river_color = pal.water.shade(0.70 + 0.5 * ndotl);
+                for (poly, bb) in &shapes {
+                    if bb[0] > tx1 || bb[2] < tx0 || bb[1] > ty1 || bb[3] < ty0 {
+                        continue;
+                    }
+                    let inter = clip_convex(&tri2, poly);
+                    if inter.len() >= 3 {
+                        let pts = inter
+                            .iter()
+                            .map(|p| project(p[0], p[1], bary_height(*p, &verts)))
+                            .collect();
+                        rivr.push(Facet {
+                            pts,
+                            depth,
+                            color: river_color,
+                        });
+                    }
+                }
             }
         }
     }
 
-    facets.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap());
-    for f in &facets {
-        // Stroke each facet in its *own* fill colour: adjacent facets' strokes
-        // overlap the shared edge and cover the anti-aliasing seam, so the cream
-        // background no longer bleeds through as a mesh of lines. Same-coloured
-        // neighbours melt together; only real colour steps (the faceting) show.
+    // Three back-to-front passes (terrain, river, lake). Each facet is stroked in
+    // its *own* fill colour so adjacent same-colour facets melt together (covering
+    // the anti-aliasing seam that would otherwise show the cream background as a
+    // mesh of lines); drawing river then lake last keeps each water edge clean.
+    terr.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap());
+    rivr.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap());
+    lake.sort_by(|a, b| a.depth.partial_cmp(&b.depth).unwrap());
+    for f in terr.iter().chain(rivr.iter()).chain(lake.iter()) {
         svg.polygon(&f.pts, f.color, Some((f.color, 1.0)));
-    }
-
-    // Water on top: the lake, river and spring as flat matte shapes in one
-    // colour (with a matching stroke so the river quads and lake melt with no
-    // seam). Drawn after the terrain so no facet stroke can bleed into the
-    // water, and the whole system reads as one smooth body sitting in the basin.
-    for shape in &water {
-        svg.polygon(shape, water_color, Some((water_color, 1.0)));
     }
 }
 
-/// The whole water system as screen-space polygons drawn flat on top of the
-/// terrain: the lake (water-level contour around the basin minimum), the river
-/// (tapered convex quads down the gradient-descent trajectory and into the
-/// lake), and the source spring (a small round pool at x₀). One flat colour for
-/// all three, so spring → river → lake read as one smooth body of water.
-fn water_shapes(surf: &Surface, river: &[[f64; 2]], center: [f64; 2]) -> Vec<Vec<(f64, f64)>> {
-    let wl = surf.water;
-    let proj = |x: f64, y: f64| {
-        let gx = (x - X0) / (X1 - X0) * GRID as f64;
-        let gy = (y - Y0) / (Y1 - Y0) * GRID as f64;
-        project(gx, gy, surf.hn(x, y).max(wl) + 0.006)
-    };
-    let mut shapes: Vec<Vec<(f64, f64)>> = Vec::new();
-
-    // Lake: trace the water-level contour radially out from the basin floor
-    // (the bowl is monotone in radius near the floor, so each ray crosses once).
-    let rmax = (X1 - X0).abs().max((Y1 - Y0).abs());
-    let rays = 64;
-    let mut ring: Vec<(f64, f64)> = Vec::with_capacity(rays);
-    for k in 0..rays {
-        let theta = std::f64::consts::TAU * k as f64 / rays as f64;
-        let (dx, dy) = (theta.cos(), theta.sin());
-        let (mut lo, mut hi) = (0.0_f64, rmax);
-        for _ in 0..40 {
-            let mid = 0.5 * (lo + hi);
-            if surf.hn(center[0] + dx * mid, center[1] + dy * mid) < wl {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
+/// Clip a triangle (grid coords with true height in `z`) against the water plane,
+/// keeping the half with `z ≥ wl` (`keep_land`) or `z ≤ wl`. Sutherland–Hodgman
+/// against a single half-space; the crossing points land exactly on `z = wl`, so
+/// the land and water pieces share the shoreline edge. Returns the clipped
+/// polygon's vertices (0, 3 or 4).
+fn clip_to_water(verts: &[[f64; 3]; 3], wl: f64, keep_land: bool) -> Vec<[f64; 3]> {
+    let inside = |z: f64| if keep_land { z >= wl } else { z <= wl };
+    let mut out: Vec<[f64; 3]> = Vec::with_capacity(4);
+    for k in 0..3 {
+        let cur = verts[k];
+        let nxt = verts[(k + 1) % 3];
+        if inside(cur[2]) {
+            out.push(cur);
         }
-        let r = 0.5 * (lo + hi);
-        ring.push(proj(center[0] + dx * r, center[1] + dy * r));
-    }
-    shapes.push(ring);
-
-    // River centreline: trajectory up to the shoreline, plus one synthetic
-    // point reaching into the lake so the mouth overlaps it.
-    let mut cl_xy: Vec<[f64; 2]> = Vec::new();
-    for q in river {
-        cl_xy.push(*q);
-        if surf.hn(q[0], q[1]) <= wl {
-            break;
+        if inside(cur[2]) != inside(nxt[2]) {
+            let t = (wl - cur[2]) / (nxt[2] - cur[2]);
+            out.push([
+                cur[0] + (nxt[0] - cur[0]) * t,
+                cur[1] + (nxt[1] - cur[1]) * t,
+                wl,
+            ]);
         }
     }
-    if cl_xy.len() < 2 {
-        return shapes; // no river reached the lake — just the lake
+    out
+}
+
+/// The river footprint as a strip of convex polygons in **grid coordinates**,
+/// each paired with its bounding box `[minx, miny, maxx, maxy]` for cheap
+/// culling. The strip follows the descent trajectory (tessellated to `RIVER_SEGS`
+/// segments — smooth edge regardless of `GRID`), tapering from `RIVER_W_SRC` at
+/// the source to `RIVER_W_MOUTH` toward the mouth (problem units). If
+/// `SPRING_R > 0`, a round source pool is appended. [`draw_terrain`] intersects
+/// each terrain triangle with these to carve the river into the mesh.
+fn river_shapes(river: &[[f64; 2]]) -> Vec<(Vec<[f64; 2]>, [f64; 4])> {
+    let n0 = river.len();
+    if n0 < 2 {
+        return Vec::new();
     }
-    let sp = *cl_xy.last().unwrap();
-    cl_xy.push([
-        sp[0] + (center[0] - sp[0]) * RIVER_MOUTH_REACH,
-        sp[1] + (center[1] - sp[1]) * RIVER_MOUTH_REACH,
-    ]);
-    // decimate so quads are a sensible size (the faces break them up anyway)
-    let stride = (cl_xy.len() / 40).max(1);
-    let mut cl: Vec<(f64, f64)> = cl_xy
-        .iter()
-        .step_by(stride)
-        .map(|q| proj(q[0], q[1]))
-        .collect();
-    let last = proj(cl_xy[cl_xy.len() - 1][0], cl_xy[cl_xy.len() - 1][1]);
-    if cl.last() != Some(&last) {
-        cl.push(last);
+    let stride = (n0 / RIVER_SEGS).max(1);
+    let mut path: Vec<[f64; 2]> = river.iter().step_by(stride).copied().collect();
+    if path.last() != river.last() {
+        path.push(*river.last().unwrap());
     }
-    let n = cl.len();
+    let n = path.len();
     if n < 2 {
         return Vec::new();
     }
-    let width = |i: usize| -> f64 {
-        let t = (i as f64 / (n - 1) as f64).powf(0.75);
-        RIVER_W_SRC + (RIVER_W_MOUTH - RIVER_W_SRC) * t
+    let to_grid = |p: [f64; 2]| {
+        [
+            (p[0] - X0) / (X1 - X0) * GRID as f64,
+            (p[1] - Y0) / (Y1 - Y0) * GRID as f64,
+        ]
     };
-    let mut left = Vec::with_capacity(n);
-    let mut right = Vec::with_capacity(n);
+    let half = |i: usize| -> f64 {
+        let t = (i as f64 / (n - 1) as f64).powf(0.75);
+        0.5 * (RIVER_W_SRC + (RIVER_W_MOUTH - RIVER_W_SRC) * t)
+    };
+    let (mut left, mut right) = (Vec::with_capacity(n), Vec::with_capacity(n));
     for i in 0..n {
-        let prev = cl[i.saturating_sub(1)];
-        let next = cl[(i + 1).min(n - 1)];
-        let (mut tx, mut ty) = (next.0 - prev.0, next.1 - prev.1);
+        let prev = path[i.saturating_sub(1)];
+        let next = path[(i + 1).min(n - 1)];
+        let (mut tx, mut ty) = (next[0] - prev[0], next[1] - prev[1]);
         let tl = (tx * tx + ty * ty).sqrt().max(1e-9);
         tx /= tl;
         ty /= tl;
         let (nx, ny) = (-ty, tx);
-        let hw = 0.5 * width(i);
-        left.push((cl[i].0 + nx * hw, cl[i].1 + ny * hw));
-        right.push((cl[i].0 - nx * hw, cl[i].1 - ny * hw));
+        let hw = half(i);
+        left.push([path[i][0] + nx * hw, path[i][1] + ny * hw]);
+        right.push([path[i][0] - nx * hw, path[i][1] - ny * hw]);
     }
+    let with_bbox = |poly: Vec<[f64; 2]>| -> (Vec<[f64; 2]>, [f64; 4]) {
+        let bb = [
+            poly.iter().map(|p| p[0]).fold(f64::INFINITY, f64::min),
+            poly.iter().map(|p| p[1]).fold(f64::INFINITY, f64::min),
+            poly.iter().map(|p| p[0]).fold(f64::NEG_INFINITY, f64::max),
+            poly.iter().map(|p| p[1]).fold(f64::NEG_INFINITY, f64::max),
+        ];
+        (poly, bb)
+    };
+    let mut shapes: Vec<(Vec<[f64; 2]>, [f64; 4])> = Vec::with_capacity(n);
     for i in 0..n - 1 {
-        shapes.push(vec![left[i], left[i + 1], right[i + 1], right[i]]);
+        shapes.push(with_bbox(vec![
+            to_grid(left[i]),
+            to_grid(left[i + 1]),
+            to_grid(right[i + 1]),
+            to_grid(right[i]),
+        ]));
     }
-    // source spring: a small round pool at x₀ (enough sides to read as smooth,
-    // matching the lake contour rather than an angular hexagon)
-    let (sx, sy) = cl[0];
-    let (rx, ry) = (TILE_W * SPRING_SCALE, TILE_H * SPRING_SCALE);
-    let spring_sides = 28;
-    let spring: Vec<(f64, f64)> = (0..spring_sides)
-        .map(|k| {
-            let ang = std::f64::consts::TAU * k as f64 / spring_sides as f64;
-            (sx + rx * ang.cos(), sy + ry * ang.sin())
-        })
-        .collect();
-    shapes.push(spring);
+    if SPRING_R > 0.0 {
+        let s = river[0];
+        let ring: Vec<[f64; 2]> = (0..16)
+            .map(|k| {
+                let a = std::f64::consts::TAU * k as f64 / 16.0;
+                to_grid([s[0] + SPRING_R * a.cos(), s[1] + SPRING_R * a.sin()])
+            })
+            .collect();
+        shapes.push(with_bbox(ring));
+    }
     shapes
+}
+
+/// Axis-aligned bounding box `(minx, miny, maxx, maxy)` of a triangle's 2D verts.
+fn tri_bbox(t: &[[f64; 2]; 3]) -> (f64, f64, f64, f64) {
+    let xs = [t[0][0], t[1][0], t[2][0]];
+    let ys = [t[0][1], t[1][1], t[2][1]];
+    (
+        xs.iter().copied().fold(f64::INFINITY, f64::min),
+        ys.iter().copied().fold(f64::INFINITY, f64::min),
+        xs.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+        ys.iter().copied().fold(f64::NEG_INFINITY, f64::max),
+    )
+}
+
+/// Intersection of convex polygon `subject` with convex polygon `clip`
+/// (Sutherland–Hodgman). `clip` is reoriented CCW first; returns `subject ∩ clip`
+/// (possibly empty), which carves a ribbon piece out of a terrain triangle.
+fn clip_convex(subject: &[[f64; 2]], clip: &[[f64; 2]]) -> Vec<[f64; 2]> {
+    let mut cl = clip.to_vec();
+    if signed_area(&cl) < 0.0 {
+        cl.reverse();
+    }
+    let mut out = subject.to_vec();
+    let m = cl.len();
+    for e in 0..m {
+        if out.is_empty() {
+            break;
+        }
+        let a = cl[e];
+        let b = cl[(e + 1) % m];
+        let edge = [b[0] - a[0], b[1] - a[1]];
+        // Inside = left of the directed edge (interior of a CCW polygon).
+        let inside = |p: [f64; 2]| edge[0] * (p[1] - a[1]) - edge[1] * (p[0] - a[0]) >= 0.0;
+        let input = std::mem::take(&mut out);
+        let k = input.len();
+        for i in 0..k {
+            let cur = input[i];
+            let nxt = input[(i + 1) % k];
+            let (ci, ni) = (inside(cur), inside(nxt));
+            if ci {
+                out.push(cur);
+            }
+            if ci != ni {
+                let t = segment_line_t(cur, nxt, a, b);
+                out.push([
+                    cur[0] + (nxt[0] - cur[0]) * t,
+                    cur[1] + (nxt[1] - cur[1]) * t,
+                ]);
+            }
+        }
+    }
+    out
+}
+
+/// Signed area of a polygon (positive when wound counter-clockwise).
+fn signed_area(poly: &[[f64; 2]]) -> f64 {
+    let n = poly.len();
+    let mut s = 0.0;
+    for i in 0..n {
+        let a = poly[i];
+        let b = poly[(i + 1) % n];
+        s += a[0] * b[1] - b[0] * a[1];
+    }
+    0.5 * s
+}
+
+/// Parameter `t` along segment `p→q` where it crosses the (infinite) line `a→b`.
+fn segment_line_t(p: [f64; 2], q: [f64; 2], a: [f64; 2], b: [f64; 2]) -> f64 {
+    let r = [q[0] - p[0], q[1] - p[1]];
+    let s = [b[0] - a[0], b[1] - a[1]];
+    let denom = r[0] * s[1] - r[1] * s[0];
+    if denom.abs() < 1e-12 {
+        return 0.0;
+    }
+    ((a[0] - p[0]) * s[1] - (a[1] - p[1]) * s[0]) / denom
+}
+
+/// Height at ground point `p` inside terrain triangle `verts` (`[gx, gy, h]`), by
+/// barycentric interpolation. The triangle is planar in height, so this is exact
+/// and places a river piece exactly on the terrain surface.
+fn bary_height(p: [f64; 2], verts: &[[f64; 3]; 3]) -> f64 {
+    let (a, b, c) = (verts[0], verts[1], verts[2]);
+    let v0 = [b[0] - a[0], b[1] - a[1]];
+    let v1 = [c[0] - a[0], c[1] - a[1]];
+    let v2 = [p[0] - a[0], p[1] - a[1]];
+    let d00 = v0[0] * v0[0] + v0[1] * v0[1];
+    let d01 = v0[0] * v1[0] + v0[1] * v1[1];
+    let d11 = v1[0] * v1[0] + v1[1] * v1[1];
+    let d20 = v2[0] * v0[0] + v2[1] * v0[1];
+    let d21 = v2[0] * v1[0] + v2[1] * v1[1];
+    let denom = d00 * d11 - d01 * d01;
+    if denom.abs() < 1e-12 {
+        return a[2];
+    }
+    let v = (d11 * d20 - d01 * d21) / denom;
+    let w = (d00 * d21 - d01 * d20) / denom;
+    (1.0 - v - w) * a[2] + v * b[2] + w * c[2]
 }
 
 /// Scatter trees at random over plantable ground, reproducibly from
