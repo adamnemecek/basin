@@ -5,21 +5,28 @@ version: "3"
 
 tasks:
   logo:
-    desc: "Watch the logo example; rebuild SVG + PNGs and sync to web/static on save."
+    desc: "Watch the logo example; rebuild day + dark SVG/PNGs and sync to web/static on save."
     summary: |
-      Renders crates/basin/examples/logo.rs to images/logo.svg, rasterises PNGs
-      at a few widths (resvg), and copies the SVG + PNGs into web/static/ for the
-      web app — then watches the example and rebuilds on every save. The example
-      traces a real GradientDescent run over its surface, so the river is genuine
+      Renders crates/basin/examples/logo.rs to images/logo.svg (day theme) and
+      images/logo-dark.svg (night theme), rasterises PNGs at a few widths
+      (resvg), and copies the SVGs + PNGs into web/static/ for the web app —
+      then watches the example and rebuilds on every save. The example traces a
+      real GradientDescent run over its surface, so the river is genuine
       optimizer output.
+
+      The night theme re-tints the day palette through an Oklab "moonlight"
+      transform and swaps the props (sun → full moon + stars, butterfly → owl);
+      both themes render at the same frame size so they swap cleanly under a
+      prefers-color-scheme / dark-mode toggle.
 
       Watch mode by default (watch: true) — leave `task logo` running while you
       tweak constants; Ctrl-C to stop. For a single build (CI, committing the
       assets) use `task logo:once`.
 
-      Outputs (in images/ and web/static/): logo.svg (scalable, transparent),
-      logo.png (1024px wide), logo-512.png, logo-256.png. Aspect ratio is
-      preserved; PNG rasterisation uses `resvg` (pinned in devenv.nix).
+      Outputs (in images/ and web/static/): logo{,-dark}.svg (scalable,
+      transparent), logo{,-dark}.png (1024px wide), logo{,-dark}-512.png,
+      logo{,-dark}-256.png. Aspect ratio is preserved; PNG rasterisation uses
+      `resvg` (pinned in devenv.nix).
     watch: true
     sources:
       - crates/basin/examples/logo.rs
@@ -27,7 +34,7 @@ tasks:
       - task: logo:build
 
   logo:once:
-    desc: "Build the logo once: SVG + PNGs, synced to web/static (no watch)."
+    desc: "Build the logo once: day + dark SVG/PNGs, synced to web/static (no watch)."
     sources:
       - crates/basin/examples/logo.rs
     generates:
@@ -35,22 +42,33 @@ tasks:
       - images/logo.png
       - images/logo-512.png
       - images/logo-256.png
+      - images/logo-dark.svg
+      - images/logo-dark.png
+      - images/logo-dark-512.png
+      - images/logo-dark-256.png
       - web/static/logo.svg
       - web/static/logo.png
+      - web/static/logo-dark.svg
+      - web/static/logo-dark.png
     cmds:
       - task: logo:build
 
   logo:build:
     internal: true
     cmds:
-      # 1. render the scalable, transparent master SVG
+      # 1. render the scalable, transparent master SVGs (day + night themes)
       - cargo run --quiet --package basin --example logo -- images/logo.svg
+      - cargo run --quiet --package basin --example logo -- images/logo-dark.svg dark
       # 2. rasterise PNGs at a few widths (aspect preserved, transparent)
       - resvg images/logo.svg images/logo.png --width 1024
       - resvg images/logo.svg images/logo-512.png --width 512
       - resvg images/logo.svg images/logo-256.png --width 256
+      - resvg images/logo-dark.svg images/logo-dark.png --width 1024
+      - resvg images/logo-dark.svg images/logo-dark-512.png --width 512
+      - resvg images/logo-dark.svg images/logo-dark-256.png --width 256
       # 3. sync the asset set into the web app's static dir
       - cp images/logo.svg images/logo.png images/logo-512.png images/logo-256.png web/static/
+      - cp images/logo-dark.svg images/logo-dark.png images/logo-dark-512.png images/logo-dark-256.png web/static/
 
   ingest-paper:
     desc: "Fast first-pass parse of a PDF paper into references/<NAME>/source.md (pymupdf4llm)."

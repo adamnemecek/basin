@@ -1065,4 +1065,13 @@
 <polygon points="-68.96,319.01 -68.96,335.01 -59.60,335.01" fill="#5c8a7a"/>
 <polygon points="-68.96,309.41 -75.68,325.41 -68.96,325.41" fill="#365a52"/>
 <polygon points="-68.96,309.41 -68.96,325.41 -62.24,325.41" fill="#5c8a7a"/>
+<ellipse cx="39.14" cy="277.49" rx="7.50" ry="9.50" fill="#e9c46a" transform="rotate(-38.00 39.14 277.49)"/>
+<ellipse cx="55.14" cy="277.49" rx="7.50" ry="9.50" fill="#e9c46a" transform="rotate(38.00 55.14 277.49)"/>
+<ellipse cx="41.14" cy="287.99" rx="5.20" ry="6.50" fill="#e07a5f" transform="rotate(-16.00 41.14 287.99)"/>
+<ellipse cx="53.14" cy="287.99" rx="5.20" ry="6.50" fill="#e07a5f" transform="rotate(16.00 53.14 287.99)"/>
+<ellipse cx="47.14" cy="281.99" rx="2.10" ry="9.00" fill="#3d405b"/>
+<line x1="47.14" y1="274.99" x2="43.14" y2="268.99" stroke="#3d405b" stroke-width="1.00" stroke-linecap="round"/>
+<line x1="47.14" y1="274.99" x2="51.14" y2="268.99" stroke="#3d405b" stroke-width="1.00" stroke-linecap="round"/>
+<circle cx="43.14" cy="268.99" r="1.20" fill="#3d405b"/>
+<circle cx="51.14" cy="268.99" r="1.20" fill="#3d405b"/>
 </svg>

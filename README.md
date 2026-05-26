@@ -1,4 +1,4 @@
-# basin <img src='https://raw.githubusercontent.com/jolars/basin/main/images/logo.png' align="right" width="189" />
+# basin <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jolars/basin/main/images/logo-dark.png" /><img src="https://raw.githubusercontent.com/jolars/basin/main/images/logo.png" align="right" width="189" alt="basin logo" /></picture>
 
 [![CI](https://github.com/jolars/basin/actions/workflows/ci.yml/badge.svg)](https://github.com/jolars/basin/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/basin.svg)](https://crates.io/crates/basin)

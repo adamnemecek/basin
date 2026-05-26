@@ -39,12 +39,23 @@ const features = [
 
 <!-- Hero. `flow-root` contains the floated logo so it can't bleed into the
      next section. Below `md` the logo stacks on top (centered); at `md`+ it
-     floats right and the heading/paragraph/buttons wrap around it. -->
+     floats right and the heading/paragraph/buttons wrap around it.
+
+     Two logo variants swap on the `.dark` class (the same class the
+     Light/Auto/Dark toggle drives, set pre-hydration in app.html so there is
+     no flash): the daytime scene in light mode, the moonlit one in dark.
+     Tailwind preflight renders <img> as `display: block`, so `dark:hidden` /
+     `hidden dark:block` toggle visibility without changing the layout. -->
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 pt-16 pb-12 md:pt-24 md:pb-16 flow-root">
     <img
         src="{base}/logo.svg"
         alt="Visualization of optimization trajectories on the Rosenbrock function, a common test problem in optimization."
-        class="mx-auto mb-8 w-3/4 max-w-sm h-auto md:float-right md:mx-0 md:mb-4 md:ml-10 md:w-2/5 md:max-w-sm"
+        class="mx-auto mb-8 w-3/4 max-w-sm h-auto md:float-right md:mx-0 md:mb-4 md:ml-10 md:w-2/5 md:max-w-sm dark:hidden"
+    />
+    <img
+        src="{base}/logo-dark.svg"
+        alt="Visualization of optimization trajectories on the Rosenbrock function, a common test problem in optimization."
+        class="hidden dark:block mx-auto mb-8 w-3/4 max-w-sm h-auto md:float-right md:mx-0 md:mb-4 md:ml-10 md:w-2/5 md:max-w-sm"
     />
     <span
         class="inline-block text-xs font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400"

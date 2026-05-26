@@ -12,11 +12,17 @@
 //! rather than darting straight in, so the river is, literally,
 //! optimization output.
 //!
+//! There are two themes — a daytime scene (sun, butterfly) and a moonlit
+//! night scene (full moon + stars, owl). The night palette is derived from
+//! the day one by a single Oklab "moonlight" transform (darken, desaturate,
+//! cool), so the two stay in sync when you re-roll the day colours.
+//!
 //! Run with:
 //!
 //! ```text
-//! cargo run --example logo            # writes basin-logo.svg
-//! cargo run --example logo out.svg    # writes out.svg
+//! cargo run --example logo                 # day theme   -> basin-logo.svg
+//! cargo run --example logo out.svg         # day theme   -> out.svg
+//! cargo run --example logo out.svg dark    # night theme -> out.svg
 //! ```
 //!
 //! Everything is driven by the constants in the `config` block below;
@@ -190,6 +196,109 @@ const SUN_HALO: f64 = 1.45; // halo radius as a multiple of the core
 const LIGHT: [f64; 3] = [0.5, -0.35, 0.79];
 
 // ---------------------------------------------------------------------------
+// theme (day / night)
+// ---------------------------------------------------------------------------
+
+/// Which palette + props the scene renders with. `Day` is the original
+/// sunlit look; `Night` re-tints every colour through [`moonlight`] and
+/// swaps the props (sun → full moon + stars, butterfly → owl).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Theme {
+    Day,
+    Night,
+}
+
+/// Moonlit night accents (the day accents live in the palette block above).
+const MOON: Rgb = hex("#d8dcec"); // pale, cool full-moon disk
+const MOON_CRATER: Rgb = hex("#b6bdd2"); // slightly darker crater fill
+const STAR: Rgb = hex("#e7ebf6"); // faint star points
+
+/// Owl (night creature): moonlit slate body so it stays legible on a dark
+/// background, with pale eyes and a warm beak.
+const OWL_DARK: Rgb = hex("#535d75"); // body / shadow side
+const OWL_LIT: Rgb = hex("#7e88a1"); // belly / lit side
+const OWL_EYE: Rgb = hex("#eaeef8"); // pale eye disk
+const OWL_PUPIL: Rgb = hex("#2b3142"); // dark pupil
+const OWL_BEAK: Rgb = hex("#cba36a"); // small warm beak
+
+/// Butterfly (day creature): warm wings drawn from the cream palette family.
+const BFLY_WING: Rgb = hex("#e9c46a"); // upper wings (matches the sun accent)
+const BFLY_WING2: Rgb = hex("#e07a5f"); // lower wings (terracotta)
+const BFLY_BODY: Rgb = hex("#3d405b"); // dark body + antennae
+
+/// The creature hovers/perches over this problem-space point in the open
+/// foreground meadow. The butterfly floats well above the surface
+/// (`CREATURE_HOVER`); the owl perches close to it (`CREATURE_PERCH`).
+const CREATURE_AT: [f64; 2] = [2.6, 1.7];
+const CREATURE_HOVER: f64 = 0.20; // butterfly lift (normalised height)
+const CREATURE_PERCH: f64 = 0.02; // owl lift (sits just above the ground)
+
+/// Re-tint a daytime colour for the night palette: darken, desaturate, and
+/// cool toward moonlit blue — all in Oklab so the shift stays perceptually
+/// even. A small lightness floor keeps nothing pure black. This single
+/// transform is what derives the entire night terrain/water/tree/rock ramp
+/// from the day palette, so re-rolling the day colours re-rolls night too.
+fn moonlight(c: Rgb) -> Rgb {
+    let [l, a, b] = rgb_to_oklab(c);
+    oklab_to_rgb([
+        l * 0.60 + 0.035, // darken to dusk (not black) — a lifted floor
+        a * 0.46,         // desaturate
+        b * 0.46 - 0.018, // desaturate + push toward blue (−b is blue)
+    ])
+}
+
+/// All theme-dependent colours, resolved once up front. Day uses the config
+/// constants directly; Night maps each through [`moonlight`] and supplies
+/// its own moon/halo accents. Draw functions read from here rather than the
+/// raw constants so a single `Theme` value re-skins the whole scene.
+struct Palette {
+    theme: Theme,
+    terrain: Vec<Rgb>, // elevation ramp stops
+    water: Rgb,
+    tree_dark: Rgb,
+    tree_lit: Rgb,
+    trunk: Rgb,
+    rock_lit: Rgb,
+    rock_dark: Rgb,
+    orb: Rgb,      // sun (day) / moon (night) core
+    orb_halo: Rgb, // halo colour around the orb
+}
+
+impl Palette {
+    fn new(theme: Theme) -> Self {
+        match theme {
+            Theme::Day => Palette {
+                theme,
+                terrain: TERRAIN_RAMP.to_vec(),
+                water: WATER,
+                tree_dark: TREE_DARK,
+                tree_lit: TREE_LIT,
+                trunk: TRUNK,
+                rock_lit: ROCK_LIT,
+                rock_dark: ROCK_DARK,
+                orb: SUN,
+                orb_halo: SUN.lerp(PAPER, 0.55),
+            },
+            Theme::Night => Palette {
+                theme,
+                terrain: TERRAIN_RAMP.iter().map(|&c| moonlight(c)).collect(),
+                // Water is the hero (the river is optimiser output), so lift
+                // it a touch toward the moon so it keeps a moonlit sheen
+                // rather than sinking into the dark terrain.
+                water: moonlight(WATER).lerp(MOON, 0.14),
+                tree_dark: moonlight(TREE_DARK),
+                tree_lit: moonlight(TREE_LIT),
+                trunk: moonlight(TRUNK),
+                rock_lit: moonlight(ROCK_LIT),
+                rock_dark: moonlight(ROCK_DARK),
+                orb: MOON,
+                orb_halo: MOON, // halo drawn translucent in draw_sky
+            },
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // surface
 // ---------------------------------------------------------------------------
 
@@ -343,9 +452,15 @@ fn trace_river() -> Vec<[f64; 2]> {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    let out_path = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "basin-logo.svg".into());
+    let mut args = std::env::args().skip(1);
+    let out_path = args.next().unwrap_or_else(|| "basin-logo.svg".into());
+    // Optional second arg selects the theme: `dark` / `night` → moonlit,
+    // anything else (or absent) → the daytime scene.
+    let theme = match args.next().as_deref() {
+        Some("dark") | Some("night") => Theme::Night,
+        _ => Theme::Day,
+    };
+    let pal = Palette::new(theme);
 
     let surf = Surface::new();
     let river = trace_river();
@@ -353,16 +468,21 @@ fn main() {
     let pool_center = basin_min();
 
     let mut svg = Svg::new();
-    draw_sun(&mut svg);
-    draw_terrain(&mut svg, &surf, &river, pool_center);
-    let n_rocks = draw_rocks(&mut svg, &surf);
-    let n_trees = draw_trees(&mut svg, &surf);
+    draw_sky(&mut svg, &pal);
+    draw_terrain(&mut svg, &surf, &pal, &river, pool_center);
+    let n_rocks = draw_rocks(&mut svg, &surf, &pal);
+    let n_trees = draw_trees(&mut svg, &surf, &pal);
+    draw_creature(&mut svg, &surf, &pal); // butterfly (day) / owl (night), on top
 
     let doc = svg.finish();
     std::fs::write(&out_path, &doc).expect("write SVG");
     let end = river.last().copied().unwrap_or(pool_center);
+    let theme_name = match theme {
+        Theme::Day => "day",
+        Theme::Night => "night",
+    };
     eprintln!(
-        "wrote {out_path} ({} bytes); river: {} steps from {:?} to ({:.3}, {:.3}); pool at ({:.3}, {:.3}); {n_trees}/{TREE_COUNT} trees (seed {TREE_SEED}); {n_rocks}/{ROCK_COUNT} rocks (seed {ROCK_SEED})",
+        "wrote {out_path} ({} bytes, {theme_name}); river: {} steps from {:?} to ({:.3}, {:.3}); pool at ({:.3}, {:.3}); {n_trees}/{TREE_COUNT} trees (seed {TREE_SEED}); {n_rocks}/{ROCK_COUNT} rocks (seed {ROCK_SEED})",
         doc.len(),
         river.len(),
         RIVER_START,
@@ -461,7 +581,13 @@ fn oklab_to_rgb(lab: [f64; 3]) -> Rgb {
     Rgb(q(r), q(g), q(b))
 }
 
-fn draw_terrain(svg: &mut Svg, surf: &Surface, river: &[[f64; 2]], center: [f64; 2]) {
+fn draw_terrain(
+    svg: &mut Svg,
+    surf: &Surface,
+    pal: &Palette,
+    river: &[[f64; 2]],
+    center: [f64; 2],
+) {
     let wl = surf.water;
     // True normalised height per node, plus the same clamped up to the water
     // line. The clamped heights give the geometry — a flat lake surface at the
@@ -494,7 +620,7 @@ fn draw_terrain(svg: &mut Svg, surf: &Surface, river: &[[f64; 2]], center: [f64;
     // facet) rather than each underlying face's — otherwise the terrain
     // faceting shows through the river/lake.
     let water = water_shapes(surf, river, center);
-    let water_color = WATER.shade(0.70 + 0.5 * light[2].max(0.0));
+    let water_color = pal.water.shade(0.70 + 0.5 * light[2].max(0.0));
 
     let mut facets: Vec<Facet> = Vec::with_capacity(GRID * GRID * 2);
     for j in 0..GRID {
@@ -513,7 +639,7 @@ fn draw_terrain(svg: &mut Svg, surf: &Surface, river: &[[f64; 2]], center: [f64;
                 // Terrain colour: the elevation ramp shaded by this face. The
                 // lake/river/spring are carved on top (below) as clipped water.
                 let elev = tri.iter().map(|&(a, b)| hh[b][a]).sum::<f64>() / 3.0;
-                let color = ramp_sample(TERRAIN_RAMP, elev).shade(0.70 + 0.5 * ndotl);
+                let color = ramp_sample(&pal.terrain, elev).shade(0.70 + 0.5 * ndotl);
 
                 let pts: Vec<(f64, f64)> = vec![
                     screen(tri[0].0, tri[0].1),
@@ -654,7 +780,7 @@ fn water_shapes(surf: &Surface, river: &[[f64; 2]], center: [f64; 2]) -> Vec<Vec
 /// enough from already-placed trees. Returns how many were actually placed —
 /// a tight `TREE_MIN_DIST` or a small eligible area can fall short of
 /// `TREE_COUNT` within the attempt budget.
-fn draw_trees(svg: &mut Svg, surf: &Surface) -> usize {
+fn draw_trees(svg: &mut Svg, surf: &Surface, pal: &Palette) -> usize {
     let wl = surf.water;
     // Slope sampled over one grid cell in each axis, matching the spacing the
     // `TREE_MAX_SLOPE` threshold was tuned against.
@@ -688,27 +814,31 @@ fn draw_trees(svg: &mut Svg, surf: &Surface) -> usize {
 
     chosen.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap()); // far trees first
     for &(x, y) in &chosen {
-        draw_tree(svg, surf.surface_point(x, y, 0.0));
+        draw_tree(svg, pal, surf.surface_point(x, y, 0.0));
     }
     chosen.len()
 }
 
 /// A small low-poly conifer: stacked triangle tiers over a short trunk,
 /// each tier split lit/shadow down the centre seam.
-fn draw_tree(svg: &mut Svg, base: (f64, f64)) {
+fn draw_tree(svg: &mut Svg, pal: &Palette, base: (f64, f64)) {
     let (bx, by) = base;
     let w = 12.0;
     let trunk_h = 7.0;
     let tier_h = 16.0;
 
-    svg.rect(bx - 1.8, by - trunk_h, 3.6, trunk_h + 1.0, TRUNK);
+    svg.rect(bx - 1.8, by - trunk_h, 3.6, trunk_h + 1.0, pal.trunk);
     let top = by - trunk_h;
     for t in 0..3 {
         let level = top - t as f64 * (tier_h * 0.6);
         let half = w * (1.0 - t as f64 * 0.22);
         let apex = (bx, level - tier_h);
-        svg.polygon(&[apex, (bx - half, level), (bx, level)], TREE_DARK, None);
-        svg.polygon(&[apex, (bx, level), (bx + half, level)], TREE_LIT, None);
+        svg.polygon(
+            &[apex, (bx - half, level), (bx, level)],
+            pal.tree_dark,
+            None,
+        );
+        svg.polygon(&[apex, (bx, level), (bx + half, level)], pal.tree_lit, None);
     }
 }
 
@@ -716,7 +846,7 @@ fn draw_tree(svg: &mut Svg, base: (f64, f64)) {
 /// sampled at random (seeded by `ROCK_SEED`) over rocky ground. Mirrors
 /// `draw_trees`' eligibility test with the looser `ROCK_*` bounds. Returns how
 /// many were placed (incl. the spring rock).
-fn draw_rocks(svg: &mut Svg, surf: &Surface) -> usize {
+fn draw_rocks(svg: &mut Svg, surf: &Surface, pal: &Palette) -> usize {
     let wl = surf.water;
     let dx = (X1 - X0) / GRID as f64;
     let dy = (Y1 - Y0) / GRID as f64;
@@ -750,11 +880,11 @@ fn draw_rocks(svg: &mut Svg, surf: &Surface) -> usize {
 
     // Spring rock first (it sits high/back), then the scattered rocks far-first.
     let (sx, sy) = surf.surface_point(RIVER_START[0], RIVER_START[1], 0.0);
-    draw_rock(svg, (sx + ROCK_SPRING_DX, sy + ROCK_SPRING_DY));
+    draw_rock(svg, pal, (sx + ROCK_SPRING_DX, sy + ROCK_SPRING_DY));
     let mut scattered = chosen[1..].to_vec();
     scattered.sort_by(|a, b| (a.0 + a.1).partial_cmp(&(b.0 + b.1)).unwrap());
     for &(x, y) in &scattered {
-        draw_rock(svg, surf.surface_point(x, y, 0.0));
+        draw_rock(svg, pal, surf.surface_point(x, y, 0.0));
     }
     chosen.len()
 }
@@ -762,7 +892,7 @@ fn draw_rocks(svg: &mut Svg, surf: &Surface) -> usize {
 /// A small faceted boulder on the ground at `base`: a shadow (left) facet and
 /// a sun-lit (right) facet split by a ridge, matching the trees' lit/shadow
 /// treatment. The right side is lit because the sun sits upper-right.
-fn draw_rock(svg: &mut Svg, base: (f64, f64)) {
+fn draw_rock(svg: &mut Svg, pal: &Palette, base: (f64, f64)) {
     let (bx, by) = base;
     let (w, h) = (ROCK_W, ROCK_H);
     let top = (bx - 0.10 * w, by - h);
@@ -771,14 +901,145 @@ fn draw_rock(svg: &mut Svg, base: (f64, f64)) {
     let seam = (bx + 0.05 * w, by);
     let lr = (bx + 0.70 * w, by - 0.06 * h);
     let ur = (bx + 0.95 * w, by - 0.55 * h);
-    svg.polygon(&[top, ul, ll, seam], ROCK_DARK, None); // shadow (left)
-    svg.polygon(&[top, seam, lr, ur], ROCK_LIT, None); // lit (right)
+    svg.polygon(&[top, ul, ll, seam], pal.rock_dark, None); // shadow (left)
+    svg.polygon(&[top, seam, lr, ur], pal.rock_lit, None); // lit (right)
 }
 
-fn draw_sun(svg: &mut Svg) {
+/// The orb in the upper-right: a sun with a warm halo by day, a pale full
+/// moon with a soft cool glow, a couple of craters, and scattered stars by
+/// night. Star/halo extents are kept inside the day frame so both themes
+/// render at the same size.
+fn draw_sky(svg: &mut Svg, pal: &Palette) {
     let (sx, sy) = project(GRID as f64 * 0.66, 0.0, 1.32);
-    svg.circle(sx, sy - 4.0, SUN_R * SUN_HALO, SUN.lerp(PAPER, 0.55));
-    svg.circle(sx, sy - 4.0, SUN_R, SUN);
+    let (cx, cy) = (sx, sy - 4.0);
+    match pal.theme {
+        Theme::Day => {
+            svg.circle(cx, cy, SUN_R * SUN_HALO, pal.orb_halo);
+            svg.circle(cx, cy, SUN_R, pal.orb);
+        }
+        Theme::Night => {
+            // Stars first, behind the moon's glow. Offsets are relative to the
+            // moon and kept within the day frame (terrain rim ≈ y −190).
+            for &(dx, dy, r, op) in STARS {
+                svg.circle_opacity(cx + dx, cy + dy, r, STAR, op);
+            }
+            // Soft cool glow: two faint discs, larger and dimmer outward.
+            svg.circle_opacity(cx, cy, SUN_R * SUN_HALO, pal.orb_halo, 0.16);
+            svg.circle_opacity(cx, cy, SUN_R * 1.18, pal.orb_halo, 0.22);
+            // Moon disk + a couple of craters for a non-sun read.
+            svg.circle(cx, cy, SUN_R, pal.orb);
+            svg.circle(
+                cx - 0.32 * SUN_R,
+                cy - 0.18 * SUN_R,
+                0.20 * SUN_R,
+                MOON_CRATER,
+            );
+            svg.circle(
+                cx + 0.22 * SUN_R,
+                cy + 0.26 * SUN_R,
+                0.14 * SUN_R,
+                MOON_CRATER,
+            );
+            svg.circle(
+                cx + 0.10 * SUN_R,
+                cy - 0.34 * SUN_R,
+                0.10 * SUN_R,
+                MOON_CRATER,
+            );
+        }
+    }
+}
+
+/// Star field for the night sky: `(dx, dy, radius, opacity)` offsets from the
+/// moon centre, all up-and-left/right of it in open sky and inside the day
+/// frame so the two themes stay the same size.
+const STARS: &[(f64, f64, f64, f64)] = &[
+    (-150.0, -8.0, 1.9, 0.95),
+    (-104.0, -55.0, 1.3, 0.7),
+    (-186.0, -40.0, 1.6, 0.85),
+    (-70.0, -78.0, 2.1, 1.0),
+    (40.0, -70.0, 1.5, 0.85),
+    (96.0, -30.0, 1.2, 0.6),
+    (128.0, -78.0, 1.8, 0.95),
+    (-26.0, -92.0, 1.3, 0.7),
+    (150.0, -16.0, 1.1, 0.6),
+    (62.0, -94.0, 1.5, 0.8),
+];
+
+/// The themed creature: a butterfly hovering over the valley by day, an owl
+/// perched in the foreground meadow by night. Drawn last so it sits on top.
+fn draw_creature(svg: &mut Svg, surf: &Surface, pal: &Palette) {
+    let (x, y) = (CREATURE_AT[0], CREATURE_AT[1]);
+    match pal.theme {
+        Theme::Day => draw_butterfly(svg, surf.surface_point(x, y, CREATURE_HOVER)),
+        Theme::Night => draw_owl(svg, surf.surface_point(x, y, CREATURE_PERCH)),
+    }
+}
+
+/// A small flat-shaded butterfly at `base` (its body centre): a dark body,
+/// two larger upper wings and two smaller lower wings (tilted ellipses), and
+/// two antennae. Sized to read at logo scale (~22 px wide).
+fn draw_butterfly(svg: &mut Svg, base: (f64, f64)) {
+    let (bx, by) = base;
+    // Wings (drawn before the body so the body seam sits on top). The upper
+    // pair is splayed outward and the lower pair tucked below so the four
+    // wings + central body read clearly as a butterfly, not a single bloom.
+    svg.ellipse(bx - 8.0, by - 4.5, 7.5, 9.5, -38.0, BFLY_WING); // upper left
+    svg.ellipse(bx + 8.0, by - 4.5, 7.5, 9.5, 38.0, BFLY_WING); // upper right
+    svg.ellipse(bx - 6.0, by + 6.0, 5.2, 6.5, -16.0, BFLY_WING2); // lower left
+    svg.ellipse(bx + 6.0, by + 6.0, 5.2, 6.5, 16.0, BFLY_WING2); // lower right
+    svg.ellipse(bx, by, 2.1, 9.0, 0.0, BFLY_BODY); // body
+                                                   // Antennae.
+    svg.line(bx, by - 7.0, bx - 4.0, by - 13.0, 1.0, BFLY_BODY);
+    svg.line(bx, by - 7.0, bx + 4.0, by - 13.0, 1.0, BFLY_BODY);
+    svg.circle(bx - 4.0, by - 13.0, 1.2, BFLY_BODY);
+    svg.circle(bx + 4.0, by - 13.0, 1.2, BFLY_BODY);
+}
+
+/// A small low-poly owl at `base` (the perch point, between its feet): a
+/// rounded two-tone body, ear tufts, two pale eyes with dark pupils, and a
+/// warm beak. Rendered in moonlit slate so it stays visible on a dark page.
+fn draw_owl(svg: &mut Svg, base: (f64, f64)) {
+    let (bx, by) = base;
+    // Body: a darker egg with a lighter belly offset down-right.
+    svg.ellipse(bx, by - 13.0, 11.0, 14.5, 0.0, OWL_DARK);
+    svg.ellipse(bx + 1.2, by - 9.0, 7.2, 10.0, 0.0, OWL_LIT);
+    // Ear tufts.
+    svg.polygon(
+        &[
+            (bx - 9.5, by - 22.0),
+            (bx - 5.0, by - 30.0),
+            (bx - 3.5, by - 22.5),
+        ],
+        OWL_DARK,
+        None,
+    );
+    svg.polygon(
+        &[
+            (bx + 3.5, by - 22.5),
+            (bx + 5.0, by - 30.0),
+            (bx + 9.5, by - 22.0),
+        ],
+        OWL_DARK,
+        None,
+    );
+    // Eyes (pale disks + pupils) and beak.
+    svg.circle(bx - 4.6, by - 20.5, 4.0, OWL_EYE);
+    svg.circle(bx + 4.6, by - 20.5, 4.0, OWL_EYE);
+    svg.circle(bx - 4.6, by - 20.0, 1.8, OWL_PUPIL);
+    svg.circle(bx + 4.6, by - 20.0, 1.8, OWL_PUPIL);
+    svg.polygon(
+        &[
+            (bx - 1.8, by - 17.5),
+            (bx + 1.8, by - 17.5),
+            (bx, by - 14.0),
+        ],
+        OWL_BEAK,
+        None,
+    );
+    // Feet.
+    svg.line(bx - 3.5, by, bx - 3.5, by - 2.6, 1.6, OWL_BEAK);
+    svg.line(bx + 3.5, by, bx + 3.5, by - 2.6, 1.6, OWL_BEAK);
 }
 
 // vector helpers
@@ -891,6 +1152,64 @@ impl Svg {
             cy,
             r,
             fill.hex()
+        );
+        self.body.push('\n');
+    }
+
+    /// A circle with `fill-opacity` (for moon glow / stars).
+    fn circle_opacity(&mut self, cx: f64, cy: f64, r: f64, fill: Rgb, opacity: f64) {
+        self.track(cx - r, cy - r);
+        self.track(cx + r, cy + r);
+        let _ = write!(
+            self.body,
+            r#"<circle cx="{:.2}" cy="{:.2}" r="{:.2}" fill="{}" fill-opacity="{:.2}"/>"#,
+            cx,
+            cy,
+            r,
+            fill.hex(),
+            opacity
+        );
+        self.body.push('\n');
+    }
+
+    /// An axis-aligned ellipse, optionally rotated `rot_deg` about its centre
+    /// (butterfly wings, owl body). The bounding box is tracked loosely from
+    /// the larger radius so rotation can't push it out of frame.
+    fn ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, rot_deg: f64, fill: Rgb) {
+        let m = rx.max(ry);
+        self.track(cx - m, cy - m);
+        self.track(cx + m, cy + m);
+        let t = if rot_deg.abs() > 1e-9 {
+            format!(r#" transform="rotate({:.2} {:.2} {:.2})""#, rot_deg, cx, cy)
+        } else {
+            String::new()
+        };
+        let _ = write!(
+            self.body,
+            r#"<ellipse cx="{:.2}" cy="{:.2}" rx="{:.2}" ry="{:.2}" fill="{}"{}/>"#,
+            cx,
+            cy,
+            rx,
+            ry,
+            fill.hex(),
+            t
+        );
+        self.body.push('\n');
+    }
+
+    /// A round-capped stroked line segment (antennae, owl feet).
+    fn line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, w: f64, color: Rgb) {
+        self.track(x1, y1);
+        self.track(x2, y2);
+        let _ = write!(
+            self.body,
+            r#"<line x1="{:.2}" y1="{:.2}" x2="{:.2}" y2="{:.2}" stroke="{}" stroke-width="{:.2}" stroke-linecap="round"/>"#,
+            x1,
+            y1,
+            x2,
+            y2,
+            color.hex(),
+            w
         );
         self.body.push('\n');
     }
