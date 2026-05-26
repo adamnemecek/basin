@@ -78,8 +78,8 @@ const Z_WORLD: f64 = 25.0; // height gain for facet-normal lighting (grid units)
 /// the descent *hugs* the bending floor rather than flying ballistically
 /// across it; the path sweeps down the curve into the pool.
 const RIVER_START: [f64; 2] = [-3.7, -2.5];
-const RIVER_ALPHA: f64 = 0.02;
-const RIVER_BETA: f64 = 0.10;
+const RIVER_ALPHA: f64 = 0.05;
+const RIVER_BETA: f64 = 0.35;
 const RIVER_ITERS: usize = 1100;
 const RIVER_POINTS: usize = 500; // trajectory vertices captured
 
@@ -91,11 +91,11 @@ const RIVER_POINTS: usize = 500; // trajectory vertices captured
 /// slope-lit sub-faces of the surface, not a flat ribbon laid on top.
 const RIVER_W_SRC: f64 = 0.08;
 const RIVER_W_MOUTH: f64 = 0.55;
-const RIVER_SEGS: usize = 56;
+const RIVER_SEGS: usize = 64;
 
 /// Source spring at x₀: a round pool (problem-space radius) the river wells out
 /// of, unioned into the ribbon and likewise carved into the mesh.
-const SPRING_R: f64 = 0.3;
+const SPRING_R: f64 = 0.2;
 
 /// Trees: scattered at random over *plantable* ground — above the shoreline,
 /// below the upper walls, and on gentle enough slopes to read as planted.
@@ -123,8 +123,8 @@ const ROCK_MIN_LIFT: f64 = 0.02; // min normalised height above the water line
 const ROCK_MAX_HN: f64 = 0.7; // max normalised height (rocks climb higher)
 const ROCK_MAX_SLOPE: f64 = 0.22; // rocks sit on steeper ground than trees
 const ROCK_MAX_ATTEMPTS: usize = 4000; // rejection-sampling budget per render
-const ROCK_W: f64 = 12.0; // boulder half-width (px)
-const ROCK_H: f64 = 14.0; // boulder height (px)
+const ROCK_W: f64 = 14.0; // boulder half-width (px)
+const ROCK_H: f64 = 16.0; // boulder height (px)
 
 /// Teal/slate palette.
 const PAPER: Rgb = Rgb(244, 241, 222); // #f4f1de background
@@ -226,6 +226,10 @@ const OWL_BEAK: Rgb = hex("#cba36a"); // small warm beak
 const BFLY_WING: Rgb = hex("#e9c46a"); // upper wings (matches the sun accent)
 const BFLY_WING2: Rgb = hex("#e07a5f"); // lower wings (terracotta)
 const BFLY_BODY: Rgb = hex("#3d405b"); // dark body + antennae
+/// Whole-butterfly tilt in degrees, about its body centre (positive = clockwise
+/// in SVG's y-down frame, so the head leans right). Keeps it reading as drifting
+/// rather than pinned upright; flip the sign or scale to re-aim.
+const BFLY_TILT: f64 = -19.0;
 
 /// The creature hovers/perches over this problem-space point in the open
 /// foreground meadow. The butterfly floats well above the surface
@@ -242,9 +246,9 @@ const CREATURE_PERCH: f64 = 0.02; // owl lift (sits just above the ground)
 fn moonlight(c: Rgb) -> Rgb {
     let [l, a, b] = rgb_to_oklab(c);
     oklab_to_rgb([
-        l * 0.60 + 0.035, // darken to dusk (not black) — a lifted floor
-        a * 0.46,         // desaturate
-        b * 0.46 - 0.018, // desaturate + push toward blue (−b is blue)
+        l * 0.65 + 0.035, // darken to dusk (not black) — a lifted floor
+        a * 0.86,         // desaturate
+        b * 0.56 - 0.018, // desaturate + push toward blue (−b is blue)
     ])
 }
 
@@ -1102,19 +1106,34 @@ fn draw_creature(svg: &mut Svg, surf: &Surface, pal: &Palette) {
 /// two antennae. Sized to read at logo scale (~22 px wide).
 fn draw_butterfly(svg: &mut Svg, base: (f64, f64)) {
     let (bx, by) = base;
+    // The whole butterfly is tilted `BFLY_TILT` about its body centre. `rot`
+    // spins a point about `(bx, by)`; the same angle is folded into each wing's
+    // own rotation so the splay survives the tilt.
+    let (s, c) = BFLY_TILT.to_radians().sin_cos();
+    let rot = |x: f64, y: f64| -> (f64, f64) {
+        let (dx, dy) = (x - bx, y - by);
+        (bx + dx * c - dy * s, by + dx * s + dy * c)
+    };
     // Wings (drawn before the body so the body seam sits on top). The upper
     // pair is splayed outward and the lower pair tucked below so the four
     // wings + central body read clearly as a butterfly, not a single bloom.
-    svg.ellipse(bx - 8.0, by - 4.5, 7.5, 9.5, -38.0, BFLY_WING); // upper left
-    svg.ellipse(bx + 8.0, by - 4.5, 7.5, 9.5, 38.0, BFLY_WING); // upper right
-    svg.ellipse(bx - 6.0, by + 6.0, 5.2, 6.5, -16.0, BFLY_WING2); // lower left
-    svg.ellipse(bx + 6.0, by + 6.0, 5.2, 6.5, 16.0, BFLY_WING2); // lower right
-    svg.ellipse(bx, by, 2.1, 9.0, 0.0, BFLY_BODY); // body
-                                                   // Antennae.
-    svg.line(bx, by - 7.0, bx - 4.0, by - 13.0, 1.0, BFLY_BODY);
-    svg.line(bx, by - 7.0, bx + 4.0, by - 13.0, 1.0, BFLY_BODY);
-    svg.circle(bx - 4.0, by - 13.0, 1.2, BFLY_BODY);
-    svg.circle(bx + 4.0, by - 13.0, 1.2, BFLY_BODY);
+    let (ulx, uly) = rot(bx - 8.0, by - 4.5);
+    svg.ellipse(ulx, uly, 7.5, 9.5, -38.0 + BFLY_TILT, BFLY_WING); // upper left
+    let (urx, ury) = rot(bx + 8.0, by - 4.5);
+    svg.ellipse(urx, ury, 7.5, 9.5, 38.0 + BFLY_TILT, BFLY_WING); // upper right
+    let (llx, lly) = rot(bx - 6.0, by + 6.0);
+    svg.ellipse(llx, lly, 5.2, 6.5, -16.0 + BFLY_TILT, BFLY_WING2); // lower left
+    let (lrx, lry) = rot(bx + 6.0, by + 6.0);
+    svg.ellipse(lrx, lry, 5.2, 6.5, 16.0 + BFLY_TILT, BFLY_WING2); // lower right
+    svg.ellipse(bx, by, 2.1, 9.0, BFLY_TILT, BFLY_BODY); // body (centre = pivot)
+                                                         // Antennae.
+    let (a0x, a0y) = rot(bx, by - 7.0);
+    let (alx, aly) = rot(bx - 4.0, by - 13.0);
+    let (arx, ary) = rot(bx + 4.0, by - 13.0);
+    svg.line(a0x, a0y, alx, aly, 1.0, BFLY_BODY);
+    svg.line(a0x, a0y, arx, ary, 1.0, BFLY_BODY);
+    svg.circle(alx, aly, 1.2, BFLY_BODY);
+    svg.circle(arx, ary, 1.2, BFLY_BODY);
 }
 
 /// A small low-poly owl at `base` (the perch point, between its feet): a

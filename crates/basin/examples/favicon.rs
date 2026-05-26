@@ -21,10 +21,18 @@
 //! Run with:
 //!
 //! ```text
-//! cargo run --example favicon                  # day   -> basin-favicon.svg
-//! cargo run --example favicon out.svg          # day   -> out.svg
-//! cargo run --example favicon out.svg dark     # night -> out.svg
+//! cargo run --example favicon                  # day      -> basin-favicon.svg
+//! cargo run --example favicon out.svg          # day      -> out.svg
+//! cargo run --example favicon out.svg dark     # night    -> out.svg
+//! cargo run --example favicon out.svg adaptive # self-adapting (day + night)
 //! ```
+//!
+//! The `adaptive` mode ships *both* palettes in one file, switched by
+//! `prefers-color-scheme`, so a single `<link rel="icon">` covers light and
+//! dark tab chrome — this is the form linked as the site favicon (one SVG, as
+//! RealFaviconGenerator expects for a dual light/dark icon). The standalone
+//! `day` / `night` renders remain the raster source for the `.ico` / PNG
+//! fallbacks, where CSS can't adapt.
 
 use std::fmt::Write as _;
 
@@ -147,7 +155,7 @@ const MOON: Rgb = hex("#d8dcec");
 /// same transform the logo uses, so the two stay in sync.
 fn moonlight(c: Rgb) -> Rgb {
     let [l, a, b] = rgb_to_oklab(c);
-    oklab_to_rgb([l * 0.60 + 0.035, a * 0.46, b * 0.46 - 0.018])
+    oklab_to_rgb([l * 0.75 + 0.035, a * 0.76, b * 0.46 - 0.018])
 }
 
 /// All theme-dependent colours, resolved once up front.
@@ -327,31 +335,34 @@ fn trace_river() -> Vec<[f64; 2]> {
 fn main() {
     let mut args = std::env::args().skip(1);
     let out_path = args.next().unwrap_or_else(|| "basin-favicon.svg".into());
-    let theme = match args.next().as_deref() {
-        Some("dark") | Some("night") => Theme::Night,
-        _ => Theme::Day,
-    };
-    let pal = Palette::new(theme);
+    // Second arg selects the palette. `adaptive`/`auto` ships *both* day and
+    // night in one file, switched by `prefers-color-scheme` (the form linked as
+    // the site favicon — a single self-adapting SVG); `dark`/`night` a lone
+    // night render; anything else day. The single-theme renders are the raster
+    // source for the `.ico` / PNG fallbacks, which can't adapt.
+    let mode = args.next().unwrap_or_default();
 
     let surf = Surface::new();
     let river = trace_river();
     let pool_center = [BOWL_CX, BOWL_CY];
 
-    let mut svg = Svg::new();
-    draw_terrain(&mut svg, &surf, &pal, &river);
-    draw_tree(
-        &mut svg,
-        &pal,
-        surf.surface_point(TREE_AT[0], TREE_AT[1], 0.0),
-    );
-
-    let doc = svg.finish();
+    let (doc, theme_name) = match mode.as_str() {
+        "adaptive" | "auto" => {
+            let day = render_scene(&surf, &river, &Palette::new(Theme::Day));
+            let night = render_scene(&surf, &river, &Palette::new(Theme::Night));
+            (compose_adaptive(day, night), "adaptive")
+        }
+        "dark" | "night" => (
+            render_scene(&surf, &river, &Palette::new(Theme::Night)).finish(),
+            "night",
+        ),
+        _ => (
+            render_scene(&surf, &river, &Palette::new(Theme::Day)).finish(),
+            "day",
+        ),
+    };
     std::fs::write(&out_path, &doc).expect("write SVG");
 
-    let theme_name = match theme {
-        Theme::Day => "day",
-        Theme::Night => "night",
-    };
     let end = river.last().copied().unwrap_or(pool_center);
     eprintln!(
         "wrote {out_path} ({} bytes, {theme_name}); river: {} steps from {:?} to ({:.3}, {:.3}); pool at ({:.3}, {:.3})",
@@ -363,6 +374,49 @@ fn main() {
         pool_center[0],
         pool_center[1],
     );
+}
+
+/// Render the full favicon scene (terrain + bank tree) into a fresh [`Svg`] with
+/// `pal`. Geometry is palette-independent, so the day and night renders share
+/// identical vertices — only the fills differ, which is what lets
+/// [`compose_adaptive`] stack them in one self-adapting file.
+fn render_scene(surf: &Surface, river: &[[f64; 2]], pal: &Palette) -> Svg {
+    let mut svg = Svg::new();
+    draw_terrain(&mut svg, surf, pal, river);
+    draw_tree(
+        &mut svg,
+        pal,
+        surf.surface_point(TREE_AT[0], TREE_AT[1], 0.0),
+    );
+    svg
+}
+
+/// Fuse a day and a night render (identical geometry, different fills) into one
+/// self-adapting favicon: both palettes ship in a single file, wrapped in
+/// `#light-icon` / `#dark-icon` groups and toggled by `prefers-color-scheme`, so
+/// one `<link rel="icon">` covers light and dark tab chrome. `#light-icon` is
+/// the default, so any renderer that ignores the media query (e.g. resvg
+/// rasterising the `.ico`) gets the day art. This mirrors the markup
+/// RealFaviconGenerator emits for a dual light/dark SVG.
+fn compose_adaptive(day: Svg, night: Svg) -> String {
+    let (vx, vy, side) = day.viewbox(); // identical geometry → either frames both
+    let mut out = String::new();
+    let _ = write!(
+        out,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{:.2} {:.2} {:.2} {:.2}" width="{:.0}" height="{:.0}">"#,
+        vx, vy, side, side, side, side
+    );
+    out.push('\n');
+    out.push_str(
+        "<style>#dark-icon{display:none}\
+         @media (prefers-color-scheme:dark){#light-icon{display:none}#dark-icon{display:inline}}</style>\n",
+    );
+    out.push_str("<g id=\"light-icon\">\n");
+    out.push_str(&day.body);
+    out.push_str("</g>\n<g id=\"dark-icon\">\n");
+    out.push_str(&night.body);
+    out.push_str("</g>\n</svg>\n");
+    out
 }
 
 // ---------------------------------------------------------------------------
@@ -813,17 +867,23 @@ impl Svg {
         self.body.push('\n');
     }
 
-    /// Frame to a **square** viewBox: the longer bbox axis plus padding sets the
-    /// side, and the basin is centred within it (shorter axis gets symmetric
-    /// transparent margins). Transparent canvas — no background rect.
-    fn finish(self) -> String {
+    /// The square viewBox `(min_x, min_y, side)`: the longer bbox axis plus
+    /// padding sets the side, and the basin is centred within it (shorter axis
+    /// gets symmetric transparent margins). Shared by [`finish`](Self::finish)
+    /// and [`compose_adaptive`] so the stacked day/night renders frame alike.
+    fn viewbox(&self) -> (f64, f64, f64) {
         let bw = self.max_x - self.min_x;
         let bh = self.max_y - self.min_y;
         let side = bw.max(bh) + 2.0 * PAD;
         let cx = 0.5 * (self.min_x + self.max_x);
         let cy = 0.5 * (self.min_y + self.max_y);
-        let vx = cx - side / 2.0;
-        let vy = cy - side / 2.0;
+        (cx - side / 2.0, cy - side / 2.0, side)
+    }
+
+    /// Frame to a **square** viewBox and emit the standalone SVG document.
+    /// Transparent canvas — no background rect.
+    fn finish(self) -> String {
+        let (vx, vy, side) = self.viewbox();
         let mut out = String::new();
         let _ = write!(
             out,

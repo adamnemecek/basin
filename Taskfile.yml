@@ -71,17 +71,18 @@ tasks:
       - cp images/logo-dark.svg images/logo-dark.png images/logo-dark-512.png images/logo-dark-256.png web/static/
 
   favicon:
-    desc: "Watch the favicon example; rebuild light + dark SVGs and the PNG/ICO set and sync to web/static on save."
+    desc: "Watch the favicon example; rebuild the self-adapting SVG and the PNG/ICO set and sync to web/static on save."
     summary: |
-      Renders crates/basin/examples/favicon.rs to images/favicon.svg (light) and
-      images/favicon-dark.svg (dark) — a flat, side-on cross-section of a 1D
-      basin, drawn to read at 16-32 px in a browser tab. The rivulet feeding the
-      pool is a genuine GradientDescent run over the curve, like the logo's
-      river; the dark variant re-tints the palette through the same Oklab
-      "moonlight" transform.
+      Renders crates/basin/examples/favicon.rs to images/favicon.svg — a flat,
+      side-on cross-section of a 1D basin, drawn to read at 16-32 px in a browser
+      tab. The rivulet feeding the pool is a genuine GradientDescent run over the
+      curve, like the logo's river. The SVG is self-adapting: it fuses the day
+      palette and an Oklab "moonlight" night re-tint into one file (#light-icon /
+      #dark-icon groups switched by prefers-color-scheme), so a single
+      <link rel="icon"> covers light and dark tab chrome.
 
-      From the light SVG it rasterises the favicon set the site references
-      (resvg + ImageMagick): favicon-96x96.png and a multi-size favicon.ico for
+      From a day-only render it rasterises the favicon set the site references
+      (resvg + ImageMagick): favicon-96x96.png and a 16/32/48 favicon.ico for
       browser tabs, plus apple-touch-icon.png and the maskable
       web-app-manifest-{192,512}.png on a brand-cream tile (with safe-zone
       padding for Android's icon mask). Everything is copied into web/static/.
@@ -95,19 +96,17 @@ tasks:
       - task: favicon:build
 
   favicon:once:
-    desc: "Build the favicon once: light + dark SVGs and the PNG/ICO raster set, synced to web/static (no watch)."
+    desc: "Build the favicon once: self-adapting SVG and the PNG/ICO raster set, synced to web/static (no watch)."
     sources:
       - crates/basin/examples/favicon.rs
     generates:
       - images/favicon.svg
-      - images/favicon-dark.svg
       - images/favicon-96x96.png
       - images/favicon.ico
       - images/apple-touch-icon.png
       - images/web-app-manifest-192x192.png
       - images/web-app-manifest-512x512.png
       - web/static/favicon.svg
-      - web/static/favicon-dark.svg
       - web/static/favicon-96x96.png
       - web/static/favicon.ico
       - web/static/apple-touch-icon.png
@@ -119,29 +118,40 @@ tasks:
   favicon:build:
     internal: true
     cmds:
-      # 1. render the scalable, transparent master SVGs (light + dark themes)
-      - cargo run --quiet --package basin --example favicon -- images/favicon.svg
-      - cargo run --quiet --package basin --example favicon -- images/favicon-dark.svg dark
-      # 2. browser-tab rasters from the light SVG (transparent): a 96px PNG and a
-      #    multi-resolution .ico (ImageMagick auto-resizes from a 256px render)
-      - resvg images/favicon.svg images/favicon-96x96.png --width 96
-      - resvg images/favicon.svg images/favicon-256.png --width 256
-      - magick images/favicon-256.png -define icon:auto-resize=64,48,32,16 images/favicon.ico
+      # 1. master SVGs: one self-adapting favicon.svg (light + dark fused into a
+      #    single file, switched by prefers-color-scheme) shipped as the SVG
+      #    favicon, plus a day-only render used purely as the raster source —
+      #    .ico / PNG fallbacks can't adapt, and resvg only honours the default
+      #    branch of the media query anyway.
+      - cargo run --quiet --package basin --example favicon -- images/favicon.svg adaptive
+      - cargo run --quiet --package basin --example favicon -- images/favicon-raster.svg
+      # 2. browser-tab rasters from the day SVG (transparent): a 96px PNG and a
+      #    multi-resolution .ico. Sizes 16/32/48 only — RealFaviconGenerator's
+      #    set; a 64px entry trips its checker as an "extra size".
+      - resvg images/favicon-raster.svg images/favicon-96x96.png --width 96
+      - resvg images/favicon-raster.svg images/favicon-256.png --width 256
+      - magick images/favicon-256.png -define icon:auto-resize=48,32,16 images/favicon.ico
       - rm -f images/favicon-256.png
-      # 3. app icons on a brand-cream (#f4f1de) tile: apple-touch full-bleed; the
-      #    maskable manifest icons rendered at 72% and centred so Android's
-      #    circle/squircle crop keeps a safe margin
-      - resvg images/favicon.svg images/favicon-180.png --width 180
+      # 3. app icons on a fully opaque brand-cream (#f4f1de) tile. apple-touch:
+      #    full-bleed flatten. Maskable manifest icons: the basin is a WIDE
+      #    isometric diamond (~97% of the frame width), so it's rendered at ~64%
+      #    and *composited* onto a solid cream tile (xc: + -composite, not
+      #    -extent — -extent leaves the interior transparent, so Android masks
+      #    the bare art and clips the diamond's tips). 64% keeps the tips well
+      #    inside the maskable safe zone (central 80% circle).
+      - resvg images/favicon-raster.svg images/favicon-180.png --width 180
       - magick images/favicon-180.png -background "#f4f1de" -flatten images/apple-touch-icon.png
       - rm -f images/favicon-180.png
-      - resvg images/favicon.svg images/favicon-m192.png --width 138
-      - magick images/favicon-m192.png -background "#f4f1de" -gravity center -extent 192x192 images/web-app-manifest-192x192.png
+      - resvg images/favicon-raster.svg images/favicon-m192.png --width 124
+      - magick -size 192x192 xc:"#f4f1de" images/favicon-m192.png -gravity center -composite images/web-app-manifest-192x192.png
       - rm -f images/favicon-m192.png
-      - resvg images/favicon.svg images/favicon-m512.png --width 368
-      - magick images/favicon-m512.png -background "#f4f1de" -gravity center -extent 512x512 images/web-app-manifest-512x512.png
+      - resvg images/favicon-raster.svg images/favicon-m512.png --width 330
+      - magick -size 512x512 xc:"#f4f1de" images/favicon-m512.png -gravity center -composite images/web-app-manifest-512x512.png
       - rm -f images/favicon-m512.png
-      # 4. sync the favicon set into the web app's static dir
-      - cp images/favicon.svg images/favicon-dark.svg images/favicon-96x96.png images/favicon.ico images/apple-touch-icon.png images/web-app-manifest-192x192.png images/web-app-manifest-512x512.png web/static/
+      - rm -f images/favicon-raster.svg
+      # 4. sync the favicon set into the web app's static dir (one self-adapting
+      #    SVG — no separate favicon-dark.svg)
+      - cp images/favicon.svg images/favicon-96x96.png images/favicon.ico images/apple-touch-icon.png images/web-app-manifest-192x192.png images/web-app-manifest-512x512.png web/static/
 
   ingest-paper:
     desc: "Fast first-pass parse of a PDF paper into references/<NAME>/source.md (pymupdf4llm)."
