@@ -410,7 +410,7 @@ pub trait SymmetricEigen<V> {
         Self: Sized;
 }
 
-/// Reasons a [`SymmetricEigen::symmetric_eigen`] call can fail. Variants
+/// Reasons a [`SymmetricEigen::try_eigh`] call can fail. Variants
 /// are backend-agnostic — backends translate their native error types
 /// into these.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

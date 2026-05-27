@@ -431,7 +431,8 @@ impl<V> SimplexState for BasicSimplexState<V> {
 /// approximation `H ≈ ∇²f(x)⁻¹` (BFGS, DFP, SR1).
 ///
 /// Generic over the param vector `V` and dense matrix `M`. Constructors
-/// ship for the `Vec<f64>` / [`DenseMatrix`] backend (always available) and
+/// ship for the `Vec<f64>` / [`DenseMatrix`](crate::DenseMatrix) backend
+/// (always available) and
 /// the nalgebra `DVector<f64>` / `DMatrix<f64>` backend (feature `nalgebra`);
 /// faer is reached via the generic [`State`] / [`GradientState`] impls below.
 /// (L-BFGS uses a different state shape — a history of `(s, y)` pairs — see

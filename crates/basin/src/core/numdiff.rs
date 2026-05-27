@@ -76,6 +76,35 @@ pub enum Method {
 /// backends (nalgebra `DVector → DMatrix`, faer `Col → Mat`) — `Vec<f64>`
 /// and `ndarray` produce a compile-time error, mirroring the analytic
 /// [`Jacobian`] / [`Hessian`] coverage (tenet 5).
+///
+/// # Examples
+///
+/// Run a gradient solver against a problem that only implements
+/// [`CostFunction`]: wrapping it in [`FiniteDiff`] synthesizes the
+/// [`Gradient`] by central differences.
+///
+/// ```
+/// use basin::{BasicState, CostFunction, Executor, FiniteDiff, GradientDescent, GradientTolerance};
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+///
+/// let result = Executor::new(
+///     FiniteDiff::new(Sphere),
+///     GradientDescent::new(0.1),
+///     BasicState::new(vec![1.0, 1.0]),
+/// )
+/// .max_iter(1_000)
+/// .terminate_on(GradientTolerance(1e-8))
+/// .run();
+/// assert!(result.cost() < 1e-10);
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub struct FiniteDiff<P> {
     problem: P,

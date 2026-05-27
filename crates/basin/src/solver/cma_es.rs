@@ -82,9 +82,10 @@ use crate::core::termination::TerminationReason;
 /// # Contract
 ///
 /// - **Caller must:** implement [`CostFunction<Param = V, Output = f64>`]
-///   on the problem. CMA-ES is derivative-free; no [`Gradient`] /
-///   [`Jacobian`] required.
-/// - **Caller must:** hand in a [`BasicPopulationState::with_size(λ)`]
+///   on the problem. CMA-ES is derivative-free; no [`Gradient`](crate::Gradient) /
+///   [`Jacobian`](crate::Jacobian) required.
+/// - **Caller must:** hand in a
+///   [`BasicPopulationState::with_size(λ)`](crate::BasicPopulationState::with_size)
 ///   matching the solver's λ. The default
 ///   λ = `4 + ⌊3 ln n⌋` is exposed via [`default_lambda`](Self::default_lambda).
 /// - **Caller must:** ensure `initial_sigma > 0`.
@@ -104,7 +105,7 @@ use crate::core::termination::TerminationReason;
 /// framework's [`MaxIter`](crate::core::termination::MaxIter) /
 /// [`MaxCostEvals`](crate::core::termination::MaxCostEvals) for budget
 /// control; both work on
-/// [`BasicPopulationState`](crate::core::state::BasicPopulationState)
+/// [`BasicPopulationState`]
 /// without modification. Other CMA-ES termination heuristics
 /// (NoEffectAxis, NoEffectCoord, ConditionCov, EqualFunValues,
 /// Stagnation, TolXUp, TolFun) are out of scope for S8 vanilla and
@@ -124,6 +125,12 @@ use crate::core::termination::TerminationReason;
 /// rank-one update nor the eigendecomposition). Sparse covariance is not
 /// meaningful for CMA-ES — the rank-µ update densifies any starting
 /// pattern.
+///
+/// # Examples
+///
+/// See [`RandomSearch`](crate::RandomSearch) for the population-based
+/// `Executor` pattern — a `BasicPopulationState` sized to λ. Construct the
+/// solver with `CmaEs::new` and pass the same λ to the state.
 pub struct CmaEs<V, M> {
     initial_mean: V,
     initial_sigma: f64,

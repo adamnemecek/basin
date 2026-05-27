@@ -14,8 +14,41 @@
 //! See `AGENTS.md` at the repo root for the design tenets that shape
 //! these APIs (notably tenet 3 on framework-level termination, tenet 4
 //! on first-class constraints, and tenet 5 on backend tiering).
-#![warn(missing_docs)]
-#![warn(rustdoc::broken_intra_doc_links)]
+//!
+//! # Example
+//!
+//! Implement [`CostFunction`] (and [`Gradient`] when the solver needs
+//! derivatives), then hand the problem, a solver, and an initial state to
+//! the [`Executor`]:
+//!
+//! ```
+//! use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
+//!
+//! struct Sphere;
+//! impl CostFunction for Sphere {
+//!     type Param = Vec<f64>;
+//!     type Output = f64;
+//!     fn cost(&self, x: &Vec<f64>) -> f64 {
+//!         x.iter().map(|xi| xi * xi).sum()
+//!     }
+//! }
+//! impl Gradient for Sphere {
+//!     type Param = Vec<f64>;
+//!     type Gradient = Vec<f64>;
+//!     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+//!         x.iter().map(|xi| 2.0 * xi).collect()
+//!     }
+//! }
+//!
+//! let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
+//!     .max_iter(1_000)
+//!     .terminate_on(GradientTolerance(1e-8))
+//!     .run();
+//! assert!(result.cost() < 1e-12);
+//! ```
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![deny(missing_docs)]
+#![deny(rustdoc::broken_intra_doc_links)]
 
 pub mod core;
 pub mod line_search;

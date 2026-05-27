@@ -80,9 +80,9 @@ pub trait Solver<P, S: State> {
     ///   via [`InnerExecutor`](crate::core::inner::InnerExecutor) or
     ///   [`run_loop`](crate::core::executor::run_loop), roll the inner
     ///   result's
-    ///   [`State::cost_evals`](crate::core::state::State::cost_evals)
+    ///   [`State::cost_evals`]
     ///   into the outer state via
-    ///   [`State::increment_cost_evals`](crate::core::state::State::increment_cost_evals)
+    ///   [`State::increment_cost_evals`]
     ///   (and the gradient analogue when both inner and outer are
     ///   [`GradientState`](crate::core::state::GradientState)).
     ///   `MaxCostEvals` budgets and the public `result.cost_evals()`

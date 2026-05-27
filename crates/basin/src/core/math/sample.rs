@@ -17,7 +17,7 @@ use rand::Rng;
 ///   `lower[i] ≤ upper[i]` for every component. Equal bounds are
 ///   allowed (the corresponding component is pinned to that value).
 /// - **Implementor must:** call
-///   [`Rng::random_range`](rand::Rng::random_range) once per component
+///   `Rng::random_range` once per component
 ///   on the inclusive range `lower[i]..=upper[i]`, and return a freshly
 ///   allocated value of length `lower.len()`. Sampling is component-
 ///   independent — the same `(rng, lower, upper)` produces the same

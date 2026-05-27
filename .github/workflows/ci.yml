@@ -30,6 +30,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo clippy --all-features --all-targets -- -D warnings
 
+  docs:
+    name: rustdoc
+    runs-on: ubuntu-latest
+    env:
+      # rustdoc lints (broken links, redundant targets, missing docs, ...)
+      # are warnings by default; -D promotes them to hard errors so docs
+      # can't rot. Built with --all-features to exercise the feature-gated
+      # backend impls, mirroring the docs.rs config.
+      RUSTDOCFLAGS: -D warnings
+    steps:
+      - uses: actions/checkout@v6
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: docs
+      - run: cargo doc --no-deps -p basin --all-features
+
   test:
     name: test (${{ matrix.features }})
     runs-on: ubuntu-latest

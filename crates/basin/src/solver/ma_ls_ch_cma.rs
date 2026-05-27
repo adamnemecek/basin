@@ -206,14 +206,14 @@ impl<V, M> Default for MaLsChState<V, M> {
 ///   loop). This matches Molina 2010 §4.4.6.
 /// - **Caller must:** hand in a [`MaLsChState::new()`].
 /// - **Implementor must:** maintain the
-///   [`PopulationState`](crate::core::state::PopulationState)
+///   [`PopulationState`]
 ///   sorted-by-cost invariant at the start and end of every iteration.
 ///
 /// # Termination
 ///
 /// No solver-internal optimality test. Pair with framework criteria
 /// — typically
-/// [`MaxCostEvals`](crate::core::termination::MaxCostEvals) for budget
+/// [`MaxCostEvals`] for budget
 /// control. Chain segments overshoot `I_str` by up to `λ_inner − 1`
 /// evaluations (CMA-ES runs whole generations); the outer `MaxCostEvals`
 /// will fire on the next outer iteration boundary, not exactly on the
@@ -227,6 +227,12 @@ impl<V, M> Default for MaLsChState<V, M> {
 /// gated by the matrix backend that *isn't* available for ndarray, so
 /// in practice nalgebra and faer). `Vec<f64>` produces a compile-time
 /// error per tenet 5 (no honest matrix type).
+///
+/// # Examples
+///
+/// A memetic algorithm pairing a steady-state GA with CMA-ES local-search
+/// chains. See [`RandomSearch`](crate::RandomSearch) for the population-
+/// based `Executor` pattern.
 pub struct MaLsChCma<V, M> {
     pop_size: usize,
     blx_alpha: f64,

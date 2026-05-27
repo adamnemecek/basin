@@ -76,7 +76,8 @@ use super::cma_es::{compute_weights, expected_norm_n01, sort_population_ascendin
 ///   problem without `BoxConstraints` is a compile-time error.
 /// - **Caller must:** ensure `lower[i] ≤ upper[i]` for every component
 ///   ([`f64::clamp`] panics otherwise) and `initial_sigma > 0`.
-/// - **Caller must:** hand in a [`BasicPopulationState::with_size(λ)`]
+/// - **Caller must:** hand in a
+///   [`BasicPopulationState::with_size(λ)`](crate::BasicPopulationState::with_size)
 ///   matching the solver's λ. The default
 ///   `λ = 4 + ⌊3 ln n⌋` is exposed via
 ///   [`default_lambda`](Self::default_lambda).
@@ -99,7 +100,7 @@ use super::cma_es::{compute_weights, expected_norm_n01, sort_population_ascendin
 /// and the framework's
 /// [`MaxIter`](crate::core::termination::MaxIter) /
 /// [`MaxCostEvals`](crate::core::termination::MaxCostEvals) work
-/// against [`BasicPopulationState`](crate::core::state::BasicPopulationState)
+/// against [`BasicPopulationState`]
 /// without modification.
 ///
 /// # Reproducibility
@@ -120,6 +121,12 @@ use super::cma_es::{compute_weights, expected_norm_n01, sort_population_ascendin
 /// `nalgebra`), and `faer::Col<f64>` / `faer::Mat<f64>` (feature
 /// `faer`). `ndarray::Array1<f64>` produces a compile-time error per
 /// tenet 5 — same coverage as [`CmaEs`](super::cma_es::CmaEs).
+///
+/// # Examples
+///
+/// See [`CmaEs`](crate::CmaEs) (and [`RandomSearch`](crate::RandomSearch)
+/// for the population `Executor` pattern); `BoundedCmaEs` additionally
+/// requires `BoxConstraints` on the problem.
 pub struct BoundedCmaEs<V, M> {
     initial_mean: V,
     initial_sigma: f64,

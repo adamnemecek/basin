@@ -145,6 +145,13 @@ use crate::core::termination::TerminationReason;
 /// [`BoothBoxedResiduals`](crate::problems::BoothBoxedResiduals)) will
 /// see `state.cost()` differ from `problem.cost(state.param())` by a
 /// factor of two; both go to zero at the optimum.
+///
+/// # Examples
+///
+/// See [`LevenbergMarquardt`](crate::LevenbergMarquardt) for the
+/// `Residual` + `Jacobian` least-squares pattern; `Trf` additionally
+/// requires the problem to implement `BoxConstraints` and is constructed
+/// with `Trf::new()`.
 pub struct Trf<V, M> {
     tol_grad: f64,
     tau: f64,

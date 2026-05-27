@@ -68,6 +68,13 @@ use crate::core::termination::TerminationReason;
 /// (e.g. Rosenbrock-as-residuals) will see `state.cost()` differ from
 /// `problem.cost(state.param())` by a factor of two. Both go to zero
 /// at the optimum, so cost-based termination criteria are unaffected.
+///
+/// # Examples
+///
+/// Identical setup to [`LevenbergMarquardt`](crate::LevenbergMarquardt):
+/// implement `Residual` + `Jacobian`, then drive a `BasicState` through
+/// the `Executor`, swapping `LevenbergMarquardt::new()` for
+/// `GaussNewton::new()`.
 pub struct GaussNewton<V, M> {
     tol_grad: f64,
 

@@ -30,6 +30,37 @@ use crate::core::problem::CostFunction;
 /// For 1D problems `Param = f64` and bounds are scalars; for n-D box
 /// constraints `Param` is a vector and bounds are vectors of the same
 /// length.
+///
+/// # Examples
+///
+/// Attach box bounds to a problem so a bounded solver (e.g.
+/// [`ProjectedGradientDescent`](crate::solver::ProjectedGradientDescent))
+/// will accept it. The equality / inequality sibling traits
+/// ([`LinearEqualityConstraints`], [`LinearInequalityConstraints`]) are
+/// implemented the same way, exposing `a()` / `b()` instead:
+///
+/// ```
+/// use basin::{BoxConstraints, CostFunction};
+///
+/// struct BoundedSphere {
+///     lower: Vec<f64>,
+///     upper: Vec<f64>,
+/// }
+/// impl CostFunction for BoundedSphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+/// impl BoxConstraints for BoundedSphere {
+///     fn lower(&self) -> &Vec<f64> { &self.lower }
+///     fn upper(&self) -> &Vec<f64> { &self.upper }
+/// }
+///
+/// let problem = BoundedSphere { lower: vec![-1.0, -1.0], upper: vec![1.0, 1.0] };
+/// assert_eq!(problem.lower(), &vec![-1.0, -1.0]);
+/// ```
 pub trait BoxConstraints: CostFunction {
     /// Element-wise lower bound on `Param`. Same shape as `Param`.
     fn lower(&self) -> &Self::Param;
@@ -51,9 +82,9 @@ pub trait BoxConstraints: CostFunction {
 ///
 /// # Shapes
 ///
-/// `b` shares the parameter's vector *type* ([`Self::Param`]) but lives in
-/// `ℝᵐ` — one entry per constraint row — whereas the iterate lives in `ℝⁿ`.
-/// `m` and `n` need not match.
+/// `b` shares the parameter's vector *type* ([`Param`](CostFunction::Param))
+/// but lives in `ℝᵐ` — one entry per constraint row — whereas the iterate
+/// lives in `ℝⁿ`. `m` and `n` need not match.
 ///
 /// # Matrix type and consumers
 ///
@@ -99,9 +130,9 @@ pub trait LinearInequalityConstraints: CostFunction {
 ///
 /// # Shapes
 ///
-/// `b` shares the parameter's vector *type* ([`Self::Param`]) but lives in
-/// `ℝᵐ` — one entry per constraint row — whereas the iterate lives in `ℝⁿ`.
-/// `m` and `n` need not match.
+/// `b` shares the parameter's vector *type* ([`Param`](CostFunction::Param))
+/// but lives in `ℝᵐ` — one entry per constraint row — whereas the iterate
+/// lives in `ℝⁿ`. `m` and `n` need not match.
 ///
 /// # Matrix type and consumers
 ///

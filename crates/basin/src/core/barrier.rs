@@ -39,8 +39,8 @@
 //! # Backends
 //!
 //! Requires the constraint matrix to implement
-//! [`MatVec`](crate::core::math::MatVec) (`A x`) and
-//! [`MatTransposeVec`](crate::core::math::MatTransposeVec) (`Aᵀ v`) — a
+//! [`MatVec`] (`A x`) and
+//! [`MatTransposeVec`] (`Aᵀ v`) — a
 //! strict subset of the LA tier that never includes a linear solve. That
 //! covers nalgebra (`DMatrix`/`DVector`) and faer (`Mat`/`Col`); `Vec<f64>`
 //! and `ndarray` are a compile-time error until they grow the two matvec

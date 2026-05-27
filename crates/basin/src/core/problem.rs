@@ -18,6 +18,23 @@
 ///   frequency. Solvers may evaluate at exploratory points outside the
 ///   accepted iterate sequence (line-search probes, Nelder-Mead
 ///   reflections / contractions / shrinks, finite-difference probes).
+///
+/// # Examples
+///
+/// ```
+/// use basin::CostFunction;
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+///
+/// assert_eq!(Sphere.cost(&vec![3.0, 4.0]), 25.0);
+/// ```
 pub trait CostFunction {
     /// The parameter type the objective is defined over.
     type Param;
@@ -44,6 +61,23 @@ pub trait CostFunction {
 ///   actual derivative, not a finite-difference approximation unless
 ///   the implementor is happy taking the loss in solver
 ///   convergence behavior.
+///
+/// # Examples
+///
+/// ```
+/// use basin::Gradient;
+///
+/// struct Sphere;
+/// impl Gradient for Sphere {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         x.iter().map(|xi| 2.0 * xi).collect()
+///     }
+/// }
+///
+/// assert_eq!(Sphere.gradient(&vec![1.0, 2.0]), vec![2.0, 4.0]);
+/// ```
 pub trait Gradient {
     /// The parameter type the gradient is defined over (matches
     /// [`CostFunction::Param`]).
@@ -72,6 +106,24 @@ pub trait Gradient {
 ///   unless the problem documents an unscaled `Σ rᵢ²` form (see e.g.
 ///   the existing Rosenbrock cost, which is the published unscaled
 ///   form).
+///
+/// # Examples
+///
+/// ```
+/// use basin::Residual;
+///
+/// // r(x) = (x₀ − 1, x₁ − 2); the least-squares optimum is (1, 2).
+/// struct Affine;
+/// impl Residual for Affine {
+///     type Param = Vec<f64>;
+///     type Output = Vec<f64>;
+///     fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+///         vec![x[0] - 1.0, x[1] - 2.0]
+///     }
+/// }
+///
+/// assert_eq!(Affine.residual(&vec![0.0, 0.0]), vec![-1.0, -2.0]);
+/// ```
 pub trait Residual {
     /// The parameter type the residual is defined over (matches
     /// [`CostFunction::Param`]).
@@ -85,7 +137,7 @@ pub trait Residual {
 }
 
 /// Analytic Jacobian `J(x) = ∂r/∂x: Param → Output` for least-squares
-/// solvers (Gauss-Newton, LM, TRF). The associated [`Output`] matrix
+/// solvers (Gauss-Newton, LM, TRF). The associated `Output` matrix
 /// type is what lets solvers bound on the linear-algebra ops they need
 /// ([`MatVec`](crate::core::math::MatVec),
 /// [`LinearSolveSpd`](crate::core::math::LinearSolveSpd), …) without
@@ -120,6 +172,28 @@ pub trait Residual {
 /// [`LinearSolveSpd`](crate::core::math::LinearSolveSpd) to back it.
 /// Per tenet 5 in `AGENTS.md`, missing backend coverage is a
 /// compile-time error rather than a runtime surprise.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "nalgebra")] {
+/// use basin::Jacobian;
+/// use nalgebra::{DMatrix, DVector};
+///
+/// // For r(x) = (x₀ − 1, x₁ − 2) the Jacobian is the 2×2 identity.
+/// struct Affine;
+/// impl Jacobian for Affine {
+///     type Param = DVector<f64>;
+///     type Output = DMatrix<f64>;
+///     fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+///         DMatrix::identity(2, 2)
+///     }
+/// }
+///
+/// let j = Affine.jacobian(&DVector::from_vec(vec![0.0, 0.0]));
+/// assert_eq!(j[(0, 0)], 1.0);
+/// # }
+/// ```
 pub trait Jacobian {
     /// The parameter type the Jacobian is defined over (matches
     /// [`Residual::Param`]).
@@ -164,6 +238,28 @@ pub trait Jacobian {
 /// impl — there's no honest dense matrix type to pair with them. Per
 /// tenet 5 in `AGENTS.md`, missing backend coverage is a compile-time
 /// error rather than a runtime surprise.
+///
+/// # Examples
+///
+/// ```
+/// # #[cfg(feature = "nalgebra")] {
+/// use basin::Hessian;
+/// use nalgebra::{DMatrix, DVector};
+///
+/// // f(x) = x₀² + x₁² has constant Hessian 2·I.
+/// struct Sphere;
+/// impl Hessian for Sphere {
+///     type Param = DVector<f64>;
+///     type Output = DMatrix<f64>;
+///     fn hessian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+///         2.0 * DMatrix::identity(2, 2)
+///     }
+/// }
+///
+/// let h = Sphere.hessian(&DVector::from_vec(vec![1.0, 1.0]));
+/// assert_eq!(h[(0, 0)], 2.0);
+/// # }
+/// ```
 pub trait Hessian {
     /// The parameter type the Hessian is defined over (matches
     /// [`CostFunction::Param`]).

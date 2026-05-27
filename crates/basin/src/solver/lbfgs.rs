@@ -4,31 +4,32 @@
 
 //! Limited-memory BFGS — both modes.
 //!
-//! [`LBFGS`] is generic over a type-state [`Mode`](Bounded) marker:
+//! [`LBFGS`](crate::LBFGS) is generic over a type-state
+//! [`Mode`](crate::solver::lbfgs::Bounded) marker:
 //!
-//! - [`LBFGS<Bounded>`] is a faithful port of Nocedal–Zhu's L-BFGS-B
+//! - [`LBFGS<Bounded>`](crate::LBFGS) is a faithful port of Nocedal–Zhu's L-BFGS-B
 //!   v3.0 Fortran source (`references/lbfgsb-v3.0/`). The Fortran
 //!   subroutines map to submodules below, and the top-level solver
 //!   mirrors the `mainlb` iteration loop (with the goto-style
 //!   coroutine flattened to a Rust `loop`). `LBFGSB` is the type
 //!   alias for this mode.
-//! - [`LBFGS<Unbounded>`] is unconstrained limited-memory BFGS via
+//! - [`LBFGS<Unbounded>`](crate::LBFGS) is unconstrained limited-memory BFGS via
 //!   Nocedal–Wright's two-loop recursion (Algorithm 7.4). Uses the
-//!   same [`LbfgsState`] history fields (`ws`, `wy`, `sy`, `theta`)
+//!   same [`LbfgsState`](crate::LbfgsState) history fields (`ws`, `wy`, `sy`, `theta`)
 //!   but skips the Cauchy / `freev` / `subsm` machinery — those are
 //!   box-constraint-specific.
 //!
-//! Submodules backing the bounded path:
+//! Submodules backing the bounded path (all `pub(crate)`):
 //!
-//! - [`cauchy`] — generalized Cauchy point along the projected gradient
+//! - `cauchy` — generalized Cauchy point along the projected gradient
 //!   path. Port of `cauchy.f`.
-//! - [`subsm`] — subspace minimization with `iword == 1` bound-
+//! - `subsm` — subspace minimization with `iword == 1` bound-
 //!   backtracking (v3.0 deviation). Port of `subsm.f`.
-//! - [`formk`] — `L·E·Lᵀ` factorization of the indefinite middle
+//! - `formk` — `L·E·Lᵀ` factorization of the indefinite middle
 //!   matrix `K`. Port of `formk.f`.
-//! - [`compact`] — compact-form helpers (`formt`, `bmv`, pure-Rust
+//! - `compact` — compact-form helpers (`formt`, `bmv`, pure-Rust
 //!   Cholesky and triangular solves).
-//! - [`backend`] — the [`backend::AsFloatSliceMut`] trait that lets
+//! - `backend` — the `AsFloatSliceMut` trait that lets
 //!   the slice-based numerics work generically over `Vec<f64>`,
 //!   `nalgebra::DVector<f64>`, `faer::Col<f64>`, and
 //!   `ndarray::Array1<f64>`.
@@ -75,10 +76,10 @@ use self::subsm::subsm;
 ///
 /// 1. Walks the projected gradient ray, building a piecewise-quadratic
 ///    model and identifying the **generalized Cauchy point** `xcp` —
-///    the minimizer along the path (see [`cauchy`]).
+///    the minimizer along the path (see the `cauchy` submodule).
 /// 2. Restricts to the free variables at `xcp` and computes an
 ///    approximate **subspace minimizer** via a structured Newton step
-///    against the limited-memory compact-form Hessian (see [`subsm`]).
+///    against the limited-memory compact-form Hessian (see the `subsm` submodule).
 ///    If the projected Newton step is infeasible, a uniform-α
 ///    bound-backtracking branch fires.
 /// 3. Performs a **Moré–Thuente line search** along `d = z − x`,
@@ -86,7 +87,7 @@ use self::subsm::subsm;
 /// 4. Accepts the step, updates the limited-memory `(s, y)` history
 ///    when the curvature condition holds, and rebuilds the
 ///    compact-form middle matrix `T` via Cholesky factorization
-///    (see [`formt`](compact::formt)).
+///    (see `compact::formt`).
 ///
 /// On a singular middle-matrix or non-positive-definite `T`, the
 /// solver clears the history and retries the iteration (Fortran's
@@ -129,12 +130,19 @@ use self::subsm::subsm;
 /// # Backends
 ///
 /// Generic over any parameter type implementing
-/// [`backend::AsFloatSliceMut`] + [`Clone`] + [`Dot`] +
+/// `AsFloatSliceMut` + [`Clone`] + [`Dot`] +
 /// [`ScaledAdd<f64>`]. Built-in impls cover `Vec<f64>`,
 /// `nalgebra::DVector<f64>` (feature `nalgebra`), `faer::Col<f64>`
 /// (feature `faer`), and `ndarray::Array1<f64>` (feature `ndarray`).
 /// Other backends can implement the trait if their storage is
 /// contiguous.
+///
+/// # Examples
+///
+/// See [`BFGS`](crate::BFGS) for the quasi-Newton `Executor` pattern.
+/// L-BFGS iterates an `LbfgsState` sized to the history length `m`
+/// (`LbfgsState::new(x0, m)`); construct the solver with `LBFGS::new()`
+/// (L-BFGS-B, the default) or `LBFGS::<Unbounded>::new()`.
 pub struct LBFGS<Mode = Bounded, S = MoreThuente> {
     line_search: S,
     /// Fortran `dr ≤ epsmch · ddum` curvature-skip threshold
@@ -172,7 +180,7 @@ pub struct LBFGS<Mode = Bounded, S = MoreThuente> {
 /// Type-state marker for box-constrained L-BFGS-B (the default).
 /// Constructors live on [`LBFGS<Bounded, MoreThuente>`]; the
 /// [`Solver`] impl requires `P: BoxConstraints` and the full
-/// [`backend::AsFloatSliceMut`] + [`Dot`] + [`ScaledAdd<f64>`] backend.
+/// `AsFloatSliceMut` + [`Dot`] + [`ScaledAdd<f64>`] backend.
 /// [`LBFGSB`] is the canonical type alias for this mode.
 pub struct Bounded;
 

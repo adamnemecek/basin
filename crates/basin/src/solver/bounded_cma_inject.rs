@@ -17,7 +17,7 @@ use crate::solver::cma_inject::{default_c_y, MemeticInner};
 /// Memetic [`BoundedCmaEs`] with Hansen (2011) injection. Sibling of
 /// [`CmaInject`](super::CmaInject); the outer is the bounded variant
 /// of CMA-ES, and bound-respecting inners (notably
-/// [`LBFGSB`](crate::solver::LBFGSB)) see the same bounds the outer
+/// [`LBFGSB`](crate::LBFGSB)) see the same bounds the outer
 /// enforces via BoundPenalty.
 ///
 /// The injection mechanism (Hansen 2011 eq. 4 — Mahalanobis clip,
@@ -37,7 +37,7 @@ use crate::solver::cma_inject::{default_c_y, MemeticInner};
 /// determines the inner state shape. Shipped impls cover
 /// [`NelderMead`](crate::solver::NelderMead),
 /// [`LevenbergMarquardt`](crate::solver::LevenbergMarquardt), and
-/// [`LBFGSB`](crate::solver::LBFGSB). L-BFGS-B is the natural inner
+/// [`LBFGSB`](crate::LBFGSB). L-BFGS-B is the natural inner
 /// here — its `P: BoxConstraints` bound matches the outer's, and the
 /// same box flows through both ends of the composition.
 ///
@@ -52,6 +52,11 @@ use crate::solver::cma_inject::{default_c_y, MemeticInner};
 /// Same coverage as [`BoundedCmaEs`]: nalgebra (`DVector` / `DMatrix`)
 /// and faer (`Col` / `Mat`). `Vec<f64>` and `ndarray` produce a
 /// compile-time error per tenet 5.
+///
+/// # Examples
+///
+/// See [`BoundedCmaEs`] for the bounded population-based `Executor`
+/// pattern; `BoundedCmaInject` adds a bound-respecting local-search inner.
 pub struct BoundedCmaInject<I, V, M>
 where
     I: MemeticInner<V>,

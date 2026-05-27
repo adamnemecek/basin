@@ -68,6 +68,51 @@ use crate::line_search::{Constant, LineSearch};
 /// `Vec<f64>`, `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
 /// (feature `faer`). The problem must implement [`BoxConstraints`].
+///
+/// # Examples
+///
+/// Box-constrained gradient descent. The bounds live on the problem via
+/// [`BoxConstraints`]; the projection keeps every iterate feasible. Here
+/// the unconstrained minimum of the shifted sphere is at `(2, 2)`, but the
+/// box caps it at `(1, 1)`:
+///
+/// ```
+/// use basin::{BasicState, BoxConstraints, CostFunction, Executor, Gradient, ProjectedGradientDescent};
+///
+/// struct ShiftedSphere {
+///     lower: Vec<f64>,
+///     upper: Vec<f64>,
+/// }
+/// impl CostFunction for ShiftedSphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         (x[0] - 2.0).powi(2) + (x[1] - 2.0).powi(2)
+///     }
+/// }
+/// impl Gradient for ShiftedSphere {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)]
+///     }
+/// }
+/// impl BoxConstraints for ShiftedSphere {
+///     fn lower(&self) -> &Vec<f64> { &self.lower }
+///     fn upper(&self) -> &Vec<f64> { &self.upper }
+/// }
+///
+/// let problem = ShiftedSphere { lower: vec![-1.0, -1.0], upper: vec![1.0, 1.0] };
+/// let result = Executor::new(
+///     problem,
+///     ProjectedGradientDescent::new(0.1),
+///     BasicState::new(vec![0.0, 0.0]),
+/// )
+/// .max_iter(1_000)
+/// .run();
+/// assert!((result.param()[0] - 1.0).abs() < 1e-6);
+/// assert!((result.param()[1] - 1.0).abs() < 1e-6);
+/// ```
 pub struct ProjectedGradientDescent<S> {
     line_search: S,
 }

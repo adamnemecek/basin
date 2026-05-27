@@ -95,7 +95,7 @@ use crate::core::termination::{
 /// gap test is the correct optimality measure here. At a constrained
 /// optimum the true objective gradient `∇f` does *not* vanish — it points
 /// into the active constraint face — so a framework
-/// [`GradientTolerance`](crate::core::termination::GradientTolerance) /
+/// [`GradientTolerance`] /
 /// [`RelativeGradientTolerance`](crate::core::termination::RelativeGradientTolerance)
 /// on the outer loop would either never fire or fire on the wrong point.
 /// (The outer state's gradient is the true `∇f`, seeded only so the state
@@ -116,7 +116,7 @@ use crate::core::termination::{
 /// # Composition
 ///
 /// Internally drives the inner solver via
-/// [`run_loop`](crate::core::executor::run_loop) with a **fresh** criteria
+/// [`run_loop`] with a **fresh** criteria
 /// vector each outer iteration (`MaxIter` + `GradientTolerance` on the
 /// barrier objective). Building criteria per call — rather than storing an
 /// [`InnerExecutor`](crate::core::inner::InnerExecutor) — sidesteps the
@@ -125,6 +125,13 @@ use crate::core::termination::{
 /// [`WarmStart`]); its cost/gradient eval
 /// counts are rolled onto the outer state with `increment_cost_evals` /
 /// `increment_gradient_evals` after each solve (composition rule 1).
+///
+/// # Examples
+///
+/// `BarrierMethod` wraps a gradient inner solver (e.g. `BFGS` paired with
+/// `Backtracking`) to handle `LinearInequalityConstraints`. See
+/// [`ProjectedGradientDescent`](crate::solver::ProjectedGradientDescent)
+/// for the simpler box-constrained pattern.
 pub struct BarrierMethod<So> {
     inner_solver: So,
     inner_max_iter: u64,

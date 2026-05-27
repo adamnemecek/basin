@@ -247,7 +247,7 @@ where
 /// next CMA update.
 ///
 /// The only departure from the standard
-/// [`CmaEs`](crate::solver::cma_es::CmaEs) update is clipping each
+/// [`CmaEs`] update is clipping each
 /// injected point's normalised step in Mahalanobis distance:
 ///
 /// ```text
@@ -286,6 +286,11 @@ where
 /// Same coverage as [`CmaEs`]: nalgebra (`DVector` / `DMatrix`) and
 /// faer (`Col` / `Mat`). `Vec<f64>` and `ndarray` produce a
 /// compile-time error per tenet 5.
+///
+/// # Examples
+///
+/// See [`CmaEs`] for the base population-based `Executor` pattern;
+/// `CmaInject` adds a local-search inner via Hansen-2011 injection.
 pub struct CmaInject<I, V, M>
 where
     I: MemeticInner<V>,

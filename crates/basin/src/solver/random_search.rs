@@ -9,7 +9,7 @@ use crate::core::termination::TerminationReason;
 /// Elitist (1+λ) random search over a feasible box.
 ///
 /// The first stochastic solver in basin and the smallest vehicle for the
-/// new [`BasicPopulationState`] / [`PopulationState`] story
+/// new [`BasicPopulationState`] / [`PopulationState`](crate::PopulationState) story
 /// — a derivative-free, population-based method that exercises the
 /// reproducible RNG infrastructure (see [`crate::core::rng`]) without
 /// pulling in any covariance / distribution machinery (those land in
@@ -83,6 +83,43 @@ use crate::core::termination::TerminationReason;
 /// `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
 /// (feature `faer`). The problem must implement [`BoxConstraints`].
+///
+/// # Examples
+///
+/// Elitist random search over a feasible box. The problem implements
+/// [`CostFunction`] and [`BoxConstraints`]; the
+/// population state is sized to the offspring count λ via
+/// [`BasicPopulationState::with_size`](crate::BasicPopulationState::with_size):
+///
+/// ```
+/// use basin::{BasicPopulationState, BoxConstraints, CostFunction, Executor, RandomSearch};
+///
+/// struct BoundedSphere {
+///     lower: Vec<f64>,
+///     upper: Vec<f64>,
+/// }
+/// impl CostFunction for BoundedSphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+/// impl BoxConstraints for BoundedSphere {
+///     fn lower(&self) -> &Vec<f64> { &self.lower }
+///     fn upper(&self) -> &Vec<f64> { &self.upper }
+/// }
+///
+/// let problem = BoundedSphere { lower: vec![-5.0, -5.0], upper: vec![5.0, 5.0] };
+/// let result = Executor::new(
+///     problem,
+///     RandomSearch::new(16, 42),
+///     BasicPopulationState::<Vec<f64>>::with_size(16),
+/// )
+/// .max_iter(500)
+/// .run();
+/// assert!(result.cost() < 1.0);
+/// ```
 pub struct RandomSearch {
     lambda: usize,
     rng: ChaCha8Rng,

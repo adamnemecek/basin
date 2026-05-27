@@ -14,6 +14,19 @@ use crate::core::termination::TerminationReason;
 /// `|x − m| + 0.5·(b − a) ≤ 2·tol`, where `m = (a+b)/2`,
 /// `tol = tol_rel·|x| + tol_abs`. NR-style defaults: `tol_rel = √ε`,
 /// `tol_abs = 1e-12`.
+///
+/// # Backends
+///
+/// Scalar by construction: the parameter is a single `f64`, so Brent is
+/// backend-agnostic and needs no linear-algebra backend. The problem's
+/// `BoxConstraints` carry `f64` lower / upper bounds.
+///
+/// # Examples
+///
+/// `Brent` minimizes a 1-D function over a bracket, so the problem
+/// implements `CostFunction` *and* `BoxConstraints` with scalar (`f64`)
+/// bounds. See [`NelderMead`](crate::NelderMead) for the general
+/// derivative-free `Executor` pattern.
 pub struct Brent {
     tol_rel: f64,
     tol_abs: f64,

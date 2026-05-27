@@ -6,7 +6,7 @@
 //! problem — outer solvers store one as a field and call
 //! [`InnerExecutor::run`] against the borrowed `&P` they receive in
 //! `next_iter`. Internally [`InnerExecutor::run`] is exactly
-//! [`run_loop`](crate::core::executor::run_loop); the wrapper just owns the
+//! [`run_loop`]; the wrapper just owns the
 //! solver, the criteria vec, and the iteration budget so the same set of
 //! settings can be reused across outer iters without re-allocating.
 //!
@@ -69,7 +69,7 @@ pub trait WarmStart<V> {
 /// (b) [`run`](Self::run) is reusable — the same `InnerExecutor` is
 /// expected to be invoked many times across the outer's lifetime.
 ///
-/// [`run_loop`](crate::core::executor::run_loop) stays as the lower-level
+/// [`run_loop`] stays as the lower-level
 /// escape hatch for outer solvers that want to reconstruct criteria per
 /// call.
 ///
@@ -79,13 +79,13 @@ pub trait WarmStart<V> {
 /// [`run`](Self::run); see also `AGENTS.md` "Solver composition":
 ///
 /// 1. **Eval aggregation.** The outer must roll the inner's
-///    [`State::cost_evals`](crate::core::state::State::cost_evals) (and
+///    [`State::cost_evals`] (and
 ///    [`GradientState::gradient_evals`](crate::core::state::GradientState::gradient_evals)
 ///    when both inner and outer states are
 ///    [`GradientState`](crate::core::state::GradientState)) into the
 ///    outer state via the `increment_*_evals` setters. Otherwise
 ///    `MaxCostEvals` budgets and the public `result.cost_evals()` lie.
-///    See the [`Solver::next_iter`](crate::core::solver::Solver::next_iter)
+///    See the [`Solver::next_iter`]
 ///    contract for the canonical wording.
 ///
 /// 2. **Criteria statelessness across calls.** Criteria registered with
@@ -100,7 +100,7 @@ pub trait WarmStart<V> {
 ///    `start` instant carries across calls and would fire prematurely on
 ///    later runs. If you need per-run criteria, build a fresh
 ///    `InnerExecutor` each call (or call
-///    [`run_loop`](crate::core::executor::run_loop) directly with a
+///    [`run_loop`] directly with a
 ///    fresh `Vec`).
 ///
 /// 3. **Failure routing.** [`run`](Self::run) returns a full
@@ -163,7 +163,7 @@ impl<S: State, So> InnerExecutor<S, So> {
     /// per outer iter.
     ///
     /// Internally exactly
-    /// [`run_loop`](crate::core::executor::run_loop) — `init` is called
+    /// [`run_loop`] — `init` is called
     /// on every invocation, so the inner solver sees a fresh setup pass
     /// each time (e.g. seeding cost/gradient at the new starting point).
     pub fn run<P>(&mut self, problem: &P, state: S) -> OptimizationResult<S>

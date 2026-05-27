@@ -35,6 +35,35 @@ use crate::core::termination::TerminationReason;
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
 /// (feature `faer`). The projected variant additionally requires
 /// [`ClampInPlace`] on `V`, which every shipped backend implements.
+///
+/// # Examples
+///
+/// Derivative-free minimization of Rosenbrock — Nelder–Mead needs only
+/// [`CostFunction`] and iterates a [`BasicSimplexState`] seeded from a
+/// single point (the initial simplex is built automatically):
+///
+/// ```
+/// use basin::{BasicSimplexState, CostFunction, Executor, NelderMead, SimplexTolerance};
+///
+/// struct Rosenbrock;
+/// impl CostFunction for Rosenbrock {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+///     }
+/// }
+///
+/// let result = Executor::new(
+///     Rosenbrock,
+///     NelderMead::standard(),
+///     BasicSimplexState::new(vec![-1.2, 1.0]),
+/// )
+/// .max_iter(1_000)
+/// .terminate_on(SimplexTolerance::new(1e-10, 1e-10))
+/// .run();
+/// assert!(result.cost() < 1e-6);
+/// ```
 pub struct NelderMead<Mode = Unbounded> {
     config: ParamConfig,
     /// Resolved parameters; populated by `init` once the dimension is known.

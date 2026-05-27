@@ -77,7 +77,7 @@ use crate::core::termination::{
 /// **Do not attach a gradient-norm criterion to the outer executor.** As with
 /// the barrier, at a constrained optimum the *true* objective gradient `∇f`
 /// does not vanish — it is balanced by `Aᵀλ*` — so a framework
-/// [`GradientTolerance`](crate::core::termination::GradientTolerance) on the
+/// [`GradientTolerance`] on the
 /// outer loop would fire on the wrong point or never. (The outer state's
 /// gradient is the true `∇f`, seeded only so the state is well-formed; it is
 /// not a convergence signal.)
@@ -94,7 +94,7 @@ use crate::core::termination::{
 /// # Composition
 ///
 /// Internally drives the inner solver via
-/// [`run_loop`](crate::core::executor::run_loop) with a **fresh** criteria
+/// [`run_loop`] with a **fresh** criteria
 /// vector each outer iteration (`MaxIter` + `GradientTolerance` on the
 /// augmented Lagrangian). Building criteria per call — rather than storing an
 /// [`InnerExecutor`](crate::core::inner::InnerExecutor) — sidesteps the
@@ -102,6 +102,13 @@ use crate::core::termination::{
 /// composition"). Inner cost/gradient evaluations accumulate onto the outer
 /// state via [`increment_cost_evals`](State::increment_cost_evals) /
 /// [`increment_gradient_evals`](GradientState::increment_gradient_evals).
+///
+/// # Examples
+///
+/// `AugmentedLagrangianMethod` wraps a gradient inner solver to handle
+/// `LinearEqualityConstraints`, and tolerates infeasible starts. See
+/// [`ProjectedGradientDescent`](crate::solver::ProjectedGradientDescent)
+/// for the simpler box-constrained pattern.
 pub struct AugmentedLagrangianMethod<So, V> {
     inner_solver: So,
     inner_max_iter: u64,

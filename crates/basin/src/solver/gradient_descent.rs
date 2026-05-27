@@ -50,6 +50,36 @@ use crate::line_search::{Constant, LineSearch};
 /// iteration methods." *USSR Computational Mathematics and Mathematical
 /// Physics*, 4(5), 1–17.
 /// [doi:10.1016/0041-5553(64)90137-5](https://doi.org/10.1016/0041-5553(64)90137-5).
+///
+/// # Examples
+///
+/// Minimize the 2-D sphere `f(x) = x₀² + x₁²` from `(1, 1)`:
+///
+/// ```
+/// use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+/// impl Gradient for Sphere {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         x.iter().map(|xi| 2.0 * xi).collect()
+///     }
+/// }
+///
+/// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
+///     .max_iter(1_000)
+///     .terminate_on(GradientTolerance(1e-8))
+///     .run();
+/// assert!(result.cost() < 1e-12);
+/// ```
 pub struct GradientDescent<L, V> {
     line_search: L,
     /// Momentum coefficient `β`; `0.0` disables momentum (plain steepest

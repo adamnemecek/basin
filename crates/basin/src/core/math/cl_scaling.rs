@@ -86,7 +86,7 @@ pub trait BoxAffineScaling: Sized {
 
     /// `max_i |self[i]| / d_sq[i]` — the BCL first-order optimality
     /// measure `‖v ⊙ g‖_∞` when `self = g` and `d_sq[i] = 1/|v_i|` is
-    /// the [`compute_cl_scaling`] output. Equals `max_i |g_i · v_i|`.
+    /// the [`compute_cl_scaling`](Self::compute_cl_scaling) output. Equals `max_i |g_i · v_i|`.
     ///
     /// This metric goes to zero at any KKT point of the box-constrained
     /// problem — interior *or* face-active. The unscaled `‖g‖_∞`
@@ -106,7 +106,7 @@ pub trait BoxAffineScaling: Sized {
     fn cl_kkt_inf_norm(&self, d_sq: &Self) -> f64;
 
     /// `Σ self[i]² · weights[i]` — the squared D-norm `‖D · self‖²`
-    /// when `weights = d_sq` is the [`compute_cl_scaling`] output.
+    /// when `weights = d_sq` is the [`compute_cl_scaling`](Self::compute_cl_scaling) output.
     /// Used in the BCL scaled trust-region predicted-reduction
     /// `½(μ · ‖D·h‖² − h^T g)` — the analogue of Nielsen's LM
     /// `½(μ‖h‖² − h^T g)` with the affine-scaling D folded in.

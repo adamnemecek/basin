@@ -282,6 +282,38 @@ where
 /// loop to completion. See the [module docs](self) for the canonical
 /// ordering and [`into_stepper`](Self::into_stepper) for one-step-at-a-
 /// time control.
+///
+/// # Examples
+///
+/// Minimize the 2-D sphere and read the outcome off the
+/// [`OptimizationResult`]:
+///
+/// ```
+/// use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+/// impl Gradient for Sphere {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         x.iter().map(|xi| 2.0 * xi).collect()
+///     }
+/// }
+///
+/// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![3.0, -4.0]))
+///     .max_iter(1_000)
+///     .terminate_on(GradientTolerance(1e-9))
+///     .run();
+///
+/// assert!(result.cost() < 1e-12);
+/// ```
 pub struct Executor<P, S, So> {
     problem: P,
     state: S,

@@ -6,7 +6,7 @@
 //!   well — [`ScaledAdd`], [`NormSquared`], [`NormInfinity`], [`Dot`],
 //!   [`NegInPlace`]. Backend-generic solvers (gradient descent,
 //!   Nelder-Mead) bound on these.
-//! - **`linalg` tier** ([`linalg`]): LA-heavy ops — [`MatVec`],
+//! - **`linalg` tier**: LA-heavy ops — [`MatVec`],
 //!   [`MatTransposeVec`], [`GramMatrix`], [`LinearSolveSpd`],
 //!   [`LinearSolveLstsq`] — that only the matrix-capable backends
 //!   (nalgebra, faer; sparse counterparts in S2b) implement. LA-heavy

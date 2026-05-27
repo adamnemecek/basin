@@ -38,6 +38,46 @@ use crate::line_search::{LineSearch, Wolfe};
 /// factorization — so it stays backend-generic. `ndarray` is a
 /// compile-time error per tenet 5: its `Array2<f64>` implements neither
 /// [`GeneralRankOneUpdate`] nor [`MatrixIdentity`].
+///
+/// # Examples
+///
+/// BFGS on the 2-D Rosenbrock function over the dependency-free
+/// `Vec<f64>` backend. Quasi-Newton solvers iterate a
+/// [`QuasiNewtonState`], parameterised by the
+/// param vector and the dense matrix type — here `Vec<f64>` and
+/// [`DenseMatrix`](crate::DenseMatrix):
+///
+/// ```
+/// use basin::{BasicState, CostFunction, DenseMatrix, Executor, Gradient, QuasiNewtonState, BFGS};
+///
+/// struct Rosenbrock;
+/// impl CostFunction for Rosenbrock {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+///     }
+/// }
+/// impl Gradient for Rosenbrock {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         vec![
+///             -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
+///             200.0 * (x[1] - x[0].powi(2)),
+///         ]
+///     }
+/// }
+///
+/// let result = Executor::new(
+///     Rosenbrock,
+///     BFGS::new(),
+///     QuasiNewtonState::<Vec<f64>, DenseMatrix>::new(vec![-1.2, 1.0]),
+/// )
+/// .max_iter(100)
+/// .run();
+/// assert!(result.cost() < 1e-8);
+/// ```
 pub struct BFGS<S = Wolfe> {
     line_search: S,
     epsilon: f64,

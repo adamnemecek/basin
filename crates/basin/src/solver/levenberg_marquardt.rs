@@ -149,6 +149,46 @@ use crate::core::termination::TerminationReason;
 /// `state.cost()` differ from `problem.cost(state.param())` by a
 /// factor of two. Both go to zero at the optimum, so cost-based
 /// termination criteria are unaffected.
+///
+/// # Examples
+///
+/// Least-squares fit of an affine residual `r(x) = (x₀ − 1, x₁ − 2)` whose
+/// minimum is `(1, 2)`. Levenberg–Marquardt binds on [`Residual`] +
+/// [`Jacobian`] (not [`CostFunction`](crate::core::problem::CostFunction))
+/// and runs on the matrix-capable backends:
+///
+/// ```
+/// # #[cfg(feature = "nalgebra")] {
+/// use basin::{BasicState, Executor, Jacobian, LevenbergMarquardt, Residual};
+/// use nalgebra::{DMatrix, DVector};
+///
+/// struct Affine;
+/// impl Residual for Affine {
+///     type Param = DVector<f64>;
+///     type Output = DVector<f64>;
+///     fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+///         DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0])
+///     }
+/// }
+/// impl Jacobian for Affine {
+///     type Param = DVector<f64>;
+///     type Output = DMatrix<f64>;
+///     fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+///         DMatrix::identity(2, 2)
+///     }
+/// }
+///
+/// let result = Executor::new(
+///     Affine,
+///     LevenbergMarquardt::new(),
+///     BasicState::new(DVector::from_vec(vec![0.0, 0.0])),
+/// )
+/// .max_iter(50)
+/// .run();
+/// assert!((result.param()[0] - 1.0).abs() < 1e-6);
+/// assert!((result.param()[1] - 2.0).abs() < 1e-6);
+/// # }
+/// ```
 pub struct LevenbergMarquardt<V, M> {
     tol_grad: f64,
     tol_grad_rel: f64,

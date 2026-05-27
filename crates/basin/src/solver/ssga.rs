@@ -68,7 +68,8 @@ use crate::solver::cma_es::sort_population_ascending;
 /// - **Caller must:** implement [`CostFunction<Param = V, Output = f64>`]
 ///   *and* [`BoxConstraints<Param = V>`] on the problem. SSGA is a
 ///   bounded-search method by construction.
-/// - **Caller must:** hand in a [`BasicPopulationState::with_size(pop_size)`]
+/// - **Caller must:** hand in a
+///   [`BasicPopulationState::with_size(pop_size)`](crate::BasicPopulationState::with_size)
 ///   matching the solver's `pop_size`.
 /// - **Implementor (this solver) must:** maintain feasibility (every
 ///   candidate after `init` and every offspring is clipped to the box)
@@ -97,6 +98,12 @@ use crate::solver::cma_es::sort_population_ascending;
 /// `nalgebra::DVector<f64>` (feature `nalgebra`),
 /// `ndarray::Array1<f64>` (feature `ndarray`), and `faer::Col<f64>`
 /// (feature `faer`). No matrix operations are required.
+///
+/// # Examples
+///
+/// See [`RandomSearch`](crate::RandomSearch) for the population-based
+/// `Executor` pattern (a `BasicPopulationState` sized to `pop_size`);
+/// `Ssga` likewise requires `BoxConstraints` on the problem.
 pub struct Ssga {
     pop_size: usize,
     blx_alpha: f64,
@@ -200,7 +207,8 @@ impl Ssga {
         self
     }
 
-    /// Number of offspring produced per [`next_iter`] (default `2`).
+    /// Number of offspring produced per [`next_iter`](crate::Solver::next_iter)
+    /// (default `2`).
     /// Each offspring is generated, evaluated, and considered for
     /// replace-worst in turn.
     ///

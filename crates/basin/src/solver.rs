@@ -8,7 +8,7 @@ pub mod barrier_method;
 /// Box-constrained CMA-ES with adaptive quadratic boundary penalty
 /// (Hansen `BoundPenalty`, the default in pycma).
 pub mod bounded_cma_es;
-/// Memetic [`BoundedCmaEs`](bounded_cma_es::BoundedCmaEs) with
+/// Memetic [`BoundedCmaEs`] with
 /// Hansen-2011 injection — sibling of [`cma_inject`] over the bounded
 /// outer. Inners: Nelder-Mead, Levenberg-Marquardt, L-BFGS-B.
 pub mod bounded_cma_inject;

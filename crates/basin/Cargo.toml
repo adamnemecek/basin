@@ -10,6 +10,14 @@ readme = "README.md"
 keywords = ["optimization", "math", "numerics", "solver"]
 categories = ["mathematics", "science"]
 
+# Build docs.rs with every backend enabled so the feature-gated solver and
+# problem impls (nalgebra / ndarray / faer) render — not just the default
+# `Vec<f64>` surface. `--cfg docsrs` turns on the `doc_auto_cfg` feature
+# badges in `lib.rs` ("Available on crate feature `nalgebra` only").
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
 [lib]
 name = "basin"
 path = "src/lib.rs"
