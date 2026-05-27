@@ -114,27 +114,23 @@ multimodal functions until SA / CMA-ES / a global solver lands --- defer those.
 - [x] **Rosenbrock-as-residuals** --- 2D residual factoring of the existing
       Rosenbrock cost; `Σ rᵢ² = rosenbrock(x)`. Fixture for the LM track. *(done
       in S1; lives in `rosenbrock.rs`)*
-- [ ] **Three-hump camel** --- 2D, smooth, three local minima. Local-solver
-      basin-of-attraction test.
-- [ ] **Picheny** --- 2D, log-rescaled Rosenbrock variant. Same shape, different
-      conditioning --- useful for line-search behavior.
-- [ ] **Zero** --- `f(x) = 0` everywhere. Sanity / termination edge case
-      (gradient is identically zero).
-- [ ] **Himmelblau** --- 2D, four equal minima. Defer until a global solver
-      makes "which minimum?" interesting.
-- [ ] **Ackley** --- N-D, multimodal (exp + cos). Defer (global).
+- [x] **Three-hump camel** --- 2D, smooth, three local minima. Local-solver
+      basin-of-attraction test. *(done)*
+- [x] **Picheny** --- 2D, log-rescaled Goldstein-Price variant. Same shape,
+      different conditioning --- useful for line-search behavior. *(done)*
+- [x] **Zero** --- `f(x) = 0` everywhere. Sanity / termination edge case
+      (gradient is identically zero). *(done)*
+- [x] **Himmelblau** --- 2D, four equal minima. *(done)*
+- [x] **Ackley** --- N-D, multimodal (exp + cos). *(done)*
 - [x] **Rastrigin** --- N-D, highly multimodal (cosine ripple). *(done)*
-- [ ] **Levy** --- N-D, multimodal. Defer (global).
-- [ ] **Styblinski-Tang** --- N-D, multimodal. Defer (global).
-- [ ] **Schaffer (N.2 / N.4)** --- 2D, multimodal. Defer (global).
-- [ ] **Bukin N.6** --- 2D, sharp non-differentiable ridge. Defer (needs
-      derivative-free + global; pathological for first-order).
-- [ ] **Cross-in-tray** --- 2D, multimodal. Defer (global).
-- [ ] **Easom** --- 2D, single sharp minimum, mostly flat. Defer (needs global /
-      good initialization to be meaningful).
-- [ ] **Eggholder** --- 2D, highly multimodal. Defer (global).
-- [ ] **Holder table** --- 2D, multimodal with four equal minima. Defer
-      (global).
+- [x] **Levy** --- N-D, multimodal. *(done)*
+- [x] **Styblinski-Tang** --- N-D, multimodal. *(done)*
+- [x] **Schaffer (N.2 / N.4)** --- 2D, multimodal. *(done)*
+- [x] **Bukin N.6** --- 2D, sharp non-differentiable ridge. *(done)*
+- [x] **Cross-in-tray** --- 2D, multimodal. *(done)*
+- [x] **Easom** --- 2D, single sharp minimum, mostly flat. *(done)*
+- [x] **Eggholder** --- 2D, highly multimodal. *(done)*
+- [x] **Holder table** --- 2D, multimodal with four equal minima. *(done)*
 
 ## Cleanup / design debt (review notes)
 
