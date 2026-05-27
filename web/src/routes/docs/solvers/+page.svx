@@ -83,7 +83,7 @@ parameter type, ✗ means it is a compile-time error (the tiering rule above).
 | `ProjectedGradientDescent` | First-order | ✓ | ✓ | ✓ | ✓ |
 | `NelderMead` | Derivative-free | ✓ | ✓ | ✓ | ✓ |
 | `Brent` | Derivative-free | — | — | — | — |
-| `BFGS` | Quasi-Newton | ✗ | ✓ | ✗ | ✗ |
+| `BFGS` | Quasi-Newton | ✓ | ✓ | ✗ | ✓ |
 | `LBFGS` | Quasi-Newton | ✓ | ✓ | ✗ | ✓ |
 | `LBFGSB` | Quasi-Newton | ✓ | ✓ | ✗ | ✓ |
 | `GaussNewton` | Least squares | ✗ | ✓ | ✗ | ✓ |

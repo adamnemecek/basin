@@ -7,9 +7,10 @@ use super::cl_scaling::{
     BoxAffineScaling,
 };
 use super::linalg::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
-    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity,
-    MaxDiagonal, RankOneUpdate, SymmetricEigen, SymmetricEigenError,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GeneralRankOneUpdate,
+    GramMatrix, LinearSolveError, LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec,
+    MatrixFromDiagonal, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
+    SymmetricEigenError,
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
@@ -504,6 +505,36 @@ impl RankOneUpdate<DVector<f64>> for DMatrix<f64> {
         // self ← self + α · v · vᵀ via ger (nalgebra's BLAS-2 rank-1 update).
         // ger(α, v, w, β) computes self ← α v wᵀ + β self.
         self.ger(alpha, v, v, 1.0);
+    }
+}
+
+impl GeneralRankOneUpdate<DVector<f64>> for DMatrix<f64> {
+    fn general_rank_one_update(&mut self, alpha: f64, u: &DVector<f64>, v: &DVector<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "general_rank_one_update: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            u.len(),
+            "general_rank_one_update: matrix is {}x{} but u has length {}",
+            self.nrows(),
+            self.ncols(),
+            u.len()
+        );
+        assert_eq!(
+            self.ncols(),
+            v.len(),
+            "general_rank_one_update: matrix is {}x{} but v has length {}",
+            self.nrows(),
+            self.ncols(),
+            v.len()
+        );
+        // self ← self + α · u · vᵀ via ger: ger(α, u, v, β) ⇒ α u vᵀ + β self.
+        self.ger(alpha, u, v, 1.0);
     }
 }
 

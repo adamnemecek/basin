@@ -44,7 +44,6 @@ pub use crate::core::numdiff::{
 };
 pub use crate::core::problem::{CostFunction, Gradient, Hessian, Jacobian, Residual};
 pub use crate::core::solver::Solver;
-#[cfg(feature = "nalgebra")]
 pub use crate::core::state::QuasiNewtonState;
 pub use crate::core::state::{
     BasicPopulationState, BasicSimplexState, BasicState, GradientState, IntoInitialSimplex,
@@ -59,7 +58,6 @@ pub use crate::line_search::{
     Backtracking, Constant, LineSearch, LineSearchResult, MoreThuente, Wolfe,
 };
 pub use crate::solver::lbfgs::{LBFGS, LBFGSB};
-#[cfg(feature = "nalgebra")]
 pub use crate::solver::BFGS;
 pub use crate::solver::{
     AugmentedLagrangianMethod, BarrierMethod, BoundedCmaEs, BoundedCmaInject, Brent, ClosureInner,

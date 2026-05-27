@@ -46,13 +46,12 @@ pub mod ssga;
 /// Levenberg-Marquardt with box bounds (TRF — trust-region-reflective).
 pub mod trf;
 
-/// BFGS quasi-Newton solver (nalgebra-only).
-#[cfg(feature = "nalgebra")]
+/// BFGS quasi-Newton solver (dense inverse-Hessian; `Vec<f64>`, nalgebra,
+/// faer).
 pub mod bfgs;
 
 pub use augmented_lagrangian_method::AugmentedLagrangianMethod;
 pub use barrier_method::BarrierMethod;
-#[cfg(feature = "nalgebra")]
 pub use bfgs::BFGS;
 pub use bounded_cma_es::BoundedCmaEs;
 pub use bounded_cma_inject::BoundedCmaInject;

@@ -183,8 +183,9 @@ pub use cl_scaling::BoxAffineScaling;
 pub use clamp::ClampInPlace;
 pub use dense::DenseMatrix;
 pub use linalg::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
-    LinearSolveLstsq, LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal,
-    MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen, SymmetricEigenError,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GeneralRankOneUpdate,
+    GramMatrix, LinearSolveError, LinearSolveLstsq, LinearSolveSpd, MatDiagonal, MatTransposeVec,
+    MatVec, MatrixFromDiagonal, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
+    SymmetricEigenError,
 };
 pub use sample::{SampleStandardNormal, SampleUniformBox};

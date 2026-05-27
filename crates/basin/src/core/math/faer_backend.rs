@@ -9,9 +9,10 @@ use super::cl_scaling::{
     BoxAffineScaling,
 };
 use super::linalg::{
-    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GramMatrix, LinearSolveError,
-    LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity,
-    MaxDiagonal, RankOneUpdate, SymmetricEigen, SymmetricEigenError,
+    AddDiagonalInPlace, AddDiagonalVectorInPlace, DenseMatrixFromFn, GeneralRankOneUpdate,
+    GramMatrix, LinearSolveError, LinearSolveSpd, MatDiagonal, MatTransposeVec, MatVec,
+    MatrixFromDiagonal, MatrixIdentity, MaxDiagonal, RankOneUpdate, SymmetricEigen,
+    SymmetricEigenError,
 };
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
@@ -449,6 +450,44 @@ impl RankOneUpdate<Col<f64>> for Mat<f64> {
             self.as_mut(),
             Accum::Add,
             v.as_mat(),
+            v.transpose().as_mat(),
+            alpha,
+            Par::Seq,
+        );
+    }
+}
+
+impl GeneralRankOneUpdate<Col<f64>> for Mat<f64> {
+    fn general_rank_one_update(&mut self, alpha: f64, u: &Col<f64>, v: &Col<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "general_rank_one_update: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            u.nrows(),
+            "general_rank_one_update: matrix is {}x{} but u has length {}",
+            self.nrows(),
+            self.ncols(),
+            u.nrows()
+        );
+        assert_eq!(
+            self.ncols(),
+            v.nrows(),
+            "general_rank_one_update: matrix is {}x{} but v has length {}",
+            self.nrows(),
+            self.ncols(),
+            v.nrows()
+        );
+        // self ← self + α · u · vᵀ via matmul accumulator. u is n×1;
+        // v.transpose() is 1×n; the outer product is n×n.
+        matmul(
+            self.as_mut(),
+            Accum::Add,
+            u.as_mat(),
             v.transpose().as_mat(),
             alpha,
             Par::Seq,

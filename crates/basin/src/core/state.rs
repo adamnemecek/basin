@@ -18,6 +18,8 @@ pub mod lbfgs;
 
 pub use lbfgs::LbfgsState;
 
+use crate::core::math::{MatrixIdentity, VectorLen};
+
 /// Minimum information the executor and generic termination criteria
 /// need to read from a solver's iterate.
 ///
@@ -428,15 +430,17 @@ impl<V> SimplexState for BasicSimplexState<V> {
 /// State for quasi-Newton solvers that maintain a dense inverse-Hessian
 /// approximation `H ≈ ∇²f(x)⁻¹` (BFGS, DFP, SR1).
 ///
-/// Hardcoded to nalgebra dynamic vectors/matrices for v1 (BFGS only
-/// supports the nalgebra backend — see `solver::bfgs` doc). L-BFGS will
-/// need a different state shape (history of `(s, y)` pairs) when it lands.
+/// Generic over the param vector `V` and dense matrix `M`. Constructors
+/// ship for the `Vec<f64>` / [`DenseMatrix`] backend (always available) and
+/// the nalgebra `DVector<f64>` / `DMatrix<f64>` backend (feature `nalgebra`);
+/// faer is reached via the generic [`State`] / [`GradientState`] impls below.
+/// (L-BFGS uses a different state shape — a history of `(s, y)` pairs — see
+/// [`LbfgsState`].)
 ///
 /// `initial_scaling_done` tracks whether we've applied the standard
 /// `H₀ ← (sᵀy / yᵀy)·I` rescaling after the first accepted step (Nocedal
 /// & Wright (6.20)). This makes the unit step well-scaled on poorly
 /// conditioned problems where plain identity initialization stalls.
-#[cfg(feature = "nalgebra")]
 pub struct QuasiNewtonState<V, M> {
     pub(crate) param: V,
     pub(crate) cost: Option<f64>,
@@ -448,17 +452,23 @@ pub struct QuasiNewtonState<V, M> {
     pub(crate) gradient_evals: u64,
 }
 
-#[cfg(feature = "nalgebra")]
-impl QuasiNewtonState<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>> {
+impl<V: VectorLen, M: MatrixIdentity> QuasiNewtonState<V, M> {
     /// Build a state at the given starting point with the inverse-Hessian
     /// approximation initialised to the identity.
-    pub fn new(param: nalgebra::DVector<f64>) -> Self {
-        let n = param.len();
+    ///
+    /// Generic over the backend: `M` is the dense matrix paired with the
+    /// param vector `V` — [`DenseMatrix`](crate::core::math::DenseMatrix) for
+    /// `Vec<f64>`, `DMatrix<f64>` for nalgebra, `Mat<f64>` for faer. Since
+    /// `M` is not an argument, annotate it at the call site when it can't be
+    /// inferred from context, e.g.
+    /// `QuasiNewtonState::<Vec<f64>, DenseMatrix>::new(x)`.
+    pub fn new(param: V) -> Self {
+        let n = param.vec_len();
         Self {
             param,
             cost: None,
             gradient: None,
-            inverse_hessian: nalgebra::DMatrix::identity(n, n),
+            inverse_hessian: M::identity(n),
             initial_scaling_done: false,
             iter: 0,
             cost_evals: 0,
@@ -467,7 +477,6 @@ impl QuasiNewtonState<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>> {
     }
 }
 
-#[cfg(feature = "nalgebra")]
 impl<V, M> State for QuasiNewtonState<V, M> {
     type Param = V;
     type Float = f64;
@@ -506,7 +515,6 @@ impl<V, M> State for QuasiNewtonState<V, M> {
     }
 }
 
-#[cfg(feature = "nalgebra")]
 impl<V, M> GradientState for QuasiNewtonState<V, M> {
     fn gradient(&self) -> Option<&V> {
         self.gradient.as_ref()

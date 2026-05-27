@@ -8,14 +8,17 @@
 //! which only need `A x` and `Aᵀ v`, were a compile-time error on the default
 //! backend (tenet 5).
 //!
-//! [`DenseMatrix`] closes that gap with exactly the two matvec ops and nothing
-//! more: no Cholesky / QR / eigen ([`LinearSolveSpd`](super::LinearSolveSpd),
+//! [`DenseMatrix`] closes that gap with the two matvec ops plus the handful of
+//! dense ops BFGS needs — [`MatrixIdentity`], [`ScaleInPlace`], and the
+//! rank-one Hessian update [`GeneralRankOneUpdate`] — so BFGS also runs on the
+//! default backend. What stays absent is the *factorization* layer: no
+//! Cholesky / QR / eigen ([`LinearSolveSpd`](super::LinearSolveSpd),
 //! [`GramMatrix`](super::GramMatrix), [`SymmetricEigen`](super::SymmetricEigen),
-//! …) — those stay nalgebra/faer-only, so LA-heavy solvers (Newton,
-//! Gauss-Newton, Levenberg-Marquardt, CMA-ES) remain a compile-time error on
-//! `Vec<f64>` by design.
+//! …) — those stay nalgebra/faer-only, so the LA-heavy solvers that need them
+//! (Newton, Gauss-Newton, Levenberg-Marquardt, CMA-ES) remain a compile-time
+//! error on `Vec<f64>` by design.
 
-use super::{MatTransposeVec, MatVec};
+use super::{GeneralRankOneUpdate, MatTransposeVec, MatVec, MatrixIdentity, ScaleInPlace};
 
 /// Row-major dense `f64` matrix — the matrix companion to `Vec<f64>` as the
 /// param vector.
@@ -25,9 +28,10 @@ use super::{MatTransposeVec, MatVec};
 /// `aᵢᵀ x ≤ bᵢ`. This is also what makes [`from_row_slice`](Self::from_row_slice)
 /// a transparent mirror of `nalgebra::DMatrix::from_row_slice`.
 ///
-/// The type implements only [`MatVec`] (`A x`) and [`MatTransposeVec`]
-/// (`Aᵀ v`); see the module docs for why the factorization ops are
-/// deliberately absent.
+/// The type implements [`MatVec`] (`A x`) and [`MatTransposeVec`] (`Aᵀ v`)
+/// for the linear-constraint solvers, plus [`MatrixIdentity`],
+/// [`ScaleInPlace`], and [`GeneralRankOneUpdate`] for BFGS; see the module
+/// docs for why the factorization ops are deliberately absent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DenseMatrix {
     /// Row-major entries: `data[i * cols + j] = A[i, j]`.
@@ -137,6 +141,54 @@ impl MatTransposeVec<Vec<f64>> for DenseMatrix {
     }
 }
 
+impl MatrixIdentity for DenseMatrix {
+    fn identity(n: usize) -> Self {
+        Self::from_fn(n, n, |i, j| if i == j { 1.0 } else { 0.0 })
+    }
+}
+
+impl ScaleInPlace for DenseMatrix {
+    fn scale_in_place(&mut self, scalar: f64) {
+        for entry in &mut self.data {
+            *entry *= scalar;
+        }
+    }
+}
+
+impl GeneralRankOneUpdate<Vec<f64>> for DenseMatrix {
+    fn general_rank_one_update(&mut self, alpha: f64, u: &Vec<f64>, v: &Vec<f64>) {
+        assert_eq!(
+            self.rows, self.cols,
+            "general_rank_one_update: matrix must be square, got {}x{}",
+            self.rows, self.cols
+        );
+        assert_eq!(
+            self.rows,
+            u.len(),
+            "general_rank_one_update: matrix is {}x{} but u has length {}",
+            self.rows,
+            self.cols,
+            u.len()
+        );
+        assert_eq!(
+            self.cols,
+            v.len(),
+            "general_rank_one_update: matrix is {}x{} but v has length {}",
+            self.rows,
+            self.cols,
+            v.len()
+        );
+        // self[i, j] ← self[i, j] + α · u[i] · v[j].
+        for (i, &ui) in u.iter().enumerate() {
+            let au = alpha * ui;
+            let row = &mut self.data[i * self.cols..(i + 1) * self.cols];
+            for (entry, &vj) in row.iter_mut().zip(v.iter()) {
+                *entry += au * vj;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -215,5 +267,53 @@ mod tests {
     fn mat_transpose_vec_rejects_length_mismatch() {
         let a = fixture();
         let _ = a.mat_transpose_vec(&vec![1.0, 1.0, 1.0]); // needs length 2 (nrows)
+    }
+
+    #[test]
+    fn identity_is_square_with_unit_diagonal() {
+        let id = DenseMatrix::identity(3);
+        assert_eq!(id.nrows(), 3);
+        assert_eq!(id.ncols(), 3);
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_eq!(id.get(i, j), if i == j { 1.0 } else { 0.0 });
+            }
+        }
+    }
+
+    #[test]
+    fn scale_in_place_multiplies_every_entry() {
+        let mut a = fixture();
+        a.scale_in_place(2.0);
+        // Original (1,2,3,4,5,6) doubled.
+        assert_eq!(
+            a,
+            DenseMatrix::from_row_slice(2, 3, &[2.0, 4.0, 6.0, 8.0, 10.0, 12.0])
+        );
+    }
+
+    #[test]
+    fn general_rank_one_update_symmetric_case() {
+        // 2×2 identity + 1·v·vᵀ with v = (1, 2)ᵀ ⇒ [[2, 2], [2, 5]].
+        let mut a = DenseMatrix::identity(2);
+        let v = vec![1.0, 2.0];
+        a.general_rank_one_update(1.0, &v, &v);
+        assert_eq!(a, DenseMatrix::from_row_slice(2, 2, &[2.0, 2.0, 2.0, 5.0]));
+    }
+
+    #[test]
+    fn general_rank_one_update_asymmetric_case() {
+        // α·u·vᵀ with α = 2, u = (1, 0)ᵀ, v = (3, 4)ᵀ touches only row 0:
+        // [[6, 8], [0, 0]] added to the zero matrix.
+        let mut a = DenseMatrix::from_row_slice(2, 2, &[0.0, 0.0, 0.0, 0.0]);
+        a.general_rank_one_update(2.0, &vec![1.0, 0.0], &vec![3.0, 4.0]);
+        assert_eq!(a, DenseMatrix::from_row_slice(2, 2, &[6.0, 8.0, 0.0, 0.0]));
+    }
+
+    #[test]
+    #[should_panic(expected = "general_rank_one_update")]
+    fn general_rank_one_update_rejects_non_square() {
+        let mut a = fixture(); // 2×3
+        a.general_rank_one_update(1.0, &vec![1.0, 1.0], &vec![1.0, 1.0, 1.0]);
     }
 }

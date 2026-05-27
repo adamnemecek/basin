@@ -452,6 +452,38 @@ pub trait RankOneUpdate<V> {
     fn rank_one_update(&mut self, alpha: f64, v: &V);
 }
 
+/// In-place *general* rank-one update `self ← self + α · u · vᵀ` with two
+/// distinct vectors — BLAS `ger`. The asymmetric generalization of
+/// [`RankOneUpdate`] (which is the `u == v` special case). BFGS needs the
+/// asymmetric form: its inverse-Hessian update carries the cross terms
+/// `−ρ · s · (Hy)ᵀ` and `−ρ · (Hy) · sᵀ`, where `s ≠ Hy` in general.
+///
+/// # Contract
+///
+/// - **Caller must:** pass a square `self`, a `u` of length `self.nrows()`,
+///   and a `v` of length `self.ncols()`. Backends panic on shape mismatch.
+/// - **Implementor must:** add `α · u[i] · v[j]` to `self[(i, j)]` for every
+///   `(i, j)`, in place. Off-diagonal entries are touched. The op is `O(n²)`
+///   for an `n × n` matrix.
+///
+/// The method is named `general_rank_one_update` rather than `ger` so calls
+/// go to the trait method without colliding with nalgebra's inherent
+/// `Matrix::ger` (a 4-arg `ger(α, x, y, β)` with a `β·self` term) — the same
+/// defensive naming as [`SymmetricEigen::try_eigh`].
+///
+/// # Backends
+///
+/// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`) via
+/// `ger`, for `faer::Mat<f64>` (with `V = faer::Col<f64>`) via the `matmul`
+/// accumulator, and for [`DenseMatrix`](super::DenseMatrix) (with
+/// `V = Vec<f64>`) via a direct double loop — so BFGS runs on `Vec<f64>`,
+/// nalgebra, and faer. Sparse backends do *not* implement this, matching
+/// [`RankOneUpdate`].
+pub trait GeneralRankOneUpdate<V> {
+    /// Compute `self ← self + α · u · vᵀ` in place.
+    fn general_rank_one_update(&mut self, alpha: f64, u: &V, v: &V);
+}
+
 /// Reasons a linear-solve trait call can fail. Variants are
 /// backend-agnostic — backends translate their native error types
 /// into these.

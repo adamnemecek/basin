@@ -1,6 +1,9 @@
-use nalgebra::{DMatrix, DVector};
-
+#[cfg(feature = "nalgebra")]
 use crate::core::inner::WarmStart;
+use crate::core::math::{
+    Dot, GeneralRankOneUpdate, MatVec, MatrixIdentity, NegInPlace, NormSquared, ScaleInPlace,
+    ScaledAdd, VectorLen,
+};
 use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::QuasiNewtonState;
@@ -27,9 +30,14 @@ use crate::line_search::{LineSearch, Wolfe};
 ///
 /// # Backends
 ///
-/// `nalgebra` only. Bound on `DVector<f64>` / `DMatrix<f64>`; using BFGS
-/// with `Vec<f64>`, `ndarray`, or `faer` is a compile-time error per
-/// tenet 5. Other backends are a follow-up PR.
+/// Runs on `Vec<f64>` (via the hand-rolled
+/// [`DenseMatrix`](crate::core::math::DenseMatrix)), nalgebra
+/// (`DVector<f64>` / `DMatrix<f64>`), and faer (`Col<f64>` / `Mat<f64>`).
+/// The dense inverse-Hessian needs only matvec, an identity constructor,
+/// scaling, and the rank-one update [`GeneralRankOneUpdate`] — no
+/// factorization — so it stays backend-generic. `ndarray` is a
+/// compile-time error per tenet 5: its `Array2<f64>` implements neither
+/// [`GeneralRankOneUpdate`] nor [`MatrixIdentity`].
 pub struct BFGS<S = Wolfe> {
     line_search: S,
     epsilon: f64,
@@ -71,17 +79,14 @@ impl<S> BFGS<S> {
     }
 }
 
-impl<P, S> Solver<P, QuasiNewtonState<DVector<f64>, DMatrix<f64>>> for BFGS<S>
+impl<P, S, V, M> Solver<P, QuasiNewtonState<V, M>> for BFGS<S>
 where
-    P: CostFunction<Param = DVector<f64>, Output = f64>
-        + Gradient<Param = DVector<f64>, Gradient = DVector<f64>>,
-    S: LineSearch<P, DVector<f64>>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    S: LineSearch<P, V>,
+    V: Clone + Dot + NormSquared + ScaledAdd<f64> + ScaleInPlace + NegInPlace + VectorLen,
+    M: MatVec<V> + MatrixIdentity + ScaleInPlace + GeneralRankOneUpdate<V>,
 {
-    fn init(
-        &mut self,
-        problem: &P,
-        mut state: QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
-    ) -> QuasiNewtonState<DVector<f64>, DMatrix<f64>> {
+    fn init(&mut self, problem: &P, mut state: QuasiNewtonState<V, M>) -> QuasiNewtonState<V, M> {
         state.cost = Some(problem.cost(&state.param));
         state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
@@ -92,11 +97,8 @@ where
     fn next_iter(
         &mut self,
         problem: &P,
-        mut state: QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
-    ) -> (
-        QuasiNewtonState<DVector<f64>, DMatrix<f64>>,
-        Option<TerminationReason>,
-    ) {
+        mut state: QuasiNewtonState<V, M>,
+    ) -> (QuasiNewtonState<V, M>, Option<TerminationReason>) {
         let g = state
             .gradient
             .take()
@@ -107,7 +109,8 @@ where
 
         // Quasi-Newton direction: d = −H g. With H positive definite this
         // is automatically a descent direction (gᵀd = −gᵀHg < 0).
-        let direction = -(&state.inverse_hessian * &g);
+        let mut direction = state.inverse_hessian.matvec(&g);
+        direction.neg_in_place();
 
         let step = self
             .line_search
@@ -127,16 +130,19 @@ where
         }
 
         // s = α d, x ← x + s.
-        let s = step.alpha * &direction;
-        state.param += &s;
+        let mut s = direction;
+        s.scale_in_place(step.alpha);
+        state.param.scaled_add(1.0, &s);
 
         let g_new = problem.gradient(&state.param);
         state.gradient_evals += 1;
 
-        let y = &g_new - &g;
+        // y = g_new − g.
+        let mut y = g_new.clone();
+        y.scaled_add(-1.0, &g);
         let sy = s.dot(&y);
-        let s_norm = s.norm();
-        let y_norm = y.norm();
+        let s_norm = s.norm_squared().sqrt();
+        let y_norm = y.norm_squared().sqrt();
 
         if sy > self.epsilon * s_norm * y_norm {
             // Initial-Hessian rescaling: align H₀ with the local curvature
@@ -147,22 +153,24 @@ where
                 let yy = y.dot(&y);
                 if yy > 0.0 {
                     let scale = sy / yy;
-                    let n = state.param.len();
-                    state.inverse_hessian = DMatrix::identity(n, n) * scale;
+                    let n = state.param.vec_len();
+                    let mut h0 = M::identity(n);
+                    h0.scale_in_place(scale);
+                    state.inverse_hessian = h0;
                 }
                 state.initial_scaling_done = true;
             }
 
             let rho = 1.0 / sy;
-            let hy = &state.inverse_hessian * &y;
+            let hy = state.inverse_hessian.matvec(&y);
             let yhy = y.dot(&hy);
             let coef = rho * (1.0 + rho * yhy);
 
             // H ← H + coef · s sᵀ − ρ · (s (Hy)ᵀ + (Hy) sᵀ).
             // Three rank-1 updates, all in place.
-            state.inverse_hessian.ger(coef, &s, &s, 1.0);
-            state.inverse_hessian.ger(-rho, &s, &hy, 1.0);
-            state.inverse_hessian.ger(-rho, &hy, &s, 1.0);
+            state.inverse_hessian.general_rank_one_update(coef, &s, &s);
+            state.inverse_hessian.general_rank_one_update(-rho, &s, &hy);
+            state.inverse_hessian.general_rank_one_update(-rho, &hy, &s);
         }
         // else: curvature failure (very rare with strong Wolfe). Skip the
         // H update; the line search still produced a descent step, so we
@@ -180,9 +188,14 @@ where
 /// [`AugmentedLagrangianMethod`](crate::solver::AugmentedLagrangianMethod)),
 /// seeding a fresh [`QuasiNewtonState`] (identity inverse-Hessian) at the
 /// warm-start point.
-impl<S> WarmStart<DVector<f64>> for BFGS<S> {
-    type State = QuasiNewtonState<DVector<f64>, DMatrix<f64>>;
-    fn seed(&self, x: &DVector<f64>) -> Self::State {
-        QuasiNewtonState::new(x.clone())
+///
+/// nalgebra only for now — the composed (barrier / AL) solvers seed their
+/// inner on the nalgebra backend. A `Vec<f64>` / faer `WarmStart` is a
+/// follow-up if a `Vec`-backed barrier inner is wanted.
+#[cfg(feature = "nalgebra")]
+impl<S> WarmStart<nalgebra::DVector<f64>> for BFGS<S> {
+    type State = QuasiNewtonState<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>>;
+    fn seed(&self, x: &nalgebra::DVector<f64>) -> Self::State {
+        QuasiNewtonState::<nalgebra::DVector<f64>, nalgebra::DMatrix<f64>>::new(x.clone())
     }
 }
