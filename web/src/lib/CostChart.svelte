@@ -2,15 +2,18 @@
     import { onMount } from 'svelte';
 
     import { paletteFor, type Theme } from './palette';
+    import { SUBOPT_TARGET } from './problems';
 
     type Props = {
         costs: Float64Array;
+        /** Known optimal value f*; the chart plots suboptimality f − f*. */
+        fStar: number;
         /** Termination reason string when the run ends, else empty. */
         reason: string;
         theme: Theme;
     };
 
-    let { costs, reason, theme }: Props = $props();
+    let { costs, fStar, reason, theme }: Props = $props();
     let palette = $derived(paletteFor(theme));
 
     let canvas: HTMLCanvasElement | undefined = $state();
@@ -19,7 +22,7 @@
 
     $effect(() => {
         if (!canvas) return;
-        render(canvas, costs, palette);
+        render(canvas, costs, fStar, palette);
     });
 
     onMount(() => {
@@ -39,6 +42,7 @@
     function render(
         cv: HTMLCanvasElement,
         c: Float64Array,
+        fstar: number,
         pal: ReturnType<typeof paletteFor>,
     ) {
         const dpr = window.devicePixelRatio || 1;
@@ -58,31 +62,29 @@
 
         if (c.length < 2) return;
 
-        // Use log axis when costs span many orders of magnitude.
-        let cmin = Infinity;
-        let cmax = -Infinity;
-        for (let i = 0; i < c.length; i++) {
-            const v = c[i];
-            if (!Number.isFinite(v)) continue;
-            if (v < cmin) cmin = v;
-            if (v > cmax) cmax = v;
-        }
-        if (!Number.isFinite(cmin) || !Number.isFinite(cmax)) return;
-        const useLog = cmax > 0 && cmin >= 0 && cmax / Math.max(cmin, 1e-12) > 1e3;
-        const eps = 1e-12;
-        const yOf = useLog
-            ? (v: number) => Math.log10(Math.max(v, eps))
-            : (v: number) => v;
-        const yLo = useLog ? yOf(Math.max(cmin, eps)) : cmin;
-        const yHi = useLog ? yOf(Math.max(cmax, eps)) : cmax;
-        const ySpan = Math.max(yHi - yLo, 1e-12);
+        // Suboptimality s_i = f_i − f* on a log10 y-axis. The range is
+        // FIXED, not data-driven: the bottom is the convergence target
+        // (SUBOPT_TARGET), the top is one decade above the run's initial
+        // suboptimality. Both are constant for the whole run (the initial
+        // cost never changes), so nothing rescales frame-to-frame, and the
+        // top is identical across solver switches from the same start.
+        const yLo = Math.log10(SUBOPT_TARGET);
+        const s0 = Math.max(c[0] - fstar, SUBOPT_TARGET);
+        const yHi = Math.max(Math.ceil(Math.log10(s0)), yLo + 1);
+        const ySpan = yHi - yLo;
+        // Clamp into [yLo, yHi]: descent stays below the top, and a value
+        // at/under the optimum lands on the bottom axis.
+        const yOf = (v: number) =>
+            Math.min(Math.log10(Math.max(v - fstar, SUBOPT_TARGET)), yHi);
 
-        const padL = 36;
-        const padR = 8;
-        const padT = 16;
-        const padB = 24;
+        const padL = 46;
+        const padR = 10;
+        const padT = 18;
+        const padB = 32;
         const innerW = Math.max(1, w - padL - padR);
         const innerH = Math.max(1, h - padT - padB);
+        const pxOf = (yv: number) =>
+            padT + innerH - ((yv - yLo) / ySpan) * innerH;
 
         // Axes.
         ctx.strokeStyle = pal.axis;
@@ -93,41 +95,60 @@
         ctx.lineTo(padL + innerW, padT + innerH);
         ctx.stroke();
 
-        ctx.fillStyle = pal.text;
         ctx.font = '11px sans-serif';
+
+        // y-axis: decade gridlines + labels, thinned to ~6 across the range.
         ctx.textAlign = 'right';
         ctx.textBaseline = 'middle';
-        ctx.fillText(formatTick(cmax, useLog), padL - 4, padT);
-        ctx.fillText(formatTick(cmin, useLog), padL - 4, padT + innerH);
+        const kLo = Math.ceil(yLo);
+        const kHi = Math.floor(yHi);
+        const step = Math.max(1, Math.ceil((kHi - kLo) / 6));
+        for (let k = kLo; k <= kHi; k += step) {
+            const yy = pxOf(k);
+            ctx.strokeStyle = pal.axis;
+            ctx.globalAlpha = 0.25;
+            ctx.beginPath();
+            ctx.moveTo(padL, yy);
+            ctx.lineTo(padL + innerW, yy);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = pal.text;
+            ctx.fillText(`1e${k}`, padL - 4, yy);
+        }
+
+        // Captions: y quantity (top-left), termination reason (top-right).
+        ctx.fillStyle = pal.text;
         ctx.textAlign = 'left';
-        ctx.textBaseline = 'top';
-        ctx.fillText(`iter ${c.length - 1}`, padL + 4, padT - 2);
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText('f − f*', padL, padT - 5);
         if (reason) {
             ctx.textAlign = 'right';
             ctx.fillStyle = pal.reason;
-            ctx.fillText(reason, w - padR, padT - 2);
+            ctx.fillText(reason, w - padR, padT - 5);
         }
+
+        // x-axis: iteration index. Tick endpoints + centered caption.
+        const lastIter = c.length - 1;
+        ctx.fillStyle = pal.text;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.fillText('0', padL, padT + innerH + 5);
+        ctx.textAlign = 'right';
+        ctx.fillText(`${lastIter}`, padL + innerW, padT + innerH + 5);
+        ctx.textAlign = 'center';
+        ctx.fillText('iteration', padL + innerW / 2, padT + innerH + 18);
 
         // Polyline.
         ctx.beginPath();
         for (let i = 0; i < c.length; i++) {
-            const x = padL + (i / Math.max(c.length - 1, 1)) * innerW;
-            const yv = yOf(Math.max(c[i], eps));
-            const y = padT + innerH - ((yv - yLo) / ySpan) * innerH;
+            const x = padL + (i / Math.max(lastIter, 1)) * innerW;
+            const y = pxOf(yOf(c[i]));
             if (i === 0) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
         }
         ctx.strokeStyle = pal.cost;
         ctx.lineWidth = 1.5;
         ctx.stroke();
-    }
-
-    function formatTick(v: number, useLog: boolean): string {
-        if (!Number.isFinite(v)) return '';
-        if (useLog) return v.toExponential(1);
-        if (Math.abs(v) >= 1000 || (v !== 0 && Math.abs(v) < 0.01))
-            return v.toExponential(1);
-        return v.toFixed(3);
     }
 </script>
 

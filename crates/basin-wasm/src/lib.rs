@@ -21,11 +21,13 @@ use basin::problems::{beale, beale_gradient, booth, booth_gradient};
 use basin::problems::{goldstein_price, goldstein_price_gradient};
 use basin::problems::{matyas, matyas_gradient, mccormick, mccormick_gradient};
 use basin::problems::{rosenbrock, rosenbrock_gradient, sphere, sphere_gradient};
+use basin::solver::lbfgs::{Unbounded as LbfgsUnbounded, LBFGS};
 use basin::{
     Backtracking, BasicSimplexState, BasicState, Constant, CostFunction, Executor, Gradient,
-    GradientDescent, NelderMead, State, StepOutcome, Stepper, TerminationReason,
+    GradientDescent, LbfgsState, MoreThuente, NelderMead, State, StepOutcome, Stepper,
+    TerminationReason,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 /// Set up nicer panic messages in dev. Called automatically the first
@@ -54,9 +56,41 @@ pub enum ProblemKind {
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SolverKind {
-    GradientDescentConstant = 0,
-    GradientDescentBacktracking = 1,
-    NelderMead = 2,
+    GradientDescent = 0,
+    NelderMead = 1,
+    Lbfgs = 2,
+}
+
+/// Solver-specific knobs, marshaled across the wasm boundary as a single
+/// plain JS object (`{ gdLineSearch, gdAlpha, gdBeta, lbfgsM }`) and
+/// deserialized here with serde. Passing one object instead of a growing
+/// tail of positional args to [`Run::new`] keeps the constructor stable
+/// as solvers gain options; each solver branch reads only the fields it
+/// cares about. Missing fields fall back to [`RunOptions::default`].
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct RunOptions {
+    /// Gradient-descent step strategy: `"constant"` (fixed `gd_alpha`) or
+    /// `"backtracking"` (Armijo line search).
+    gd_line_search: String,
+    /// Constant step size for `gd_line_search == "constant"`.
+    gd_alpha: f64,
+    /// Heavy-ball momentum coefficient for the gradient-descent solver;
+    /// `0.0` disables it (plain steepest descent).
+    gd_beta: f64,
+    /// L-BFGS history capacity `m` (number of stored (s, y) pairs).
+    lbfgs_m: usize,
+}
+
+impl Default for RunOptions {
+    fn default() -> Self {
+        Self {
+            gd_line_search: "constant".to_string(),
+            gd_alpha: 0.01,
+            gd_beta: 0.0,
+            lbfgs_m: 10,
+        }
+    }
 }
 
 /// 2D problem dispatcher. Implements `CostFunction` + `Gradient` once
@@ -148,6 +182,11 @@ pub fn eval_grid(
     out
 }
 
+/// Concrete L-BFGS stepper type. Aliased to keep the [`Inner`] variant
+/// readable (the boxed, fully-monomorphized generic otherwise trips
+/// `clippy::type_complexity`).
+type LbfgsStepper = Stepper<Problem2D, LbfgsState<Vec<f64>>, LBFGS<LbfgsUnbounded, MoreThuente>>;
+
 /// Inner enum dispatching by `(state shape, solver type)`. Each variant
 /// is fully concrete so the resulting wasm is tight and no `dyn Solver`
 /// gymnastics are needed.
@@ -157,6 +196,11 @@ enum Inner {
         Stepper<Problem2D, BasicState<Vec<f64>>, GradientDescent<Backtracking, Vec<f64>>>,
     ),
     NelderMead(Stepper<Problem2D, BasicSimplexState<Vec<f64>>, NelderMead>),
+    // Boxed: `LbfgsState` carries the limited-memory history buffers, so
+    // this variant is several times larger than the others — boxing keeps
+    // `Inner` small (clippy::large_enum_variant). Auto-deref means the
+    // `step`/`xy`/`cost` match arms need no `*` and read like the rest.
+    Lbfgs(Box<LbfgsStepper>),
 }
 
 impl Inner {
@@ -165,6 +209,7 @@ impl Inner {
             Inner::GdConstant(s) => s.step(),
             Inner::GdBacktracking(s) => s.step(),
             Inner::NelderMead(s) => s.step(),
+            Inner::Lbfgs(s) => s.step(),
         }
     }
 
@@ -173,6 +218,7 @@ impl Inner {
             Inner::GdConstant(s) => s.state().param(),
             Inner::GdBacktracking(s) => s.state().param(),
             Inner::NelderMead(s) => s.state().param(),
+            Inner::Lbfgs(s) => s.state().param(),
         };
         (p[0], p[1])
     }
@@ -182,6 +228,7 @@ impl Inner {
             Inner::GdConstant(s) => s.state().cost(),
             Inner::GdBacktracking(s) => s.state().cost(),
             Inner::NelderMead(s) => s.state().cost(),
+            Inner::Lbfgs(s) => s.state().cost(),
         }
     }
 }
@@ -193,7 +240,17 @@ pub struct Run {
     /// included at index 0 so JS doesn't need to track it separately.
     trajectory: Vec<f64>,
     costs: Vec<f64>,
-    finished: Option<TerminationReason>,
+    /// Absolute cost at which to stop early: `f* + target_suboptimality`.
+    /// `None` disables the suboptimality stop (run to `max_iter`). This is
+    /// a visualizer-level convergence test — it knows each problem's `f*`,
+    /// so "stop when essentially at the optimum" replaces a per-solver
+    /// gradient/simplex tolerance and matches the suboptimality the cost
+    /// chart plots.
+    target_cost: Option<f64>,
+    /// Stable termination-reason string, or `None` while still running.
+    /// `"converged"` is the visualizer's suboptimality stop; everything
+    /// else comes from [`reason_str`].
+    finished: Option<&'static str>,
 }
 
 /// Per-call result returned by `step_many`. Plain serializable shape so
@@ -215,58 +272,32 @@ struct StepResult {
 
 #[wasm_bindgen]
 impl Run {
-    /// Construct a new run for the given `(problem, solver)` starting
-    /// at `(x0, y0)`. `gd_alpha` is the constant step size for
-    /// `GradientDescentConstant` (ignored for the other solvers; pass
-    /// any value, e.g. `0.0`). `gd_beta` is the heavy-ball momentum
-    /// coefficient for the gradient-descent solvers — `0.0` disables it
-    /// (plain steepest descent); ignored for Nelder–Mead. `max_iter` caps
-    /// the total number of iterations; subsequent `step_many` calls
-    /// cumulatively count against this cap.
+    /// Construct a new run for the given `(problem, solver)` starting at
+    /// `(x0, y0)`. `opts` is a plain JS object of solver-specific knobs
+    /// (`{ gdLineSearch, gdAlpha, gdBeta, lbfgsM }`); each solver reads
+    /// only the fields it needs and missing fields take their defaults
+    /// (see [`RunOptions`]). `max_iter` caps the total number of
+    /// iterations; subsequent `step_many` calls cumulatively count against
+    /// this cap. `stop_at_cost` is the absolute cost at which to stop early
+    /// — typically `f* + target_suboptimality`, since the visualizer knows
+    /// each problem's `f*`. Pass a non-finite value (e.g. `NaN`) to disable
+    /// the early stop (run to `max_iter`).
     #[wasm_bindgen(constructor)]
     pub fn new(
         problem: ProblemKind,
         solver: SolverKind,
         x0: f64,
         y0: f64,
-        gd_alpha: f64,
-        gd_beta: f64,
+        opts: JsValue,
         max_iter: u32,
+        stop_at_cost: f64,
     ) -> Run {
         install_panic_hook();
-        let p = Problem2D(problem);
-        let initial = vec![x0, y0];
-        let initial_cost = p.cost(&initial);
-        let inner = match solver {
-            SolverKind::GradientDescentConstant => Inner::GdConstant(make_stepper(
-                p,
-                GradientDescent::new(gd_alpha).with_momentum(gd_beta),
-                &initial,
-                max_iter,
-            )),
-            SolverKind::GradientDescentBacktracking => Inner::GdBacktracking(make_stepper(
-                p,
-                GradientDescent::with_line_search(Backtracking::new()).with_momentum(gd_beta),
-                &initial,
-                max_iter,
-            )),
-            SolverKind::NelderMead => {
-                let stepper = Executor::new(
-                    p,
-                    NelderMead::standard(),
-                    BasicSimplexState::<Vec<f64>>::new(initial.clone()),
-                )
-                .max_iter(max_iter as u64)
-                .into_stepper();
-                Inner::NelderMead(stepper)
-            }
-        };
-        Run {
-            inner,
-            trajectory: vec![x0, y0],
-            costs: vec![initial_cost],
-            finished: None,
-        }
+        // serde_wasm_bindgen reaches into JS, so deserialization can't
+        // happen in the native-testable core; do it here and hand a plain
+        // Rust struct to `new_inner`.
+        let opts: RunOptions = serde_wasm_bindgen::from_value(opts).unwrap_or_default();
+        Run::new_inner(problem, solver, x0, y0, opts, max_iter, stop_at_cost)
     }
 
     /// Advance up to `n` iterations, recording the `(x, y)` and cost
@@ -305,7 +336,7 @@ impl Run {
 
     /// Termination reason string, or empty if still running.
     pub fn reason(&self) -> String {
-        self.finished.map(reason_str).unwrap_or("").to_string()
+        self.finished.unwrap_or("").to_string()
     }
 
     /// The current parameter vector, Debug-formatted by Rust exactly as
@@ -333,6 +364,76 @@ impl Run {
 }
 
 impl Run {
+    /// Pure-Rust core of the constructor, callable from native unit
+    /// tests without going through `serde_wasm_bindgen` (which calls into
+    /// JS APIs that panic on non-wasm targets). The wasm-facing
+    /// [`Run::new`] deserializes the JS `opts` object and delegates here.
+    fn new_inner(
+        problem: ProblemKind,
+        solver: SolverKind,
+        x0: f64,
+        y0: f64,
+        opts: RunOptions,
+        max_iter: u32,
+        stop_at_cost: f64,
+    ) -> Run {
+        let p = Problem2D(problem);
+        let initial = vec![x0, y0];
+        let initial_cost = p.cost(&initial);
+        // The only termination beyond `max_iter` is the suboptimality stop
+        // applied in `step_many_inner`; solvers themselves run unbounded.
+        let inner = match solver {
+            SolverKind::GradientDescent => {
+                if opts.gd_line_search == "backtracking" {
+                    Inner::GdBacktracking(make_stepper(
+                        p,
+                        GradientDescent::with_line_search(Backtracking::new())
+                            .with_momentum(opts.gd_beta),
+                        &initial,
+                        max_iter,
+                    ))
+                } else {
+                    Inner::GdConstant(make_stepper(
+                        p,
+                        GradientDescent::new(opts.gd_alpha).with_momentum(opts.gd_beta),
+                        &initial,
+                        max_iter,
+                    ))
+                }
+            }
+            SolverKind::NelderMead => {
+                let stepper = Executor::new(
+                    p,
+                    NelderMead::standard(),
+                    BasicSimplexState::<Vec<f64>>::new(initial.clone()),
+                )
+                .max_iter(max_iter as u64)
+                .into_stepper();
+                Inner::NelderMead(stepper)
+            }
+            SolverKind::Lbfgs => {
+                // `m_capacity` asserts `>= 1`; clamp so a stray `0` from
+                // the JS side can't panic the constructor.
+                let m = opts.lbfgs_m.max(1);
+                let stepper = Executor::new(
+                    p,
+                    LBFGS::<LbfgsUnbounded>::new().m_capacity(m),
+                    LbfgsState::new(initial.clone(), m),
+                )
+                .max_iter(max_iter as u64)
+                .into_stepper();
+                Inner::Lbfgs(Box::new(stepper))
+            }
+        };
+        Run {
+            inner,
+            trajectory: vec![x0, y0],
+            costs: vec![initial_cost],
+            target_cost: stop_at_cost.is_finite().then_some(stop_at_cost),
+            finished: None,
+        }
+    }
+
     /// Pure-Rust core of `step_many`, callable from native unit tests
     /// without going through `serde_wasm_bindgen` (which calls into JS
     /// APIs that panic on non-wasm targets).
@@ -341,7 +442,7 @@ impl Run {
             return StepResult {
                 done: true,
                 iters_added: 0,
-                reason: self.finished.map(reason_str),
+                reason: self.finished,
             };
         }
         let mut iters_added = 0;
@@ -349,13 +450,22 @@ impl Run {
             match self.inner.step() {
                 StepOutcome::Continue => {
                     let (x, y) = self.inner.xy();
+                    let cost = self.inner.cost();
                     self.trajectory.push(x);
                     self.trajectory.push(y);
-                    self.costs.push(self.inner.cost());
+                    self.costs.push(cost);
                     iters_added += 1;
+                    // Visualizer-level convergence: stop once the cost is
+                    // within the target suboptimality of the known optimum.
+                    if let Some(target) = self.target_cost {
+                        if cost <= target {
+                            self.finished = Some("converged");
+                            break;
+                        }
+                    }
                 }
                 StepOutcome::Stopped(reason) => {
-                    self.finished = Some(reason);
+                    self.finished = Some(reason_str(reason));
                     break;
                 }
             }
@@ -363,7 +473,7 @@ impl Run {
         StepResult {
             done: self.finished.is_some(),
             iters_added,
-            reason: self.finished.map(reason_str),
+            reason: self.finished,
         }
     }
 }
@@ -421,14 +531,17 @@ mod tests {
 
     #[test]
     fn run_records_initial_point_and_progresses() {
-        let mut run = Run::new(
+        let mut run = Run::new_inner(
             ProblemKind::Rosenbrock,
-            SolverKind::GradientDescentConstant,
+            SolverKind::GradientDescent,
             -1.2,
             1.0,
-            0.001,
-            0.0,
+            RunOptions {
+                gd_alpha: 0.001,
+                ..RunOptions::default()
+            },
             500,
+            f64::NAN, // early stop disabled
         );
         assert_eq!(run.iter(), 0);
         assert_eq!(run.trajectory_xy(), vec![-1.2, 1.0]);
@@ -442,14 +555,17 @@ mod tests {
 
     #[test]
     fn run_terminates_on_max_iter() {
-        let mut run = Run::new(
+        let mut run = Run::new_inner(
             ProblemKind::Sphere,
-            SolverKind::GradientDescentConstant,
+            SolverKind::GradientDescent,
             1.0,
             1.0,
-            0.5,
-            0.0,
+            RunOptions {
+                gd_alpha: 0.5,
+                ..RunOptions::default()
+            },
             5,
+            f64::NAN, // early stop disabled — exercise the max_iter path purely
         );
         let r = run.step_many_inner(100);
         assert!(r.done);
@@ -457,5 +573,46 @@ mod tests {
         assert!(run.done());
         assert_eq!(run.reason(), "max_iter");
         assert!(run.iter() <= 5);
+    }
+
+    #[test]
+    fn lbfgs_converges_before_max_iter_on_suboptimality() {
+        let mut run = Run::new_inner(
+            ProblemKind::Rosenbrock,
+            SolverKind::Lbfgs,
+            -1.2,
+            1.0,
+            RunOptions::default(),
+            1000,
+            1e-10, // f* (0) + target suboptimality (1e-10)
+        );
+        let r = run.step_many_inner(1000);
+        // L-BFGS drives the Rosenbrock cost below 1e-10 well within the
+        // iteration cap, so the suboptimality stop fires first.
+        assert!(r.done);
+        assert_eq!(r.reason, Some("converged"));
+        assert!(run.iter() < 1000);
+        // ...and lands near the minimum (1, 1).
+        let traj = run.trajectory_xy();
+        let n = traj.len();
+        assert!((traj[n - 2] - 1.0).abs() < 1e-2);
+        assert!((traj[n - 1] - 1.0).abs() < 1e-2);
+    }
+
+    #[test]
+    fn nelder_mead_stops_on_suboptimality() {
+        let mut run = Run::new_inner(
+            ProblemKind::Sphere,
+            SolverKind::NelderMead,
+            2.0,
+            2.0,
+            RunOptions::default(),
+            1000,
+            1e-8, // f* (0) + target suboptimality (1e-8)
+        );
+        let r = run.step_many_inner(1000);
+        assert!(r.done);
+        assert_eq!(r.reason, Some("converged"));
+        assert!(run.iter() < 1000);
     }
 }

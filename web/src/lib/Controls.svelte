@@ -1,41 +1,56 @@
 <script lang="ts">
     import { ProblemKind, SolverKind } from './basin-wasm/basin_wasm';
     import { PROBLEMS } from './problems';
-    import { SOLVERS } from './solvers';
+    import { SOLVERS, type SolverOption } from './solvers';
+
+    type Patch = {
+        problemKind?: ProblemKind;
+        solverKind?: SolverKind;
+        maxIter?: number;
+    };
 
     type Props = {
         problemKind: ProblemKind;
         solverKind: SolverKind;
-        gdAlpha: number;
+        /** Schema for the current solver's controls. */
+        solverOptions: SolverOption[];
+        /** Current option values, keyed by option id. */
+        optionValues: Record<string, string | number>;
         maxIter: number;
         startPoint: { x: number; y: number };
-        usesAlpha: boolean;
-        onChange: (patch: {
-            problemKind?: ProblemKind;
-            solverKind?: SolverKind;
-            gdAlpha?: number;
-            maxIter?: number;
-        }) => void;
+        onChange: (patch: Patch) => void;
+        onOptionChange: (id: string, value: string | number) => void;
     };
 
     let {
         problemKind,
         solverKind,
-        gdAlpha,
+        solverOptions,
+        optionValues,
         maxIter,
         startPoint,
-        usesAlpha,
         onChange,
+        onOptionChange,
     }: Props = $props();
+
+    const labelCls =
+        'text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide';
+    const selectCls =
+        'bg-white text-slate-900 border border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 rounded px-2 py-1';
+    const valueCls = 'font-mono text-slate-900 dark:text-slate-100';
+
+    // A `logSlider` is hidden unless its `showIf` option currently matches.
+    function visible(opt: SolverOption): boolean {
+        if (opt.kind !== 'logSlider' || !opt.showIf) return true;
+        return optionValues[opt.showIf.id] === opt.showIf.equals;
+    }
 </script>
 
 <div class="flex flex-col gap-4 text-sm">
     <label class="flex flex-col gap-1">
-        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
-            >Problem</span
-        >
+        <span class={labelCls}>Problem</span>
         <select
-            class="bg-white text-slate-900 border border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 rounded px-2 py-1"
+            class={selectCls}
             value={problemKind}
             onchange={(e) =>
                 onChange({
@@ -51,11 +66,9 @@
     </label>
 
     <label class="flex flex-col gap-1">
-        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
-            >Solver</span
-        >
+        <span class={labelCls}>Solver</span>
         <select
-            class="bg-white text-slate-900 border border-slate-300 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 rounded px-2 py-1"
+            class={selectCls}
             value={solverKind}
             onchange={(e) =>
                 onChange({
@@ -70,35 +83,87 @@
         </select>
     </label>
 
-    {#if usesAlpha}
-        <label class="flex flex-col gap-1">
-            <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
-                >Step size α: <span class="font-mono text-slate-900 dark:text-slate-100"
-                    >{gdAlpha.toExponential(2)}</span
-                ></span
-            >
-            <input
-                type="range"
-                min="-5"
-                max="0"
-                step="0.05"
-                value={Math.log10(gdAlpha)}
-                oninput={(e) =>
-                    onChange({
-                        gdAlpha: Math.pow(
-                            10,
-                            Number((e.currentTarget as HTMLInputElement).value),
-                        ),
-                    })}
-            />
-        </label>
-    {/if}
+    <!-- Solver-specific options, rendered from the solver's schema. -->
+    {#each solverOptions as opt (opt.id)}
+        {#if opt.kind === 'select'}
+            <label class="flex flex-col gap-1">
+                <span class={labelCls}>{opt.label}</span>
+                <select
+                    class={selectCls}
+                    value={String(optionValues[opt.id] ?? opt.default)}
+                    onchange={(e) =>
+                        onOptionChange(
+                            opt.id,
+                            (e.currentTarget as HTMLSelectElement).value,
+                        )}
+                >
+                    {#each opt.choices as c}
+                        <option value={c.value}>{c.label}</option>
+                    {/each}
+                </select>
+            </label>
+        {:else if opt.kind === 'logSlider'}
+            {#if visible(opt)}
+                <label class="flex flex-col gap-1">
+                    <span class={labelCls}
+                        >{opt.label}:
+                        <span class={valueCls}
+                            >{Number(
+                                optionValues[opt.id] ?? opt.default,
+                            ).toExponential(2)}</span
+                        ></span
+                    >
+                    <input
+                        type="range"
+                        min={opt.min}
+                        max={opt.max}
+                        step={opt.step}
+                        value={Math.log10(
+                            Number(optionValues[opt.id] ?? opt.default),
+                        )}
+                        oninput={(e) =>
+                            onOptionChange(
+                                opt.id,
+                                Math.pow(
+                                    10,
+                                    Number(
+                                        (e.currentTarget as HTMLInputElement)
+                                            .value,
+                                    ),
+                                ),
+                            )}
+                    />
+                </label>
+            {/if}
+        {:else if opt.kind === 'intSlider'}
+            <label class="flex flex-col gap-1">
+                <span class={labelCls}
+                    >{opt.label}:
+                    <span class={valueCls}
+                        >{Number(optionValues[opt.id] ?? opt.default)}</span
+                    ></span
+                >
+                <input
+                    type="range"
+                    min={opt.min}
+                    max={opt.max}
+                    step={opt.step}
+                    value={Number(optionValues[opt.id] ?? opt.default)}
+                    oninput={(e) =>
+                        onOptionChange(
+                            opt.id,
+                            Number(
+                                (e.currentTarget as HTMLInputElement).value,
+                            ),
+                        )}
+                />
+            </label>
+        {/if}
+    {/each}
 
     <label class="flex flex-col gap-1">
-        <span class="text-slate-700 dark:text-slate-300 uppercase text-xs tracking-wide"
-            >Max iterations: <span class="font-mono text-slate-900 dark:text-slate-100"
-                >{maxIter}</span
-            ></span
+        <span class={labelCls}
+            >Max iterations: <span class={valueCls}>{maxIter}</span></span
         >
         <input
             type="range"

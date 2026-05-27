@@ -6,8 +6,8 @@
         Run,
         evalGrid,
     } from '$lib/basin-wasm/basin_wasm';
-    import { PROBLEMS, problemByKind } from '$lib/problems';
-    import { SOLVERS } from '$lib/solvers';
+    import { PROBLEMS, problemByKind, SUBOPT_TARGET } from '$lib/problems';
+    import { SOLVERS, defaultOptionValues } from '$lib/solvers';
     import ContourPlot from '$lib/ContourPlot.svelte';
     import CostChart from '$lib/CostChart.svelte';
     import Controls from '$lib/Controls.svelte';
@@ -17,9 +17,24 @@
     // the module is already loaded.
     let wasmReady = $state(false);
 
+    // Default option values for a solver, with the problem-dependent α
+    // default folded in for gradient descent.
+    function initOptionValues(
+        sk: SolverKind,
+        pk: ProblemKind,
+    ): Record<string, string | number> {
+        const meta = SOLVERS.find((s) => s.kind === sk)!;
+        const vals = defaultOptionValues(meta);
+        if ('gdAlpha' in vals) vals.gdAlpha = problemByKind(pk).gdAlphaDefault;
+        return vals;
+    }
+
     let problemKind: ProblemKind = $state(ProblemKind.Rosenbrock);
-    let solverKind: SolverKind = $state(SolverKind.GradientDescentConstant);
-    let gdAlpha = $state(problemByKind(ProblemKind.Rosenbrock).gdAlphaDefault);
+    let solverKind: SolverKind = $state(SolverKind.GradientDescent);
+    // Solver-specific option values, keyed by option id (see solvers.ts).
+    let optionValues = $state<Record<string, string | number>>(
+        initOptionValues(SolverKind.GradientDescent, ProblemKind.Rosenbrock),
+    );
     let maxIter = $state(500);
     let startPoint = $state({ x: -1.5, y: 2.0 });
 
@@ -69,10 +84,23 @@
         if (!wasmReady) return;
         const pk = problemKind;
         const sk = solverKind;
-        const a = gdAlpha;
         const mi = maxIter;
         const sx = startPoint.x;
         const sy = startPoint.y;
+        // Solver options crossing the wasm boundary (see RunOptions in
+        // crates/basin-wasm/src/lib.rs). Each solver reads only what it
+        // needs; reading the fields here tracks them as effect deps.
+        const opts = {
+            gdLineSearch: optionValues.gdLineSearch ?? 'constant',
+            gdAlpha: optionValues.gdAlpha ?? problemMeta.gdAlphaDefault,
+            // β = 0: the visualizer has no momentum knob (the landing-page
+            // playground does). Plain steepest descent for the GD solver.
+            gdBeta: 0,
+            lbfgsM: optionValues.lbfgsM ?? 10,
+        };
+        // Stop early once the cost is within SUBOPT_TARGET of the known
+        // optimum — the same value the cost chart uses as its log floor.
+        const stopAtCost = problemMeta.fStar + SUBOPT_TARGET;
 
         if (frameId !== null) {
             cancelAnimationFrame(frameId);
@@ -83,9 +111,7 @@
             activeRun = null;
         }
 
-        // β = 0: the visualizer has no momentum knob (the landing-page
-        // playground does). Plain steepest descent for the GD solvers.
-        const run = new Run(pk, sk, sx, sy, a, 0, mi);
+        const run = new Run(pk, sk, sx, sy, opts, mi, stopAtCost);
         activeRun = run;
         trajectory = run.trajectoryXy();
         costs = run.costs();
@@ -138,22 +164,33 @@
     function handleControlChange(patch: {
         problemKind?: ProblemKind;
         solverKind?: SolverKind;
-        gdAlpha?: number;
         maxIter?: number;
     }) {
         if (patch.problemKind !== undefined && patch.problemKind !== problemKind) {
             problemKind = patch.problemKind;
-            // Re-center start and reset α default for the new problem.
+            // Re-center start and reset the α default for the new problem.
             const d = problemByKind(problemKind).domain;
             startPoint = {
                 x: d.xmin + 0.25 * (d.xmax - d.xmin),
                 y: d.ymin + 0.75 * (d.ymax - d.ymin),
             };
-            gdAlpha = problemByKind(problemKind).gdAlphaDefault;
+            if ('gdAlpha' in optionValues) {
+                optionValues = {
+                    ...optionValues,
+                    gdAlpha: problemByKind(problemKind).gdAlphaDefault,
+                };
+            }
         }
-        if (patch.solverKind !== undefined) solverKind = patch.solverKind;
-        if (patch.gdAlpha !== undefined) gdAlpha = patch.gdAlpha;
+        if (patch.solverKind !== undefined && patch.solverKind !== solverKind) {
+            solverKind = patch.solverKind;
+            // Reset options to the new solver's schema defaults.
+            optionValues = initOptionValues(solverKind, problemKind);
+        }
         if (patch.maxIter !== undefined) maxIter = patch.maxIter;
+    }
+
+    function handleOptionChange(id: string, value: string | number) {
+        optionValues = { ...optionValues, [id]: value };
     }
 </script>
 
@@ -200,17 +237,23 @@
                     <Controls
                         {problemKind}
                         {solverKind}
-                        {gdAlpha}
+                        solverOptions={solverMeta.options}
+                        {optionValues}
                         {maxIter}
                         {startPoint}
-                        usesAlpha={solverMeta.usesAlpha}
                         onChange={handleControlChange}
+                        onOptionChange={handleOptionChange}
                     />
                 </div>
                 <div
                     class="bg-slate-100 dark:bg-slate-900 rounded-lg p-3 h-56 lg:flex-1"
                 >
-                    <CostChart {costs} {reason} theme={theme.effective} />
+                    <CostChart
+                        {costs}
+                        fStar={problemMeta.fStar}
+                        {reason}
+                        theme={theme.effective}
+                    />
                 </div>
             </aside>
         </div>

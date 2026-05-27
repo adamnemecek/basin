@@ -75,12 +75,14 @@ $effect(() => {
 
     const run = new Run(
         problem.kind,
-        SolverKind.GradientDescentConstant,
+        SolverKind.GradientDescent,
         sx,
         sy,
-        a,
-        b,
+        // Constant-step gradient descent with momentum β; no early-stop
+        // (NaN cost target disables it — run the full max_iter).
+        { gdLineSearch: 'constant', gdAlpha: a, gdBeta: b },
         mi,
+        Number.NaN,
     );
     activeRun = run;
     trajectory = run.trajectoryXy();
