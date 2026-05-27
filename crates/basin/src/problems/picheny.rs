@@ -4,7 +4,7 @@
 //! f̄(x) = (1 / 2.427) · (ln(GP(x̄)) − 8.693),   x̄ᵢ = 4·xᵢ − 2
 //! ```
 //!
-//! where `GP` is the standard [Goldstein-Price](super::goldstein_price)
+//! where `GP` is the standard [Goldstein-Price](super::GoldsteinPrice)
 //! function. Introduced by Picheny, Wagner & Ginsbourger (2013) to put a
 //! standard benchmark on the unit square `[0, 1]²` and tame Goldstein-Price's
 //! enormous dynamic range: the natural-log transform compresses the ~10⁶ spread

@@ -28,6 +28,11 @@ generic over the linear-algebra backend (`Vec<f64>`, nalgebra, ndarray, faer).
 - `cargo test`: run tests.
 - `cargo test <name>`: run a single test by name.
 - `cargo clippy --workspace --all-targets --all-features -- -D warnings`: lint.
+- `cargo doc --no-deps -p basin --all-features`: build the docs. CI runs this
+  and `lib.rs` has `#![deny(rustdoc::broken_intra_doc_links)]`, so a broken or
+  ambiguous intra-doc link (e.g. `[`Foo`](super::foo)` where `foo` is both a
+  module and a function — link the struct `super::Foo` instead) fails the
+  build. Run this before committing any rustdoc changes.
 - `cargo fmt`: format (also enforced by pre-commit).
 
 The dev environment is provided by `devenv.nix` (loaded automatically via

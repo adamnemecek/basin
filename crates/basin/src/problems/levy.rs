@@ -9,7 +9,7 @@
 //!
 //! Multimodal but smooth: the affine `wᵢ` reparameterization places the global
 //! minimum at `x = (1, …, 1)` with `f = 0`, surrounded by many local minima
-//! from the `sin²` ripple terms. Unlike [`Ackley`](super::ackley), Levy is
+//! from the `sin²` ripple terms. Unlike [`Ackley`](super::Ackley), Levy is
 //! differentiable everywhere, so an analytic gradient is provided (a local
 //! method started near the optimum converges; from far away it stalls in a
 //! ripple). Standard search domain is `[−10, 10]^n`.

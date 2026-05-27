@@ -10,7 +10,7 @@
 //! cosine term studs the whole surface with a regular lattice of shallow local
 //! minima. The `√(Σ xᵢ²)` term has a cusp at the origin, so the function is
 //! **not differentiable at its own minimum** — basin treats it as cost-only,
-//! for global / derivative-free solvers (cf. [`Rastrigin`](super::rastrigin)).
+//! for global / derivative-free solvers (cf. [`Rastrigin`](super::Rastrigin)).
 //! Standard search domain is `[−32.768, 32.768]^n` (Bäck 1996).
 
 use core::marker::PhantomData;
