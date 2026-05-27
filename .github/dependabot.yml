@@ -12,3 +12,7 @@ updates:
     directory: "/tools/"
     schedule:
       interval: "weekly"
+  - package-ecosystem: "npm"
+    directory: "/web/"
+    schedule:
+      interval: "weekly"
