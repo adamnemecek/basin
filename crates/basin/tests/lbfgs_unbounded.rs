@@ -130,6 +130,42 @@ fn rosenbrock_faer() {
     );
 }
 
+#[cfg(feature = "ndarray")]
+#[test]
+fn rosenbrock_ndarray() {
+    use ndarray::{array, Array1};
+
+    struct Rosen;
+    impl CostFunction for Rosen {
+        type Param = Array1<f64>;
+        type Output = f64;
+        fn cost(&self, x: &Array1<f64>) -> f64 {
+            rosenbrock::cost(x[0], x[1])
+        }
+    }
+    impl Gradient for Rosen {
+        type Param = Array1<f64>;
+        type Gradient = Array1<f64>;
+        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+            let (a, b) = rosenbrock::grad(x[0], x[1]);
+            array![a, b]
+        }
+    }
+
+    let state = LbfgsState::new(array![-1.2, 1.0], 5);
+    let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
+        .terminate_on(MaxIter(200))
+        .terminate_on(GradientTolerance(1e-8))
+        .run();
+
+    assert!(result.cost() < 1e-10, "cost = {}", result.cost());
+    assert!(
+        (result.param()[0] - 1.0).abs() < 1e-4 && (result.param()[1] - 1.0).abs() < 1e-4,
+        "x = {:?}",
+        result.param()
+    );
+}
+
 /// `LBFGSB` must remain a transparent alias for `LBFGS<Bounded>`. Any
 /// drift here would break the iteration-parity test's import and every
 /// other downstream call site that holds an `LBFGSB<...>` value.

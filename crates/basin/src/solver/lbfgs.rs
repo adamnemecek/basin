@@ -30,7 +30,8 @@
 //!   Cholesky and triangular solves).
 //! - [`backend`] — the [`backend::AsFloatSliceMut`] trait that lets
 //!   the slice-based numerics work generically over `Vec<f64>`,
-//!   `nalgebra::DVector<f64>`, and `faer::Col<f64>`.
+//!   `nalgebra::DVector<f64>`, `faer::Col<f64>`, and
+//!   `ndarray::Array1<f64>`.
 
 pub(crate) mod backend;
 pub(crate) mod cauchy;
@@ -130,9 +131,10 @@ use self::subsm::subsm;
 /// Generic over any parameter type implementing
 /// [`backend::AsFloatSliceMut`] + [`Clone`] + [`Dot`] +
 /// [`ScaledAdd<f64>`]. Built-in impls cover `Vec<f64>`,
-/// `nalgebra::DVector<f64>` (feature `nalgebra`), and `faer::Col<f64>`
-/// (feature `faer`). Other backends can implement the trait if their
-/// storage is contiguous.
+/// `nalgebra::DVector<f64>` (feature `nalgebra`), `faer::Col<f64>`
+/// (feature `faer`), and `ndarray::Array1<f64>` (feature `ndarray`).
+/// Other backends can implement the trait if their storage is
+/// contiguous.
 pub struct LBFGS<Mode = Bounded, S = MoreThuente> {
     line_search: S,
     /// Fortran `dr ≤ epsmch · ddum` curvature-skip threshold

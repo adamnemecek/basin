@@ -3,8 +3,9 @@
 //! L-BFGS-B's inner numerics (cauchy, subsm, formk, compact-form
 //! helpers) all operate on `&[f64]` / `&mut [f64]`. To stay generic
 //! over the user-chosen parameter backend (`Vec<f64>`, nalgebra
-//! `DVector<f64>`, faer `Col<f64>`), the top-level solver views each
-//! vector as a contiguous f64 slice at iteration boundaries. The two
+//! `DVector<f64>`, faer `Col<f64>`, ndarray `Array1<f64>`), the
+//! top-level solver views each vector as a contiguous f64 slice at
+//! iteration boundaries. The two
 //! tiny traits below capture that view; impls are per-backend and
 //! `pub(crate)` to keep them off the public API surface.
 //!
@@ -64,5 +65,18 @@ impl AsFloatSliceMut for faer::Col<f64> {
         self.try_as_col_major_mut()
             .expect("faer::Col<f64> backing storage must be col-major contiguous")
             .as_slice_mut()
+    }
+}
+
+#[cfg(feature = "ndarray")]
+impl AsFloatSlice for ndarray::Array1<f64> {
+    fn as_float_slice(&self) -> &[f64] {
+        self.as_slice().expect("Array1 is contiguous")
+    }
+}
+#[cfg(feature = "ndarray")]
+impl AsFloatSliceMut for ndarray::Array1<f64> {
+    fn as_float_slice_mut(&mut self) -> &mut [f64] {
+        self.as_slice_mut().expect("Array1 is contiguous")
     }
 }
