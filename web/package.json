@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:snippets": "tsx scripts/check-snippets.ts",
-    "collect:benchmarks": "tsx scripts/collect-benchmarks.ts"
+    "collect:benchmarks": "tsx scripts/collect-benchmarks.ts",
+    "collect:competitors": "tsx scripts/collect-competitors.ts"
   },
   "devDependencies": {
     "@iconify-json/lucide": "^1.2.109",

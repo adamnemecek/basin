@@ -223,3 +223,19 @@ tasks:
     cmds:
       - cargo bench --features nalgebra,ndarray,faer --bench solver_backends
       - cd web && pnpm collect:benchmarks
+
+  bench:competitors:
+    desc: "Run the competitor-axis trace harness and refresh the /benchmarks/competitors data."
+    summary: |
+      Runs the `trace` harness — basin vs argmin on GD / Nelder-Mead / L-BFGS
+      over Rosenbrock, recording suboptimality against wall-clock time at every
+      iteration — then wraps the traces with run metadata into
+      web/src/lib/data/competitor-benchmarks.json, which the
+      /benchmarks/competitors page imports.
+
+      Timing-sensitive: run on an otherwise-idle machine and commit the
+      regenerated JSON. Deliberately not wired into CI — shared runners are too
+      noisy for trustworthy timings.
+    cmds:
+      - cargo run -p competitor-bench --release --bin trace > target/competitor-traces.json
+      - cd web && pnpm collect:competitors

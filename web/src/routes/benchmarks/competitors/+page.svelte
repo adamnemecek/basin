@@ -1,0 +1,123 @@
+<script lang="ts">
+import { base } from "$app/paths";
+import ConvergenceChart from "$lib/ConvergenceChart.svelte";
+import Seo from "$lib/Seo.svelte";
+import {
+    COMPETITOR_BENCHMARKS as data,
+    COMPETITOR_CASES,
+    LIBRARY_COLORS,
+    LIBRARY_LABELS,
+    LIBRARY_ORDER,
+    PROBLEM_LABELS,
+    SOLVER_LABELS,
+    librariesFor,
+    type Solver,
+} from "$lib/data/competitors";
+
+// One convergence trace per library present for a case: suboptimality vs
+// wall-clock time, the curve each library actually walked.
+function seriesFor(solver: Solver, problem: string) {
+    return librariesFor(solver, problem).map((library) => ({
+        label: LIBRARY_LABELS[library],
+        color: LIBRARY_COLORS[library],
+        points:
+            data.results.find(
+                (r) =>
+                    r.solver === solver &&
+                    r.problem === problem &&
+                    r.library === library,
+            )?.points ?? [],
+    }));
+}
+</script>
+
+<Seo
+    title="Basin — competitor benchmarks"
+    description="basin versus established Rust optimization crates such as argmin on matched problems, as suboptimality-vs-time convergence traces."
+/>
+
+<section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
+    <p class="text-sm text-slate-500 dark:text-slate-400">
+        <a
+            class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
+            href="{base}/benchmarks/">Benchmarks</a
+        >
+        <span class="text-slate-400 dark:text-slate-600">/</span> Competitors
+    </p>
+    <h1 class="mt-3 text-3xl md:text-4xl font-semibold tracking-tight">
+        Competitors — basin vs argmin, convergence over time
+    </h1>
+    <p class="mt-3 max-w-3xl text-slate-600 dark:text-slate-300">
+        basin and <a
+            class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
+            href="https://argmin-rs.org/"
+            target="_blank"
+            rel="noreferrer">argmin</a
+        >
+        solving the same problem from the same start with matched configuration.
+        Because the two don't share an implementation — argmin's Nelder–Mead, GD,
+        and L-BFGS take different paths and have different per-iteration cost — a
+        single mean solve time would hide the difference. Instead each chart
+        plots <strong>suboptimality</strong> <code class="font-mono">f(x) − f*</code
+        >
+        against <strong>wall-clock time</strong> on log–log axes: how far down the
+        objective each library gets, and how long it spends getting there. Lower
+        and further left is better.
+    </p>
+
+    <!-- Shared legend for the charts. -->
+    <div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm">
+        {#each LIBRARY_ORDER as library}
+            <span class="inline-flex items-center gap-2">
+                <span
+                    class="inline-block h-2.5 w-2.5 rounded-full"
+                    style="background: {LIBRARY_COLORS[library]}"
+                ></span>
+                <span class="font-mono text-slate-600 dark:text-slate-300">
+                    {LIBRARY_LABELS[library]}
+                </span>
+            </span>
+        {/each}
+    </div>
+
+    <div class="mt-6 grid gap-6 lg:grid-cols-2">
+        {#each COMPETITOR_CASES as c}
+            <div
+                class="rounded-xl border border-slate-200 dark:border-slate-800 p-5"
+            >
+                <h3 class="text-sm font-semibold">
+                    {SOLVER_LABELS[c.solver]}
+                    <span class="text-slate-400 dark:text-slate-500">·</span>
+                    {PROBLEM_LABELS[c.problem]}
+                </h3>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {c.blurb}
+                </p>
+                <div class="mt-3">
+                    <ConvergenceChart
+                        series={seriesFor(c.solver, c.problem)}
+                        ariaLabel={`${SOLVER_LABELS[c.solver]} on ${PROBLEM_LABELS[c.problem]}: suboptimality vs wall-clock time, one line per library`}
+                    />
+                </div>
+            </div>
+        {/each}
+    </div>
+
+    <p class="mt-8 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
+        Measured {data.generatedAt} on {data.env.cpu}
+        ({data.env.os}/{data.env.arch}). Both libraries run on the
+        <code class="font-mono">Vec&lt;f64&gt;</code> backend, from the classic
+        Rosenbrock start, to a {data.iterations}-iteration cap (a cap — the
+        quasi-Newton case converges first). Each point is the median wall-clock
+        time per iteration over repeated runs; the solvers are deterministic, so
+        only the timing varies. Absolute times are machine-specific — compare
+        the curves within a chart, not across machines.
+    </p>
+
+    <p class="mt-6 text-sm text-slate-500 dark:text-slate-400">
+        To watch basin's solvers converge interactively, try the <a
+            class="underline decoration-dotted hover:text-slate-900 dark:hover:text-slate-100"
+            href="{base}/visualizer/">visualizer</a
+        >.
+    </p>
+</section>
