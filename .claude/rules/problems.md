@@ -1,7 +1,13 @@
-# AGENTS.md — `src/problems/`
+---
+description: Conventions for the optimization test-problem corpus under crates/basin/src/problems/ (file layout, wrapper struct, per-backend impls, ProblemSpec, tests, wiring).
+paths:
+  - "crates/basin/src/problems/**"
+---
 
-Conventions for the optimization test-problem corpus. Auto-loads when
-working under this directory. See the parent `AGENTS.md` for crate-wide
+# Test-problem corpus conventions
+
+Conventions for the optimization test-problem corpus
+(`crates/basin/src/problems/`). See the root `AGENTS.md` for crate-wide
 tenets.
 
 For the *workflow* of adding a brand-new problem from scratch, prefer the
@@ -123,7 +129,7 @@ In a single pass:
    - `cargo build --target wasm32-unknown-unknown --no-default-features`
 
 All four must pass. The wasm builds ensure the new problem doesn't pull in
-anything that breaks the WASM hard constraint (see crate-root `AGENTS.md`).
+anything that breaks the WASM hard constraint (see root `AGENTS.md`).
 
 ### Web visualizer (when 2D-friendly)
 

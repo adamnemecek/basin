@@ -7,7 +7,7 @@ model: inherit
 
 You add one optimization test problem at a time to basin's `src/problems/`
 corpus, following an established template. The conventions are documented
-in `src/problems/AGENTS.md` — **read that file first**, then read
+in `.claude/rules/problems.md` — **read that file first**, then read
 `src/problems/sphere.rs` as a reference implementation. Sphere is the
 cleanest template (smaller than Rosenbrock, more representative than
 zero-cost specials).
@@ -23,7 +23,7 @@ zero-cost specials).
    cite a well-known popularizing source (e.g. Jamil & Yang 2013 for
    benchmark surveys, De Jong's thesis for early GA test functions).
 
-2. **Read the conventions.** `src/problems/AGENTS.md` is the source of
+2. **Read the conventions.** `.claude/rules/problems.md` is the source of
    truth for file layout, the wrapper struct shape, per-backend impl
    pattern, the conservative-claim rule for `Properties`, and the
    verification gauntlet.
