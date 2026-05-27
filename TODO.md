@@ -30,6 +30,25 @@ the previous lands.
       Keep deferring a `Constraint` supertrait — box (projection),
       linear-inequality (barrier), and linear-equality (penalty+multipliers)
       still share no feasibility op beyond accessors (tenet 4).
+- [ ] **Broaden backend coverage (tenet 5).** Ongoing: most solvers should run
+      on most backends (`Vec<f64>`, nalgebra, ndarray, faer), gated only by
+      honest implementability (`.claude/rules/backends.md`), not by which
+      backend it is. The canonical per-solver record is the matrix in
+      `web/src/routes/docs/solvers/+page.svx` plus each solver's "Backends"
+      doc note — this entry is just the roadmap pointer.
+      Recently landed: `BFGS` on `Vec<f64>` + faer; `LBFGS`/`LBFGSB` on ndarray
+      (now all four backends); `CmaEs`/`BoundedCmaEs` on `Vec<f64>` via the
+      pure-Rust cyclic-Jacobi eigensolver (`dense_eig.rs`).
+      Remaining honest (pure-Rust, no BLAS) gaps: `BFGS` on ndarray (rank-one
+      update ops on `Array2` — the last `✗` in its row); `CmaEs`/`BoundedCmaEs`
+      on ndarray (`SymmetricEigen` on `Array2`; the Jacobi solver already
+      exists, so it is a wiring/port job); the least-squares family
+      (`GaussNewton`/`LevenbergMarquardt`/`Trf`) on `Vec<f64>` + ndarray (a
+      pure-Rust `LinearSolveLstsq`/QR on `DenseMatrix` + `Array2`, explicitly
+      blessed by the backends rule); the memetic family
+      (`CmaInject`/`BoundedCmaInject`/`MaLsChCma`) on `Vec<f64>` + ndarray
+      follows once the CMA family reaches them. No permanent (BLAS-only) gaps
+      recorded yet.
 - [x] **Made `BarrierMethod` / `AugmentedLagrangianMethod` inner-solver-agnostic.**
       Both now bound `So: WarmStart<V> + for<'a> Solver<Adapter<'a, P>,
       So::State>` with `So::State: GradientState<Param=V>` (was hard-wired to
@@ -56,11 +75,11 @@ the previous lands.
       (`BFGS` and unbounded `LBFGS` inners) prove a non-`BasicState` inner
       converges to the same optimum as the `GradientDescent` inner.
 - [ ] **Generalize over scalar (`f64` → `F: Float`).** Per the
-      provisional-choices section in `AGENTS.md`. The first stochastic solver
-      (S7 `RandomSearch`) landed without forcing this --- the bound-boilerplate
-      cost of preemptive generality still outweighs the refactor. Trigger now
-      reads "a real f32 use case appears" or "the second stochastic solver needs
-      it" (CMA-ES in S8 will tell us).
+      provisional-choices section in `AGENTS.md`. Neither the first stochastic
+      solver (S7 `RandomSearch`) nor CMA-ES (S8) forced this --- both landed on
+      `f64`, and the bound-boilerplate cost of preemptive generality still
+      outweighs the refactor. Trigger now reads "a real f32 use case appears" or
+      "a later stochastic solver needs it".
 
 ## Benchmarks
 
