@@ -8,8 +8,8 @@
  */
 import rawData from './backend-benchmarks.json';
 
-/** Solvers that run on all four backends (the backend axis). */
-export type Solver = 'gd' | 'nm' | 'lbfgs';
+/** Solvers exercised by the curated backend cases. */
+export type Solver = 'gd' | 'nm' | 'lbfgs' | 'bfgs' | 'cmaes' | 'lm' | 'gn';
 /** Linear-algebra backends. */
 export type Backend = 'vec' | 'nalgebra' | 'ndarray' | 'faer';
 
@@ -36,14 +36,94 @@ export interface BackendBenchmarks {
 
 export const BACKEND_BENCHMARKS = rawData as BackendBenchmarks;
 
-export const SOLVER_ORDER: Solver[] = ['gd', 'nm', 'lbfgs'];
+export const SOLVER_ORDER: Solver[] = ['gd', 'nm', 'lbfgs', 'bfgs', 'cmaes', 'lm', 'gn'];
 export const BACKEND_ORDER: Backend[] = ['vec', 'nalgebra', 'ndarray', 'faer'];
 
 export const SOLVER_LABELS: Record<Solver, string> = {
     gd: 'Gradient Descent',
     nm: 'Nelder–Mead',
     lbfgs: 'L-BFGS',
+    bfgs: 'BFGS',
+    cmaes: 'CMA-ES',
+    lm: 'Levenberg–Marquardt',
+    gn: 'Gauss–Newton',
 };
+
+/** Display names for the problems referenced by the curated cases. */
+export const PROBLEM_LABELS: Record<string, string> = {
+    rosenbrock: 'Rosenbrock',
+    ackley: 'Ackley',
+    styblinski: 'Styblinski–Tang',
+    levy: 'Levy',
+    rastrigin: 'Rastrigin',
+    sparselsq: 'Sparse least-squares',
+};
+
+/** One curated (solver, problem) benchmark case. */
+export interface Case {
+    solver: Solver;
+    problem: string;
+    /** One line on what the case demonstrates — especially *why* a backend is
+     * present or absent. Shown under the card title. */
+    blurb: string;
+}
+
+/**
+ * The curated case set, in display order. Chosen so backend coverage *narrows*
+ * as the solver's linear-algebra needs grow. The backends each case actually
+ * ran on are derived from the data via {@link backendsFor} — never hardcoded —
+ * so a missing backend simply doesn't render. Keep in sync with `CASE_ORDER`
+ * in `scripts/collect-benchmarks.ts` and the bench groups in
+ * `solver_backends.rs`.
+ */
+export const CASES: Case[] = [
+    {
+        solver: 'gd',
+        problem: 'rosenbrock',
+        blurb: 'First-order, vector tier only — runs on all four backends.',
+    },
+    {
+        solver: 'nm',
+        problem: 'ackley',
+        blurb: 'Derivative-free simplex, vector tier only — all four backends on a multimodal landscape.',
+    },
+    {
+        solver: 'lbfgs',
+        problem: 'styblinski',
+        blurb: 'Quasi-Newton in compact form (no dense matrix) — all four backends.',
+    },
+    {
+        solver: 'bfgs',
+        problem: 'levy',
+        blurb: 'Dense O(n²) rank-2 inverse-Hessian update. No ndarray: Array2 implements neither the general rank-1 update nor a matrix identity.',
+    },
+    {
+        solver: 'cmaes',
+        problem: 'rastrigin',
+        blurb: 'Stochastic, multimodal; a per-generation symmetric eigendecomposition. No ndarray (no eigensolver); Vec works via a hand-rolled cyclic-Jacobi solver.',
+    },
+    {
+        solver: 'lm',
+        problem: 'sparselsq',
+        blurb: 'Sparse least-squares: damped normal equations with a sparse JᵀJ and sparse Cholesky. Only nalgebra and faer carry sparse matrices, so Vec/ndarray are out.',
+    },
+    {
+        solver: 'gn',
+        problem: 'sparselsq',
+        blurb: 'Undamped Gauss–Newton on the same sparse, zero-residual design (full column rank ⇒ JᵀJ stays SPD). nalgebra + faer only.',
+    },
+];
+
+/** Backends a case actually has data for, in canonical order. Drives both the
+ * chart series and the bar rows, so coverage gaps render straight from the
+ * data. */
+export function backendsFor(solver: Solver, problem: string): Backend[] {
+    return BACKEND_ORDER.filter((b) =>
+        BACKEND_BENCHMARKS.results.some(
+            (r) => r.solver === solver && r.problem === problem && r.backend === b,
+        ),
+    );
+}
 
 export const BACKEND_LABELS: Record<Backend, string> = {
     vec: 'Vec<f64>',

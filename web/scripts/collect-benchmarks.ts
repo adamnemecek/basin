@@ -3,9 +3,10 @@
  * `/benchmarks` page imports.
  *
  * Reads criterion's output under `target/criterion/`, keeps only the
- * `{gd,nm,lbfgs}_rosenbrock_n*` groups produced by the `solver_backends`
- * bench (ignoring `lm_*` / competitor groups), and writes the headline
- * timings to `web/src/lib/data/backend-benchmarks.json`.
+ * `{solver}_{problem}_n*` groups produced by the `solver_backends` bench
+ * (ignoring the `lm_backends` microbench groups — `lm_gram` / `lm_full_solve`
+ * / … — and competitor groups), and writes the headline timings to
+ * `web/src/lib/data/backend-benchmarks.json`.
  *
  * Run with: `npm run collect:benchmarks` (uses tsx). Run the bench first:
  *   cargo bench --features nalgebra,ndarray,faer --bench solver_backends
@@ -26,11 +27,30 @@ const outFile = resolve(scriptDir, '..', 'src', 'lib', 'data', 'backend-benchmar
 /** Iteration budget the bench runs each solve for (`MAX_ITERS`). */
 const ITERATIONS = 200;
 
-const SOLVER_ORDER = ['gd', 'nm', 'lbfgs'] as const;
+const SOLVER_ORDER = ['gd', 'nm', 'lbfgs', 'bfgs', 'cmaes', 'lm', 'gn'] as const;
 const BACKEND_ORDER = ['vec', 'nalgebra', 'ndarray', 'faer'] as const;
 
 type Solver = (typeof SOLVER_ORDER)[number];
 type Backend = (typeof BACKEND_ORDER)[number];
+
+/**
+ * Curated (solver, problem) cases, in page order. Drives the deterministic
+ * sort and the expected-count sanity check. Keep in sync with `CASES` in
+ * `src/lib/data/benchmarks.ts` and the bench groups in `solver_backends.rs`.
+ * `count` is the expected `dims × backends` rows for that case.
+ */
+const CASE_ORDER: { solver: Solver; problem: string; count: number }[] = [
+    { solver: 'gd', problem: 'rosenbrock', count: 3 * 4 },
+    { solver: 'nm', problem: 'ackley', count: 3 * 4 },
+    { solver: 'lbfgs', problem: 'styblinski', count: 3 * 4 },
+    { solver: 'bfgs', problem: 'levy', count: 3 * 3 },
+    { solver: 'cmaes', problem: 'rastrigin', count: 2 * 3 },
+    { solver: 'lm', problem: 'sparselsq', count: 3 * 2 },
+    { solver: 'gn', problem: 'sparselsq', count: 3 * 2 },
+];
+
+const caseIndex = (solver: Solver, problem: string) =>
+    CASE_ORDER.findIndex((c) => c.solver === solver && c.problem === problem);
 
 type BenchResult = {
     solver: Solver;
@@ -66,7 +86,8 @@ function findEstimates(dir: string, out: string[] = []): string[] {
     return out;
 }
 
-const GROUP_RE = /^(gd|nm|lbfgs)_(rosenbrock)_n(\d+)$/;
+const GROUP_RE =
+    /^(gd|nm|lbfgs|bfgs|cmaes|lm|gn)_(rosenbrock|ackley|styblinski|levy|rastrigin|sparselsq)_n(\d+)$/;
 
 const results: BenchResult[] = [];
 
@@ -82,7 +103,13 @@ for (const estimatesPath of findEstimates(criterionDir)) {
     };
 
     const match = GROUP_RE.exec(bench.group_id);
-    if (!match) continue; // ignore lm_* / competitor groups
+    if (!match) continue; // ignore lm_backends microbench / competitor groups
+
+    const solver = match[1] as Solver;
+    const problem = match[2];
+    // Skip any group not in the curated set — robust to stale criterion dirs
+    // left by an earlier bench layout (e.g. a previous `nm_rosenbrock_n*`).
+    if (caseIndex(solver, problem) < 0) continue;
 
     const backend = (bench.value_str ?? bench.function_id ?? '') as Backend;
     if (!BACKEND_ORDER.includes(backend)) continue;
@@ -95,8 +122,8 @@ for (const estimatesPath of findEstimates(criterionDir)) {
     };
 
     results.push({
-        solver: match[1] as Solver,
-        problem: match[2],
+        solver,
+        problem,
         n: Number(match[3]),
         backend,
         ns: est.mean.point_estimate,
@@ -113,10 +140,11 @@ if (results.length === 0) {
     process.exit(1);
 }
 
-// Deterministic order so the committed JSON has a stable diff.
+// Deterministic order (curated case → n → backend) so the committed JSON has
+// a stable diff.
 results.sort(
     (a, b) =>
-        SOLVER_ORDER.indexOf(a.solver) - SOLVER_ORDER.indexOf(b.solver) ||
+        caseIndex(a.solver, a.problem) - caseIndex(b.solver, b.problem) ||
         a.n - b.n ||
         BACKEND_ORDER.indexOf(a.backend) - BACKEND_ORDER.indexOf(b.backend),
 );
@@ -135,11 +163,12 @@ const data = {
 mkdirSync(dirname(outFile), { recursive: true });
 writeFileSync(outFile, `${JSON.stringify(data, null, 2)}\n`);
 
-const expected = SOLVER_ORDER.length * 3 * BACKEND_ORDER.length; // solvers × dims × backends
+// Sum of each curated case's dims × backends (mixed across cases).
+const expected = CASE_ORDER.reduce((sum, c) => sum + c.count, 0);
 console.log(`✓ wrote ${results.length} result(s) to ${outFile}`);
 if (results.length !== expected) {
     console.warn(
-        `  note: expected ${expected} (3 solvers × 3 dims × 4 backends); ` +
+        `  note: expected ${expected} rows across ${CASE_ORDER.length} curated cases; ` +
             'is the bench run complete?',
     );
 }

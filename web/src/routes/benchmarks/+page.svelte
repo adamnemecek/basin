@@ -7,37 +7,37 @@ import {
     BACKEND_COLORS,
     BACKEND_LABELS,
     BACKEND_ORDER,
+    CASES,
+    PROBLEM_LABELS,
     SOLVER_LABELS,
-    SOLVER_ORDER,
-    formatDuration,
-    type Backend,
+    backendsFor,
     type Solver,
 } from "$lib/data/benchmarks";
 
-// Distinct Rosenbrock dimensions present in the data, ascending.
-const dims = [...new Set(data.results.map((r) => r.n))].sort((a, b) => a - b);
-
-function cell(solver: Solver, n: number, backend: Backend) {
-    return data.results.find(
-        (r) => r.solver === solver && r.n === n && r.backend === backend,
-    );
+// Distinct dimensions present for a (solver, problem) case, ascending.
+function dimsFor(solver: Solver, problem: string): number[] {
+    return [
+        ...new Set(
+            data.results
+                .filter((r) => r.solver === solver && r.problem === problem)
+                .map((r) => r.n),
+        ),
+    ].sort((a, b) => a - b);
 }
 
-// Fastest (minimum) mean time in a (solver, n) row — the baseline the
-// relative-speed bars and ratios are measured against.
-function rowMin(solver: Solver, n: number): number {
-    return Math.min(
-        ...BACKEND_ORDER.map((b) => cell(solver, n, b)?.ns ?? Infinity),
-    );
-}
-
-// One line per backend (time vs n) for a solver's chart.
-function seriesFor(solver: Solver) {
-    return BACKEND_ORDER.map((backend) => ({
+// One line per backend present (time vs n) for a case's chart. Backends with
+// no data for the case (the intentional coverage gaps) simply don't appear.
+function seriesFor(solver: Solver, problem: string) {
+    return backendsFor(solver, problem).map((backend) => ({
         label: BACKEND_LABELS[backend],
         color: BACKEND_COLORS[backend],
         points: data.results
-            .filter((r) => r.solver === solver && r.backend === backend)
+            .filter(
+                (r) =>
+                    r.solver === solver &&
+                    r.problem === problem &&
+                    r.backend === backend,
+            )
             .map((r) => ({ n: r.n, ns: r.ns })),
     }));
 }
@@ -47,7 +47,7 @@ const axes = [
     {
         title: "Backends",
         status: "Live",
-        body: "The same solver across Vec, nalgebra, ndarray, and faer — isolating the cost of the linear-algebra layer.",
+        body: "A curated set of solver + problem pairs across Vec, nalgebra, ndarray, and faer — isolating the cost of the linear-algebra layer, and showing where a backend can't run a solver at all.",
     },
     {
         title: "Solvers",
@@ -64,7 +64,7 @@ const axes = [
 
 <Seo
     title="Basin — benchmarks"
-    description="Backend benchmarks for the Basin optimization library: the same solver across the Vec, nalgebra, ndarray, and faer linear-algebra backends."
+    description="Backend benchmarks for the Basin optimization library: a curated set of solver and problem pairs across the Vec, nalgebra, ndarray, and faer linear-algebra backends."
 />
 
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
@@ -102,14 +102,17 @@ const axes = [
     <h2 class="mt-14 text-2xl font-semibold tracking-tight">
         Backends — same solver, different linear algebra
     </h2>
-    <p class="mt-3 max-w-2xl text-slate-600 dark:text-slate-300">
-        Each chart runs one solver on Rosenbrock to a fixed iteration budget,
-        varying only the linear-algebra backend, over a range of problem sizes
-        <code class="font-mono">n</code>. Both axes are logarithmic; times are
-        criterion's mean per full solve, so lower is better.
+    <p class="mt-3 max-w-3xl text-slate-600 dark:text-slate-300">
+        A curated set of (solver, problem) cases, each run to a fixed iteration
+        budget varying only the linear-algebra backend. Scaling cases plot time
+        against problem size <code class="font-mono">n</code> on log–log axes;
+        fixed-size cases show one bar per backend. As a solver needs richer
+        linear algebra, fewer backends can run it — those gaps are intentional,
+        and differ in cause. Times are criterion's mean per full solve, so
+        lower is better.
     </p>
 
-    <!-- Shared legend for the three charts. -->
+    <!-- Shared legend for the charts and bars; the full backend palette. -->
     <div class="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm">
         {#each BACKEND_ORDER as backend}
             <span class="inline-flex items-center gap-2">
@@ -124,110 +127,25 @@ const axes = [
         {/each}
     </div>
 
-    <div class="mt-6 grid gap-6 lg:grid-cols-3">
-        {#each SOLVER_ORDER as solver}
-            <div
-                class="rounded-xl border border-slate-200 dark:border-slate-800 p-4"
-            >
-                <h3 class="text-sm font-semibold">{SOLVER_LABELS[solver]}</h3>
-                <div class="mt-2">
-                    <BackendChart
-                        series={seriesFor(solver)}
-                        {dims}
-                        ariaLabel={`${SOLVER_LABELS[solver]}: solve time vs problem size, one line per backend`}
-                    />
-                </div>
-            </div>
-        {/each}
-    </div>
-
-    <h3 class="mt-14 text-lg font-semibold tracking-tight">
-        Exact timings
-    </h3>
-    <p class="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
-        The same data with per-cell figures: criterion's mean and the speed
-        relative to the fastest backend in each row.
-    </p>
-
-    <div class="mt-6 space-y-10">
-        {#each SOLVER_ORDER as solver}
+    <div class="mt-6 grid gap-6 lg:grid-cols-2">
+        {#each CASES as c}
             <div
                 class="rounded-xl border border-slate-200 dark:border-slate-800 p-5"
             >
-                <h3 class="font-semibold">{SOLVER_LABELS[solver]}</h3>
-                <div class="mt-4 overflow-x-auto">
-                    <table class="w-full text-sm border-collapse">
-                        <thead>
-                            <tr
-                                class="text-left text-slate-500 dark:text-slate-400"
-                            >
-                                <th class="py-2 pr-4 font-medium">n</th>
-                                {#each BACKEND_ORDER as backend}
-                                    <th class="py-2 px-4 font-mono font-medium">
-                                        {BACKEND_LABELS[backend]}
-                                    </th>
-                                {/each}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {#each dims as n}
-                                {@const fastest = rowMin(solver, n)}
-                                <tr
-                                    class="border-t border-slate-100 dark:border-slate-800/70 align-top"
-                                >
-                                    <td
-                                        class="py-3 pr-4 font-mono text-slate-700 dark:text-slate-300"
-                                        >{n}</td
-                                    >
-                                    {#each BACKEND_ORDER as backend}
-                                        {@const c = cell(solver, n, backend)}
-                                        <td
-                                            class="py-3 px-4 {c && c.ns ===
-                                            fastest
-                                                ? 'bg-emerald-50/60 dark:bg-emerald-500/10'
-                                                : ''}"
-                                        >
-                                            {#if c}
-                                                <div
-                                                    class="font-mono {c.ns ===
-                                                    fastest
-                                                        ? 'font-semibold text-emerald-700 dark:text-emerald-400'
-                                                        : 'text-slate-700 dark:text-slate-200'}"
-                                                >
-                                                    {formatDuration(c.ns)}
-                                                </div>
-                                                <div
-                                                    class="mt-1.5 h-1.5 w-full max-w-28 rounded-full bg-slate-100 dark:bg-slate-800"
-                                                >
-                                                    <div
-                                                        class="h-full rounded-full {c.ns ===
-                                                        fastest
-                                                            ? 'bg-emerald-500'
-                                                            : 'bg-slate-400 dark:bg-slate-500'}"
-                                                        style="width: {(fastest /
-                                                            c.ns) *
-                                                            100}%"
-                                                    ></div>
-                                                </div>
-                                                <div
-                                                    class="mt-1 text-xs text-slate-400 dark:text-slate-500"
-                                                >
-                                                    {c.ns === fastest
-                                                        ? "fastest"
-                                                        : `${(c.ns / fastest).toFixed(2)}× slower`}
-                                                </div>
-                                            {:else}
-                                                <span
-                                                    class="text-slate-300 dark:text-slate-600"
-                                                    >—</span
-                                                >
-                                            {/if}
-                                        </td>
-                                    {/each}
-                                </tr>
-                            {/each}
-                        </tbody>
-                    </table>
+                <h3 class="text-sm font-semibold">
+                    {SOLVER_LABELS[c.solver]}
+                    <span class="text-slate-400 dark:text-slate-500">·</span>
+                    {PROBLEM_LABELS[c.problem]}
+                </h3>
+                <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    {c.blurb}
+                </p>
+                <div class="mt-3">
+                    <BackendChart
+                        series={seriesFor(c.solver, c.problem)}
+                        dims={dimsFor(c.solver, c.problem)}
+                        ariaLabel={`${SOLVER_LABELS[c.solver]} on ${PROBLEM_LABELS[c.problem]}: solve time vs problem size, one line per backend`}
+                    />
                 </div>
             </div>
         {/each}
@@ -235,11 +153,11 @@ const axes = [
 
     <p class="mt-8 max-w-3xl text-sm text-slate-500 dark:text-slate-400">
         Measured {data.generatedAt} on {data.env.cpu}
-        ({data.env.os}/{data.env.arch}), criterion mean over a fixed
-        {data.iterations}-iteration budget per solve. Bars show speed relative
-        to the fastest backend in each row (longer is faster). Absolute times
-        are machine-specific — compare ratios within a row, not across
-        machines.
+        ({data.env.os}/{data.env.arch}), criterion mean per solve over a fixed
+        {data.iterations}-iteration budget (a cap — the least-squares and
+        CMA-ES cases converge sooner). Both axes are logarithmic. Absolute
+        times are machine-specific — compare the spread between backends within
+        a chart, not across machines.
     </p>
 
     <p class="mt-6 text-sm text-slate-500 dark:text-slate-400">

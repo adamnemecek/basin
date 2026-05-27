@@ -12,324 +12,567 @@
       "problem": "rosenbrock",
       "n": 2,
       "backend": "vec",
-      "ns": 19727.40560478384,
-      "lowNs": 19670.065683184177,
-      "highNs": 19785.949853060927
+      "ns": 19710.913575240924,
+      "lowNs": 19666.45891408642,
+      "highNs": 19756.81358458962
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 2,
       "backend": "nalgebra",
-      "ns": 22648.0429045366,
-      "lowNs": 22561.070911961033,
-      "highNs": 22743.887276257512
+      "ns": 20179.12659737934,
+      "lowNs": 20092.594447112842,
+      "highNs": 20275.795856900157
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 2,
       "backend": "ndarray",
-      "ns": 26546.616622721733,
-      "lowNs": 26462.399436233874,
-      "highNs": 26634.03585553166
+      "ns": 25828.124707688534,
+      "lowNs": 25782.47000152139,
+      "highNs": 25877.876107165055
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 2,
       "backend": "faer",
-      "ns": 40433.87599076526,
-      "lowNs": 40130.79921196418,
-      "highNs": 40743.56441718493
+      "ns": 38193.85791047731,
+      "lowNs": 38133.79819150961,
+      "highNs": 38252.34782257615
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 10,
       "backend": "vec",
-      "ns": 40913.84647942442,
-      "lowNs": 40422.70926310762,
-      "highNs": 41450.29003826288
+      "ns": 38436.28744775068,
+      "lowNs": 38333.29066615338,
+      "highNs": 38545.84572792668
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 10,
       "backend": "nalgebra",
-      "ns": 49570.35963142121,
-      "lowNs": 49390.35064727521,
-      "highNs": 49763.80912916488
+      "ns": 49190.03733634218,
+      "lowNs": 49060.26790535667,
+      "highNs": 49329.41156461311
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 10,
       "backend": "ndarray",
-      "ns": 54671.64642112033,
-      "lowNs": 54323.82068475408,
-      "highNs": 55043.54820206297
+      "ns": 52491.039758928724,
+      "lowNs": 52351.83536148216,
+      "highNs": 52645.593791087995
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 10,
       "backend": "faer",
-      "ns": 62392.892452092834,
-      "lowNs": 62042.96911200633,
-      "highNs": 62746.93932646736
+      "ns": 60466.83700269637,
+      "lowNs": 60193.24605756512,
+      "highNs": 60826.25208768285
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 100,
       "backend": "vec",
-      "ns": 232381.41140950634,
-      "lowNs": 231488.64443135462,
-      "highNs": 233345.01991293317
+      "ns": 225840.8646929851,
+      "lowNs": 225609.82343538306,
+      "highNs": 226090.22619153038
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 100,
       "backend": "nalgebra",
-      "ns": 354603.8789327967,
-      "lowNs": 349320.6121214453,
-      "highNs": 360899.43266640336
+      "ns": 362399.4615033956,
+      "lowNs": 362034.79920232884,
+      "highNs": 362774.5820622103
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 100,
       "backend": "ndarray",
-      "ns": 329215.49175565434,
-      "lowNs": 328520.53928387933,
-      "highNs": 330035.4228321186
+      "ns": 307547.6304029047,
+      "lowNs": 307228.51134037855,
+      "highNs": 307958.5143937019
     },
     {
       "solver": "gd",
       "problem": "rosenbrock",
       "n": 100,
       "backend": "faer",
-      "ns": 218914.9216157921,
-      "lowNs": 218046.3136638502,
-      "highNs": 219873.20701959453
+      "ns": 214316.66037117646,
+      "lowNs": 213986.86679557324,
+      "highNs": 214687.81026026094
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 2,
       "backend": "vec",
-      "ns": 14048.246236858216,
-      "lowNs": 14008.318704409498,
-      "highNs": 14091.145171466835
+      "ns": 33852.827308346314,
+      "lowNs": 33781.10272334486,
+      "highNs": 33931.13040278712
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 2,
       "backend": "nalgebra",
-      "ns": 14506.47210820959,
-      "lowNs": 14463.81431450241,
-      "highNs": 14548.880913580471
+      "ns": 33609.3985293749,
+      "lowNs": 33538.0291123078,
+      "highNs": 33686.83192116123
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 2,
       "backend": "ndarray",
-      "ns": 17510.839454792986,
-      "lowNs": 17394.641493886113,
-      "highNs": 17645.993843010183
+      "ns": 36592.59601070057,
+      "lowNs": 36471.84199386486,
+      "highNs": 36742.83927681499
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 2,
       "backend": "faer",
-      "ns": 23921.52938244738,
-      "lowNs": 23855.042065562226,
-      "highNs": 23998.069418403593
+      "ns": 46346.27199540872,
+      "lowNs": 46234.32895645409,
+      "highNs": 46470.57246216781
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 10,
       "backend": "vec",
-      "ns": 30293.49538931058,
-      "lowNs": 30064.50747331945,
-      "highNs": 30546.628809438535
+      "ns": 48901.10231203506,
+      "lowNs": 48625.06543065583,
+      "highNs": 49200.607234385934
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 10,
       "backend": "nalgebra",
-      "ns": 27749.537567027593,
-      "lowNs": 27509.402044777085,
-      "highNs": 28017.547999967803
+      "ns": 48038.06417578685,
+      "lowNs": 47632.56311607042,
+      "highNs": 48520.25653919783
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 10,
       "backend": "ndarray",
-      "ns": 35233.12530773969,
-      "lowNs": 34937.93400318305,
-      "highNs": 35562.4008767369
+      "ns": 53677.55606024753,
+      "lowNs": 53338.63319085541,
+      "highNs": 54037.89712861739
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 10,
       "backend": "faer",
-      "ns": 35178.76245918631,
-      "lowNs": 35118.15271497267,
-      "highNs": 35241.51144971491
+      "ns": 61739.26810993992,
+      "lowNs": 61533.01256260448,
+      "highNs": 61989.9218396917
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 100,
       "backend": "vec",
-      "ns": 484101.9730013262,
-      "lowNs": 482792.001945276,
-      "highNs": 485532.3687771048
+      "ns": 647172.1657905069,
+      "lowNs": 646171.5187673671,
+      "highNs": 648291.2027950529
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 100,
       "backend": "nalgebra",
-      "ns": 452931.98875030706,
-      "lowNs": 451429.05386615,
-      "highNs": 454554.0241086096
+      "ns": 647464.1665179637,
+      "lowNs": 646021.8340696684,
+      "highNs": 649048.2338350024
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 100,
       "backend": "ndarray",
-      "ns": 540367.5915132051,
-      "lowNs": 537696.5805225921,
-      "highNs": 543529.0363917201
+      "ns": 697804.6127226491,
+      "lowNs": 695551.8637718654,
+      "highNs": 700284.891491047
     },
     {
       "solver": "nm",
-      "problem": "rosenbrock",
+      "problem": "ackley",
       "n": 100,
       "backend": "faer",
-      "ns": 469865.34415230283,
-      "lowNs": 467605.6812198573,
-      "highNs": 472309.1977417176
+      "ns": 663122.3209554243,
+      "lowNs": 661945.7588407922,
+      "highNs": 664403.509256495
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 2,
       "backend": "vec",
-      "ns": 12705.582612554335,
-      "lowNs": 12668.079428977857,
-      "highNs": 12744.960699285662
+      "ns": 1362.468049204287,
+      "lowNs": 1342.9461700500842,
+      "highNs": 1382.8668815811957
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 2,
       "backend": "nalgebra",
-      "ns": 13769.382015544608,
-      "lowNs": 13687.12970245498,
-      "highNs": 13875.157715811582
+      "ns": 1358.7485104544674,
+      "lowNs": 1352.9845224858514,
+      "highNs": 1365.2731244887466
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 2,
       "backend": "ndarray",
-      "ns": 16921.841229149577,
-      "lowNs": 16578.944372149745,
-      "highNs": 17307.726072726084
+      "ns": 1648.228770035216,
+      "lowNs": 1639.1951160764925,
+      "highNs": 1658.035507977684
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 2,
       "backend": "faer",
-      "ns": 17408.63867978523,
-      "lowNs": 16969.380568199547,
-      "highNs": 18172.56372580386
+      "ns": 2520.7394673622907,
+      "lowNs": 2199.480699531376,
+      "highNs": 3156.337926319726
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 10,
       "backend": "vec",
-      "ns": 45854.36047630444,
-      "lowNs": 44612.43718557938,
-      "highNs": 47263.93679293813
+      "ns": 1778.385893546793,
+      "lowNs": 1769.7961690178163,
+      "highNs": 1788.9877326993228
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 10,
       "backend": "nalgebra",
-      "ns": 64328.484901534765,
-      "lowNs": 64087.121035629905,
-      "highNs": 64600.77823402462
+      "ns": 2339.8055959157773,
+      "lowNs": 2330.98518205279,
+      "highNs": 2349.8320252187054
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 10,
       "backend": "ndarray",
-      "ns": 65076.1428886187,
-      "lowNs": 64859.94622921524,
-      "highNs": 65301.96624152455
+      "ns": 2414.3584311733343,
+      "lowNs": 2406.751193029588,
+      "highNs": 2422.906024748709
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 10,
       "backend": "faer",
-      "ns": 51071.60044211911,
-      "lowNs": 50965.043528035036,
-      "highNs": 51184.62797165305
+      "ns": 2771.7835563026974,
+      "lowNs": 2758.941660774185,
+      "highNs": 2786.1854208179448
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 100,
       "backend": "vec",
-      "ns": 681965.5704470718,
-      "lowNs": 681182.5913086144,
-      "highNs": 682797.4979051003
+      "ns": 9520.67729723035,
+      "lowNs": 9503.35334003291,
+      "highNs": 9540.048678195315
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 100,
       "backend": "nalgebra",
-      "ns": 1132484.782982692,
-      "lowNs": 1130373.5835032444,
-      "highNs": 1134640.891216821
+      "ns": 14177.955084011515,
+      "lowNs": 14139.083375733035,
+      "highNs": 14228.33690171306
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 100,
       "backend": "ndarray",
-      "ns": 1022212.9794168458,
-      "lowNs": 1017529.7092083032,
-      "highNs": 1027843.7727130065
+      "ns": 13005.12525691269,
+      "lowNs": 12989.307568760574,
+      "highNs": 13021.568030363098
     },
     {
       "solver": "lbfgs",
-      "problem": "rosenbrock",
+      "problem": "styblinski",
       "n": 100,
       "backend": "faer",
-      "ns": 767324.2985991824,
-      "lowNs": 753945.3134858608,
-      "highNs": 781918.0072273231
+      "ns": 10905.462496136579,
+      "lowNs": 10871.859317228276,
+      "highNs": 10943.99910601731
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 2,
+      "backend": "vec",
+      "ns": 4519.38584856425,
+      "lowNs": 4509.003981739655,
+      "highNs": 4529.8191675049775
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 2,
+      "backend": "nalgebra",
+      "ns": 4595.666871697252,
+      "lowNs": 4585.028816896005,
+      "highNs": 4607.560604340792
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 2,
+      "backend": "faer",
+      "ns": 8139.897053765687,
+      "lowNs": 8127.017127208706,
+      "highNs": 8153.755362847991
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 10,
+      "backend": "vec",
+      "ns": 13577.49234831507,
+      "lowNs": 13472.158271597278,
+      "highNs": 13706.200800232606
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 10,
+      "backend": "nalgebra",
+      "ns": 13066.491848612726,
+      "lowNs": 13029.00565777839,
+      "highNs": 13107.665101158052
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 10,
+      "backend": "faer",
+      "ns": 18134.53743031097,
+      "lowNs": 18100.37658131922,
+      "highNs": 18169.15527445466
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 100,
+      "backend": "vec",
+      "ns": 290129.7709018992,
+      "lowNs": 289126.28411101404,
+      "highNs": 291235.30656340043
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 100,
+      "backend": "nalgebra",
+      "ns": 199541.2537226801,
+      "lowNs": 198977.05723609962,
+      "highNs": 200115.41767632743
+    },
+    {
+      "solver": "bfgs",
+      "problem": "levy",
+      "n": 100,
+      "backend": "faer",
+      "ns": 138466.65595159552,
+      "lowNs": 137948.1538235985,
+      "highNs": 139080.3908097185
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 2,
+      "backend": "vec",
+      "ns": 119624.10811443572,
+      "lowNs": 119362.36374196113,
+      "highNs": 119909.40578991546
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 2,
+      "backend": "nalgebra",
+      "ns": 133350.99377616044,
+      "lowNs": 132947.6462494607,
+      "highNs": 133778.7133169403
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 2,
+      "backend": "faer",
+      "ns": 472119.8521559919,
+      "lowNs": 458303.0458544178,
+      "highNs": 486122.4402187522
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 10,
+      "backend": "vec",
+      "ns": 2363456.11909091,
+      "lowNs": 2358007.8717159093,
+      "highNs": 2369374.8943636375
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 10,
+      "backend": "nalgebra",
+      "ns": 1048622.683304777,
+      "lowNs": 1045758.8043782893,
+      "highNs": 1051843.5016932182
+    },
+    {
+      "solver": "cmaes",
+      "problem": "rastrigin",
+      "n": 10,
+      "backend": "faer",
+      "ns": 1927982.0322976205,
+      "lowNs": 1921503.4540259247,
+      "highNs": 1934940.7153230703
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 2,
+      "backend": "nalgebra",
+      "ns": 2336.837702203231,
+      "lowNs": 2323.6014803208423,
+      "highNs": 2350.9345700463273
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 2,
+      "backend": "faer",
+      "ns": 3283.2438675335884,
+      "lowNs": 3274.9610165495037,
+      "highNs": 3292.220127260263
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 10,
+      "backend": "nalgebra",
+      "ns": 6141.909139642961,
+      "lowNs": 6130.344859932279,
+      "highNs": 6153.437752455422
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 10,
+      "backend": "faer",
+      "ns": 8406.812276894641,
+      "lowNs": 8338.718792976177,
+      "highNs": 8479.010291203895
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 100,
+      "backend": "nalgebra",
+      "ns": 44565.7246507145,
+      "lowNs": 44474.35749421251,
+      "highNs": 44672.04025204431
+    },
+    {
+      "solver": "lm",
+      "problem": "sparselsq",
+      "n": 100,
+      "backend": "faer",
+      "ns": 47751.22810634328,
+      "lowNs": 47661.73850828577,
+      "highNs": 47846.44774915314
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 2,
+      "backend": "nalgebra",
+      "ns": 699.7768743848549,
+      "lowNs": 697.9609284846924,
+      "highNs": 701.5678282784107
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 2,
+      "backend": "faer",
+      "ns": 867.2949556468121,
+      "lowNs": 864.6466581274975,
+      "highNs": 870.0458353716319
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 10,
+      "backend": "nalgebra",
+      "ns": 1814.612101415621,
+      "lowNs": 1789.7830647189369,
+      "highNs": 1859.2641737683516
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 10,
+      "backend": "faer",
+      "ns": 2240.1580866579006,
+      "lowNs": 2234.1952706111633,
+      "highNs": 2246.4012495295165
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 100,
+      "backend": "nalgebra",
+      "ns": 13262.531517524701,
+      "lowNs": 13214.73202913261,
+      "highNs": 13314.085620574224
+    },
+    {
+      "solver": "gn",
+      "problem": "sparselsq",
+      "n": 100,
+      "backend": "faer",
+      "ns": 14358.663456752833,
+      "lowNs": 14318.101983160359,
+      "highNs": 14402.087022456088
     }
   ]
 }
