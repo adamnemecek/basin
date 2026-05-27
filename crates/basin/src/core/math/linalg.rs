@@ -201,10 +201,10 @@ pub trait MaxDiagonal {
 ///
 /// # Backends
 ///
-/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`) and
-/// `faer::Mat<f64>` (over `Col<f64>`) — the dense matrix backends that
-/// support [`SymmetricEigen`], which is the gating requirement of
-/// CMA-ES.
+/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`),
+/// `faer::Mat<f64>` (over `Col<f64>`), and [`DenseMatrix`](super::DenseMatrix)
+/// (over `Vec<f64>`) — the dense matrix backends that support
+/// [`SymmetricEigen`], the gating requirement of CMA-ES.
 pub trait MatDiagonal<V> {
     /// Return `diag(self)` as a fresh `V` of length `self.nrows()`.
     fn diagonal(&self) -> V;
@@ -311,11 +311,11 @@ pub trait MatrixIdentity {
 ///
 /// # Backends
 ///
-/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`) and
-/// `faer::Mat<f64>` (over `Col<f64>`) — the dense matrix backends that
-/// support [`SymmetricEigen`], which is CMA-ES's gating requirement.
-/// Sparse counterparts are intentionally unimplemented, matching
-/// [`MatrixIdentity`].
+/// Implemented for `nalgebra::DMatrix<f64>` (over `DVector<f64>`),
+/// `faer::Mat<f64>` (over `Col<f64>`), and [`DenseMatrix`](super::DenseMatrix)
+/// (over `Vec<f64>`) — the dense matrix backends that support
+/// [`SymmetricEigen`], CMA-ES's gating requirement. Sparse counterparts
+/// are intentionally unimplemented, matching [`MatrixIdentity`].
 pub trait MatrixFromDiagonal<V> {
     /// Build the `n × n` matrix with `diag[i]` on the diagonal, `0`
     /// elsewhere.
@@ -388,9 +388,15 @@ pub trait DenseMatrixFromFn: Sized {
 /// # Backends
 ///
 /// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`)
-/// via `nalgebra::SymmetricEigen` (pure-Rust QR iteration), and for
+/// via `nalgebra::SymmetricEigen` (pure-Rust QR iteration), for
 /// `faer::Mat<f64>` (with `V = faer::Col<f64>`) via
-/// `faer::linalg::evd::self_adjoint_evd`.
+/// `faer::linalg::evd::self_adjoint_evd`, and for
+/// [`DenseMatrix`](super::DenseMatrix) (with `V = Vec<f64>`) via a
+/// pure-Rust cyclic Jacobi solver — so CMA-ES runs on the default
+/// backend. The `DenseMatrix` impl is the worked precedent for tenet 5's
+/// "broaden backend coverage when an op can be done honestly": the *solve*
+/// factorizations ([`LinearSolveSpd`] / [`GramMatrix`]) are simply not yet
+/// implemented for `Vec<f64>`, not categorically off-limits.
 pub trait SymmetricEigen<V> {
     /// Eigendecompose a symmetric `self` into `(B, λ)` such that
     /// `self ≈ B diag(λ) Bᵀ` in floating-point arithmetic.
@@ -443,10 +449,13 @@ impl core::error::Error for SymmetricEigenError {}
 /// # Backends
 ///
 /// Implemented for `nalgebra::DMatrix<f64>` (with `V = DVector<f64>`)
-/// via `ger`, and for `faer::Mat<f64>` (with `V = faer::Col<f64>`) via
-/// the `matmul` accumulator. Sparse backends do *not* implement this —
-/// a rank-one update of a sparse matrix would densify the pattern, and
-/// CMA-ES's covariance is dense by construction anyway.
+/// via `ger`, for `faer::Mat<f64>` (with `V = faer::Col<f64>`) via
+/// the `matmul` accumulator, and for [`DenseMatrix`](super::DenseMatrix)
+/// (with `V = Vec<f64>`, delegating to [`GeneralRankOneUpdate`] with
+/// `u = v`) — so CMA-ES runs on the default backend. Sparse backends do
+/// *not* implement this — a rank-one update of a sparse matrix would
+/// densify the pattern, and CMA-ES's covariance is dense by construction
+/// anyway.
 pub trait RankOneUpdate<V> {
     /// Compute `self ← self + α · v · vᵀ` in place.
     fn rank_one_update(&mut self, alpha: f64, v: &V);

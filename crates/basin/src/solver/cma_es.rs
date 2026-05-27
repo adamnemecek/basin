@@ -115,12 +115,15 @@ use crate::core::termination::TerminationReason;
 ///
 /// LA-heavy: requires symmetric eigendecomposition, scalar-and-rank-1
 /// matrix updates, and matrix-vector / transposed matrix-vector
-/// products. Wired and tested for `nalgebra::DVector<f64>` /
-/// `nalgebra::DMatrix<f64>` (feature `nalgebra`) and `faer::Col<f64>` /
-/// `faer::Mat<f64>` (feature `faer`). `Vec<f64>` and `ndarray` produce
-/// a compile-time error per tenet 5 (no honest matrix type or no
-/// pure-Rust eigendecomposition). Sparse covariance is not meaningful
-/// for CMA-ES — the rank-µ update densifies any starting pattern.
+/// products. Wired and tested for the default `Vec<f64>` /
+/// [`DenseMatrix`](crate::DenseMatrix) backend (pure-Rust cyclic Jacobi
+/// eigensolver — no feature flag, `wasm`-clean), `nalgebra::DVector<f64>`
+/// / `nalgebra::DMatrix<f64>` (feature `nalgebra`), and `faer::Col<f64>`
+/// / `faer::Mat<f64>` (feature `faer`). `ndarray::Array1<f64>` produces a
+/// compile-time error per tenet 5 (`Array2<f64>` implements neither the
+/// rank-one update nor the eigendecomposition). Sparse covariance is not
+/// meaningful for CMA-ES — the rank-µ update densifies any starting
+/// pattern.
 pub struct CmaEs<V, M> {
     initial_mean: V,
     initial_sigma: f64,

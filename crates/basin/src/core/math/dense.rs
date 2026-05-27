@@ -11,14 +11,27 @@
 //! [`DenseMatrix`] closes that gap with the two matvec ops plus the handful of
 //! dense ops BFGS needs — [`MatrixIdentity`], [`ScaleInPlace`], and the
 //! rank-one Hessian update [`GeneralRankOneUpdate`] — so BFGS also runs on the
-//! default backend. What stays absent is the *factorization* layer: no
-//! Cholesky / QR / eigen ([`LinearSolveSpd`](super::LinearSolveSpd),
-//! [`GramMatrix`](super::GramMatrix), [`SymmetricEigen`](super::SymmetricEigen),
-//! …) — those stay nalgebra/faer-only, so the LA-heavy solvers that need them
-//! (Newton, Gauss-Newton, Levenberg-Marquardt, CMA-ES) remain a compile-time
-//! error on `Vec<f64>` by design.
+//! default backend. CMA-ES runs too: [`DenseMatrix`] additionally implements
+//! [`RankOneUpdate`](super::RankOneUpdate),
+//! [`MatrixFromDiagonal`](super::MatrixFromDiagonal),
+//! [`MatDiagonal`](super::MatDiagonal), and — the load-bearing op — a pure-Rust
+//! symmetric eigendecomposition [`SymmetricEigen`](super::SymmetricEigen) via a
+//! cyclic Jacobi solver (`dense_eig`). What is *not yet* implemented is the
+//! *solve* factorization layer: no Cholesky / QR
+//! ([`LinearSolveSpd`](super::LinearSolveSpd),
+//! [`LinearSolveLstsq`](super::LinearSolveLstsq),
+//! [`GramMatrix`](super::GramMatrix)), so the LA-heavy least-squares / Newton
+//! solvers that need them (Gauss-Newton, Levenberg-Marquardt, TRF) are
+//! currently a compile-time error on `Vec<f64>`. That is a "not yet," not a
+//! permanent design choice (tenet 5): no solver has motivated a pure-Rust
+//! `DenseMatrix` solve yet, but — like the Jacobi eigensolver above — one would
+//! be welcome if it can be done honestly (pure-Rust, wasm-clean, no
+//! BLAS/LAPACK).
 
-use super::{GeneralRankOneUpdate, MatTransposeVec, MatVec, MatrixIdentity, ScaleInPlace};
+use super::{
+    GeneralRankOneUpdate, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity,
+    RankOneUpdate, ScaleInPlace, SymmetricEigen, SymmetricEigenError,
+};
 
 /// Row-major dense `f64` matrix — the matrix companion to `Vec<f64>` as the
 /// param vector.
@@ -30,8 +43,10 @@ use super::{GeneralRankOneUpdate, MatTransposeVec, MatVec, MatrixIdentity, Scale
 ///
 /// The type implements [`MatVec`] (`A x`) and [`MatTransposeVec`] (`Aᵀ v`)
 /// for the linear-constraint solvers, plus [`MatrixIdentity`],
-/// [`ScaleInPlace`], and [`GeneralRankOneUpdate`] for BFGS; see the module
-/// docs for why the factorization ops are deliberately absent.
+/// [`ScaleInPlace`], and [`GeneralRankOneUpdate`] for BFGS, and
+/// [`RankOneUpdate`], [`MatrixFromDiagonal`], [`MatDiagonal`], and a Jacobi
+/// [`SymmetricEigen`] for CMA-ES; see the module docs for why the *solve*
+/// factorization ops are deliberately absent.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DenseMatrix {
     /// Row-major entries: `data[i * cols + j] = A[i, j]`.
@@ -186,6 +201,54 @@ impl GeneralRankOneUpdate<Vec<f64>> for DenseMatrix {
                 *entry += au * vj;
             }
         }
+    }
+}
+
+impl RankOneUpdate<Vec<f64>> for DenseMatrix {
+    fn rank_one_update(&mut self, alpha: f64, v: &Vec<f64>) {
+        // The symmetric `α·v·vᵀ` case of the general `α·u·vᵀ` update.
+        self.general_rank_one_update(alpha, v, v);
+    }
+}
+
+impl MatrixFromDiagonal<Vec<f64>> for DenseMatrix {
+    fn from_diagonal(diag: &Vec<f64>) -> Self {
+        let n = diag.len();
+        Self::from_fn(n, n, |i, j| if i == j { diag[i] } else { 0.0 })
+    }
+}
+
+impl MatDiagonal<Vec<f64>> for DenseMatrix {
+    fn diagonal(&self) -> Vec<f64> {
+        assert_eq!(
+            self.rows, self.cols,
+            "diagonal: matrix must be square, got {}x{}",
+            self.rows, self.cols
+        );
+        (0..self.rows)
+            .map(|i| self.data[i * self.cols + i])
+            .collect()
+    }
+}
+
+impl SymmetricEigen<Vec<f64>> for DenseMatrix {
+    fn try_eigh(&self) -> Result<(Self, Vec<f64>), SymmetricEigenError> {
+        assert_eq!(
+            self.rows, self.cols,
+            "try_eigh: matrix must be square, got {}x{}",
+            self.rows, self.cols
+        );
+        let n = self.rows;
+        let (eigenvalues, eigenvectors) =
+            super::dense_eig::jacobi_eigen(&self.data, n).ok_or(SymmetricEigenError::Failed)?;
+        // `jacobi_eigen` returns the eigenvectors row-major with column `k` the
+        // eigenvector for `eigenvalues[k]` — exactly `DenseMatrix`'s layout.
+        let b = Self {
+            data: eigenvectors,
+            rows: n,
+            cols: n,
+        };
+        Ok((b, eigenvalues))
     }
 }
 

@@ -89,8 +89,8 @@ parameter type, ✗ means it is a compile-time error (the tiering rule above).
 | `GaussNewton` | Least squares | ✗ | ✓ | ✗ | ✓ |
 | `LevenbergMarquardt` | Least squares | ✗ | ✓ | ✗ | ✓ |
 | `Trf` | Least squares | ✗ | ✓ | ✗ | ✓ |
-| `CmaEs` | Global | ✗ | ✓ | ✗ | ✓ |
-| `BoundedCmaEs` | Global | ✗ | ✓ | ✗ | ✓ |
+| `CmaEs` | Global | ✓ | ✓ | ✗ | ✓ |
+| `BoundedCmaEs` | Global | ✓ | ✓ | ✗ | ✓ |
 | `RandomSearch` | Global | ✓ | ✓ | ✓ | ✓ |
 | `Ssga` | Global | ✓ | ✓ | ✓ | ✓ |
 | `CmaInject` | Memetic | ✗ | ✓ | ✗ | ✓ |

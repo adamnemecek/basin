@@ -113,10 +113,12 @@ use super::cma_es::{compute_weights, expected_norm_n01, sort_population_ascendin
 /// LA-heavy: requires symmetric eigendecomposition, scalar-and-rank-1
 /// matrix updates, matrix-vector / transposed matrix-vector products,
 /// **plus** [`MatDiagonal<V>`] (extracts `diag(C)` for the σ²·diag(C)
-/// per-axis variances the γ-update reads). Wired and tested for
+/// per-axis variances the γ-update reads). Wired and tested for the
+/// default `Vec<f64>` / [`DenseMatrix`](crate::DenseMatrix) backend
+/// (pure-Rust cyclic Jacobi eigensolver — no feature flag, `wasm`-clean),
 /// `nalgebra::DVector<f64>` / `nalgebra::DMatrix<f64>` (feature
-/// `nalgebra`) and `faer::Col<f64>` / `faer::Mat<f64>` (feature
-/// `faer`). `Vec<f64>` and `ndarray` produce a compile-time error per
+/// `nalgebra`), and `faer::Col<f64>` / `faer::Mat<f64>` (feature
+/// `faer`). `ndarray::Array1<f64>` produces a compile-time error per
 /// tenet 5 — same coverage as [`CmaEs`](super::cma_es::CmaEs).
 pub struct BoundedCmaEs<V, M> {
     initial_mean: V,

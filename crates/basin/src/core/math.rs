@@ -15,9 +15,11 @@
 //!   matvec ops ([`MatVec`], [`MatTransposeVec`]) are the exception: they
 //!   are *also* implemented for the `Vec<f64>` backend (via the
 //!   hand-rolled [`DenseMatrix`]) and `ndarray::Array2<f64>`, so the
-//!   linear-constraint solvers run on every backend. The factorization
-//!   ops ([`LinearSolveSpd`], [`GramMatrix`], [`SymmetricEigen`], …) stay
-//!   nalgebra/faer-only.
+//!   linear-constraint solvers run on every backend. [`SymmetricEigen`] is
+//!   a second exception: [`DenseMatrix`] implements it via a pure-Rust
+//!   cyclic Jacobi eigensolver (`dense_eig`), so CMA-ES runs on the default
+//!   backend too. The *solve* factorizations ([`LinearSolveSpd`],
+//!   [`LinearSolveLstsq`], [`GramMatrix`]) stay nalgebra/faer-only.
 
 /// In-place `self ← self + scalar · other`. Backend-generic vector update.
 pub trait ScaledAdd<S> {
@@ -159,6 +161,7 @@ pub trait VectorIndex {
 mod cl_scaling;
 mod clamp;
 mod dense;
+mod dense_eig;
 mod linalg;
 mod sample;
 mod scalar;
