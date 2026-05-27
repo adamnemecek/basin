@@ -207,3 +207,19 @@ tasks:
     dir: web
     cmds:
       - pnpm dev
+
+  bench:backends:
+    desc: "Run the backend-axis benchmark and refresh the /benchmarks page data."
+    summary: |
+      Runs the `solver_backends` criterion bench — GD / Nelder-Mead /
+      unconstrained L-BFGS on Rosenbrock across all four linear-algebra
+      backends (Vec, nalgebra, ndarray, faer) — then parses criterion's output
+      into web/src/lib/data/backend-benchmarks.json, which the /benchmarks page
+      imports.
+
+      Timing-sensitive: run on an otherwise-idle machine and commit the
+      regenerated JSON. Deliberately not wired into CI — shared runners are too
+      noisy for trustworthy microbenchmarks.
+    cmds:
+      - cargo bench --features nalgebra,ndarray,faer --bench solver_backends
+      - cd web && pnpm collect:benchmarks
