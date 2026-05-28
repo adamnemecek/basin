@@ -9,8 +9,9 @@ use super::cl_scaling::{
 use super::sample::{SampleStandardNormal, SampleUniformBox};
 use super::{
     ClampInPlace, ComponentDivAssign, ComponentMaxAssign, ComponentMulAssign, Dot,
-    FloorZerosInPlace, MatTransposeVec, MatVec, NegInPlace, NormInfinity, NormSquared,
-    ScaleInPlace, ScaledAdd, VectorIndex, VectorLen,
+    FloorZerosInPlace, MatDiagonal, MatTransposeVec, MatVec, MatrixFromDiagonal, MatrixIdentity,
+    NegInPlace, NormInfinity, NormSquared, RankOneUpdate, ScaleInPlace, ScaledAdd, SymmetricEigen,
+    SymmetricEigenError, VectorIndex, VectorLen,
 };
 
 impl<S, D> ScaledAdd<f64> for ArrayBase<S, D>
@@ -123,6 +124,91 @@ impl MatTransposeVec<Array1<f64>> for Array2<f64> {
                 .map(|(a, xi)| a * xi)
                 .sum()
         })
+    }
+}
+
+impl MatrixIdentity for Array2<f64> {
+    fn identity(n: usize) -> Self {
+        Array2::eye(n)
+    }
+}
+
+impl MatrixFromDiagonal<Array1<f64>> for Array2<f64> {
+    fn from_diagonal(diag: &Array1<f64>) -> Self {
+        Array2::from_diag(diag)
+    }
+}
+
+impl MatDiagonal<Array1<f64>> for Array2<f64> {
+    fn diagonal(&self) -> Array1<f64> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "diagonal: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        self.diag().to_owned()
+    }
+}
+
+impl RankOneUpdate<Array1<f64>> for Array2<f64> {
+    fn rank_one_update(&mut self, alpha: f64, v: &Array1<f64>) {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "rank_one_update: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        assert_eq!(
+            self.nrows(),
+            v.len(),
+            "rank_one_update: matrix is {}x{} but v has length {}",
+            self.nrows(),
+            self.ncols(),
+            v.len()
+        );
+        // self[i, j] ← self[i, j] + α · v[i] · v[j] — the symmetric `u == v`
+        // case of `general_rank_one_update`. Explicit double-loop matches the
+        // `DenseMatrix` pattern; ndarray's `outer` / broadcasting forms would
+        // allocate.
+        let n = self.nrows();
+        for i in 0..n {
+            let av = alpha * v[i];
+            let mut row = self.row_mut(i);
+            for j in 0..n {
+                row[j] += av * v[j];
+            }
+        }
+    }
+}
+
+impl SymmetricEigen<Array1<f64>> for Array2<f64> {
+    fn try_eigh(&self) -> Result<(Self, Array1<f64>), SymmetricEigenError> {
+        assert_eq!(
+            self.nrows(),
+            self.ncols(),
+            "try_eigh: matrix must be square, got {}x{}",
+            self.nrows(),
+            self.ncols()
+        );
+        let n = self.nrows();
+        // `jacobi_eigen` takes a row-major `&[f64]`. `as_standard_layout`
+        // returns a `CowArray` that is contiguous in row-major (C) order —
+        // borrowing when `self` is already standard, otherwise cloning.
+        let standard = self.as_standard_layout();
+        let slice = standard
+            .as_slice()
+            .expect("as_standard_layout produces a contiguous row-major slice");
+        let (eigenvalues, eigenvectors) =
+            super::dense_eig::jacobi_eigen(slice, n).ok_or(SymmetricEigenError::Failed)?;
+        // `jacobi_eigen` returns the eigenvectors row-major with column `k`
+        // the eigenvector for `eigenvalues[k]` — exactly what
+        // `Array2::from_shape_vec` with the default C-order produces.
+        let b =
+            Array2::from_shape_vec((n, n), eigenvectors).expect("jacobi_eigen returns n*n entries");
+        Ok((b, Array1::from_vec(eigenvalues)))
     }
 }
 

@@ -119,12 +119,11 @@ use crate::core::termination::TerminationReason;
 /// products. Wired and tested for the default `Vec<f64>` /
 /// [`DenseMatrix`](crate::DenseMatrix) backend (pure-Rust cyclic Jacobi
 /// eigensolver — no feature flag, `wasm`-clean), `nalgebra::DVector<f64>`
-/// / `nalgebra::DMatrix<f64>` (feature `nalgebra`), and `faer::Col<f64>`
-/// / `faer::Mat<f64>` (feature `faer`). `ndarray::Array1<f64>` produces a
-/// compile-time error per tenet 5 (`Array2<f64>` implements neither the
-/// rank-one update nor the eigendecomposition). Sparse covariance is not
-/// meaningful for CMA-ES — the rank-µ update densifies any starting
-/// pattern.
+/// / `nalgebra::DMatrix<f64>` (feature `nalgebra`), `ndarray::Array1<f64>`
+/// / `ndarray::Array2<f64>` (feature `ndarray`, also wired to the cyclic
+/// Jacobi solver — `wasm`-clean), and `faer::Col<f64>` / `faer::Mat<f64>`
+/// (feature `faer`). Sparse covariance is not meaningful for CMA-ES — the
+/// rank-µ update densifies any starting pattern.
 ///
 /// # Examples
 ///

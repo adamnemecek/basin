@@ -36,16 +36,22 @@ the previous lands.
       note --- this entry is just the roadmap pointer. Recently landed: `BFGS`
       on `Vec<f64>` + faer; `LBFGS`/`LBFGSB` on ndarray (now all four backends);
       `CmaEs`/`BoundedCmaEs` on `Vec<f64>` via the pure-Rust cyclic-Jacobi
-      eigensolver (`dense_eig.rs`). Remaining honest (pure-Rust, no BLAS) gaps:
-      `BFGS` on ndarray (rank-one update ops on `Array2` --- the last `✗` in its
-      row); `CmaEs`/`BoundedCmaEs` on ndarray (`SymmetricEigen` on `Array2`; the
-      Jacobi solver already exists, so it is a wiring/port job); the
-      least-squares family (`GaussNewton`/`LevenbergMarquardt`/`Trf`) on
-      `Vec<f64>` + ndarray (a pure-Rust `LinearSolveLstsq`/QR on `DenseMatrix` +
-      `Array2`, explicitly blessed by the backends rule); the memetic family
-      (`CmaInject`/`BoundedCmaInject`/`MaLsChCma`) on `Vec<f64>` + ndarray
-      follows once the CMA family reaches them. No permanent (BLAS-only) gaps
-      recorded yet.
+      eigensolver (`dense_eig.rs`); `CmaEs`/`BoundedCmaEs` on ndarray (same
+      Jacobi solver wired through `as_standard_layout()` on `Array2`).
+      Remaining honest (pure-Rust, no BLAS) gaps: `BFGS` on ndarray (rank-one
+      update ops on `Array2` --- the last `✗` in its row); the least-squares
+      family (`GaussNewton`/`LevenbergMarquardt`/`Trf`) on `Vec<f64>` + ndarray
+      (a pure-Rust `LinearSolveLstsq`/QR on `DenseMatrix` + `Array2`,
+      explicitly blessed by the backends rule); the memetic family
+      (`CmaInject`/`BoundedCmaInject`/`MaLsChCma`) on `Vec<f64>` + ndarray ---
+      now that the CMA family covers both backends, the matrix bounds resolve
+      on `Array2<f64>`; ndarray coverage just needs wiring tests + a
+      `MemeticInner<Array1<f64>>` inner choice. While there, fix the stale
+      "Backends" notes in `cma_inject.rs` (~L286) and `bounded_cma_inject.rs`
+      (~L52): both claim "`Vec<f64>` and `ndarray` produce a compile-time
+      error" while also saying "Same coverage as `CmaEs`" --- the Vec<f64>
+      half was already wrong, and ndarray now resolves too. No permanent
+      (BLAS-only) gaps recorded yet.
 - [x] **Made `BarrierMethod` / `AugmentedLagrangianMethod`
       inner-solver-agnostic.** Both now bound
       `So: WarmStart<V> + for<'a> Solver<Adapter<'a, P>,       So::State>` with
