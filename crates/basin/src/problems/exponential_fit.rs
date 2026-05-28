@@ -289,17 +289,6 @@ mod faer_impl {
     }
 }
 
-// ----------------------------------------------------------------------
-// Fused-trait opt-ins.
-// ----------------------------------------------------------------------
-// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
-// receives the defaulted fallback impl; no problem-specific fusion.
-
-#[cfg(feature = "nalgebra")]
-impl crate::ResidualAndJacobian for ExponentialFit<nalgebra::DVector<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::ResidualAndJacobian for ExponentialFit<faer::Col<f64>> {}
-
 #[cfg(test)]
 mod tests {
     use super::*;

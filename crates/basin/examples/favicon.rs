@@ -303,7 +303,6 @@ impl Gradient for Bowl {
         g
     }
 }
-impl basin::CostAndGradient for Bowl {}
 
 /// Trace the river: gradient descent on the bowl, driven through basin's
 /// `Solver` loop, capturing every iterate then decimating.

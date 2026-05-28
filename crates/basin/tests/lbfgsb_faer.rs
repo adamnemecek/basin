@@ -31,7 +31,6 @@ impl Gradient for Rosen {
         Col::from_fn(2, |i| if i == 0 { dfdx0 } else { dfdx1 })
     }
 }
-impl basin::CostAndGradient for Rosen {}
 impl BoxConstraints for Rosen {
     fn lower(&self) -> &Col<f64> {
         &self.l

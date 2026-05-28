@@ -27,7 +27,6 @@ impl Gradient for Quadratic {
         x.clone()
     }
 }
-impl basin::CostAndGradient for Quadratic {}
 
 #[test]
 fn gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {

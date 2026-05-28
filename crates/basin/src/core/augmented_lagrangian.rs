@@ -127,20 +127,6 @@ where
     }
 }
 
-// Inner gradient solvers (gradient descent, BFGS, L-BFGS) now bound on
-// [`CostAndGradient`], so the adapter must opt in. Default fallback is
-// correct; reusing the constraint residual across cost and gradient is
-// possible but a separate optimization.
-impl<P, V, M> crate::core::problem::CostAndGradient for AugmentedLagrangian<'_, P, V>
-where
-    P: CostFunction<Param = V, Output = f64>
-        + Gradient<Param = V, Gradient = V>
-        + LinearEqualityConstraints<Param = V, Matrix = M>,
-    M: MatVec<V> + MatTransposeVec<V>,
-    V: ScaledAdd<f64> + Dot + NormSquared + Clone,
-{
-}
-
 #[cfg(all(test, feature = "nalgebra"))]
 mod tests {
     use super::*;

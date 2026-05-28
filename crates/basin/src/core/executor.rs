@@ -289,10 +289,7 @@ where
 /// [`OptimizationResult`]:
 ///
 /// ```
-/// use basin::{
-///     BasicState, CostAndGradient, CostFunction, Executor, Gradient, GradientDescent,
-///     GradientTolerance,
-/// };
+/// use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
 ///
 /// struct Sphere;
 /// impl CostFunction for Sphere {
@@ -309,7 +306,6 @@ where
 ///         x.iter().map(|xi| 2.0 * xi).collect()
 ///     }
 /// }
-/// impl CostAndGradient for Sphere {}
 ///
 /// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![3.0, -4.0]))
 ///     .max_iter(1_000)

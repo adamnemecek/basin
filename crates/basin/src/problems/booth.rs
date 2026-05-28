@@ -600,35 +600,6 @@ mod faer_impl {
     }
 }
 
-// ----------------------------------------------------------------------
-// Fused-trait opt-ins.
-// ----------------------------------------------------------------------
-// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
-// receives the defaulted fallback impl; no problem-specific fusion.
-
-impl crate::CostAndGradient for Booth<Vec<f64>> {}
-impl crate::CostAndGradient for BoothBoxed<Vec<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for Booth<nalgebra::DVector<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for BoothBoxed<nalgebra::DVector<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::ResidualAndJacobian for BoothResiduals<nalgebra::DVector<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::ResidualAndJacobian for BoothBoxedResiduals<nalgebra::DVector<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for Booth<ndarray::Array1<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for BoothBoxed<ndarray::Array1<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for Booth<faer::Col<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for BoothBoxed<faer::Col<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::ResidualAndJacobian for BoothResiduals<faer::Col<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::ResidualAndJacobian for BoothBoxedResiduals<faer::Col<f64>> {}
-
 #[cfg(test)]
 mod tests {
     use super::*;

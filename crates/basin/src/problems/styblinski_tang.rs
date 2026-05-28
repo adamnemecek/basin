@@ -419,27 +419,6 @@ mod faer_boxed_impl {
     }
 }
 
-// ----------------------------------------------------------------------
-// Fused-trait opt-ins.
-// ----------------------------------------------------------------------
-// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
-// receives the defaulted fallback impl; no problem-specific fusion.
-
-impl crate::CostAndGradient for StyblinskiTang<Vec<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for StyblinskiTang<nalgebra::DVector<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for StyblinskiTang<ndarray::Array1<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for StyblinskiTang<faer::Col<f64>> {}
-impl crate::CostAndGradient for StyblinskiTangBoxed<Vec<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for StyblinskiTangBoxed<nalgebra::DVector<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for StyblinskiTangBoxed<ndarray::Array1<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for StyblinskiTangBoxed<faer::Col<f64>> {}
-
 #[cfg(test)]
 mod tests {
     use super::*;

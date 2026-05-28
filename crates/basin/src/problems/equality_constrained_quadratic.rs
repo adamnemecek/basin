@@ -210,26 +210,6 @@ mod ndarray_impl {
     }
 }
 
-// ----------------------------------------------------------------------
-// Fused-trait opt-ins.
-// ----------------------------------------------------------------------
-// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
-// receives the defaulted fallback impl; no problem-specific fusion.
-
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient
-    for EqualityConstrainedQuadratic<nalgebra::DMatrix<f64>, nalgebra::DVector<f64>>
-{
-}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for EqualityConstrainedQuadratic<faer::Mat<f64>, faer::Col<f64>> {}
-impl crate::CostAndGradient for EqualityConstrainedQuadratic<crate::DenseMatrix, Vec<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient
-    for EqualityConstrainedQuadratic<ndarray::Array2<f64>, ndarray::Array1<f64>>
-{
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

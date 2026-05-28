@@ -31,7 +31,6 @@ impl Gradient for Rosen {
         array![dfdx0, dfdx1]
     }
 }
-impl basin::CostAndGradient for Rosen {}
 impl BoxConstraints for Rosen {
     fn lower(&self) -> &Array1<f64> {
         &self.l

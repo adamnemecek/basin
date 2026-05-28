@@ -33,7 +33,6 @@ impl Gradient for Rosen {
         DVector::from_vec(vec![dfdx0, dfdx1])
     }
 }
-impl basin::CostAndGradient for Rosen {}
 impl BoxConstraints for Rosen {
     fn lower(&self) -> &DVector<f64> {
         &self.l

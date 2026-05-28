@@ -45,7 +45,6 @@ fn unbounded_rosenbrock_2d_converges() {
             vec![dfdx0, dfdx1]
         }
     }
-    impl basin::CostAndGradient for Rosen {}
     impl basin::BoxConstraints for Rosen {
         fn lower(&self) -> &Vec<f64> {
             &self.l
@@ -187,7 +186,6 @@ fn quadratic_5d_diagonal_converges_quickly() {
             g
         }
     }
-    impl basin::CostAndGradient for Quadratic {}
     impl basin::BoxConstraints for Quadratic {
         fn lower(&self) -> &Vec<f64> {
             &self.l

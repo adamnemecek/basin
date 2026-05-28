@@ -22,10 +22,7 @@
 //! the [`Executor`]:
 //!
 //! ```
-//! use basin::{
-//!     BasicState, CostAndGradient, CostFunction, Executor, Gradient, GradientDescent,
-//!     GradientTolerance,
-//! };
+//! use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
 //!
 //! struct Sphere;
 //! impl CostFunction for Sphere {
@@ -42,7 +39,6 @@
 //!         x.iter().map(|xi| 2.0 * xi).collect()
 //!     }
 //! }
-//! impl CostAndGradient for Sphere {}
 //!
 //! let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
 //!     .max_iter(1_000)
@@ -79,10 +75,7 @@ pub use crate::core::numdiff::{
     forward_difference_gradient, forward_difference_hessian, forward_difference_jacobian,
     FiniteDiff, Method,
 };
-pub use crate::core::problem::{
-    CostAndGradient, CostAndGradientAndHessian, CostFunction, Gradient, Hessian, Jacobian,
-    Residual, ResidualAndJacobian,
-};
+pub use crate::core::problem::{CostFunction, Gradient, Hessian, Jacobian, Residual};
 pub use crate::core::solver::Solver;
 pub use crate::core::state::QuasiNewtonState;
 pub use crate::core::state::{

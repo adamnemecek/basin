@@ -438,27 +438,6 @@ mod faer_boxed_impl {
     }
 }
 
-// ----------------------------------------------------------------------
-// Fused-trait opt-ins.
-// ----------------------------------------------------------------------
-// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
-// receives the defaulted fallback impl; no problem-specific fusion.
-
-impl crate::CostAndGradient for Levy<Vec<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for Levy<nalgebra::DVector<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for Levy<ndarray::Array1<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for Levy<faer::Col<f64>> {}
-impl crate::CostAndGradient for LevyBoxed<Vec<f64>> {}
-#[cfg(feature = "nalgebra")]
-impl crate::CostAndGradient for LevyBoxed<nalgebra::DVector<f64>> {}
-#[cfg(feature = "ndarray")]
-impl crate::CostAndGradient for LevyBoxed<ndarray::Array1<f64>> {}
-#[cfg(feature = "faer")]
-impl crate::CostAndGradient for LevyBoxed<faer::Col<f64>> {}
-
 #[cfg(test)]
 mod tests {
     use super::*;

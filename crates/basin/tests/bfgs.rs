@@ -126,7 +126,6 @@ impl Gradient for Quadratic {
         g
     }
 }
-impl basin::CostAndGradient for Quadratic {}
 
 #[test]
 fn bfgs_on_5d_quadratic_converges_quickly() {

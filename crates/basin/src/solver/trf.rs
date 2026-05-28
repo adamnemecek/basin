@@ -3,7 +3,7 @@ use crate::core::math::{
     AddDiagonalVectorInPlace, BoxAffineScaling, Dot, GramMatrix, LinearSolveSpd, MatTransposeVec,
     MaxDiagonal, NegInPlace, NormSquared, ScaledAdd,
 };
-use crate::core::problem::{Jacobian, Residual, ResidualAndJacobian};
+use crate::core::problem::{Jacobian, Residual};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
@@ -251,8 +251,7 @@ impl<V, M> Trf<V, M> {
 
 impl<P, V, M> Solver<P, BasicState<V>> for Trf<V, M>
 where
-    P: ResidualAndJacobian
-        + Residual<Param = V, Output = V>
+    P: Residual<Param = V, Output = V>
         + Jacobian<Param = V, Output = M>
         + BoxConstraints<Param = V>,
     V: ScaledAdd<f64> + NormSquared + NegInPlace + Dot + BoxAffineScaling + Clone,
@@ -271,7 +270,8 @@ where
             .param
             .project_strictly_inside(problem.lower(), problem.upper(), self.rstep);
 
-        let (r, j) = problem.residual_and_jacobian(&state.param);
+        let r = problem.residual(&state.param);
+        let j = problem.jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;

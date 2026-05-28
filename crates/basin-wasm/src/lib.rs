@@ -135,7 +135,6 @@ impl Gradient for Problem2D {
         out
     }
 }
-impl basin::CostAndGradient for Problem2D {}
 
 /// Sample `f(x, y)` on a uniform `nx × ny` grid spanning the rectangle
 /// `[xmin, xmax] × [ymin, ymax]`.

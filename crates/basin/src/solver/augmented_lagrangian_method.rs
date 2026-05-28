@@ -5,7 +5,7 @@ use crate::core::constraint::LinearEqualityConstraints;
 use crate::core::executor::run_loop;
 use crate::core::inner::WarmStart;
 use crate::core::math::{Dot, MatTransposeVec, MatVec, NormSquared, ScaleInPlace, ScaledAdd};
-use crate::core::problem::{CostAndGradient, CostFunction, Gradient};
+use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::{BasicState, GradientState, State};
 use crate::core::termination::{
@@ -237,8 +237,7 @@ impl<So, V> AugmentedLagrangianMethod<So, V> {
 
 impl<P, V, M, So> Solver<P, BasicState<V>> for AugmentedLagrangianMethod<So, V>
 where
-    P: CostAndGradient
-        + CostFunction<Param = V, Output = f64>
+    P: CostFunction<Param = V, Output = f64>
         + Gradient<Param = V, Gradient = V>
         + LinearEqualityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
@@ -261,9 +260,8 @@ where
 
         // Seed the *true* objective so framework criteria and the public
         // result read f, not the augmented-Lagrangian value.
-        let (cost, grad) = problem.cost_and_gradient(state.param());
-        state.cost = Some(cost);
-        state.gradient = Some(grad);
+        state.cost = Some(problem.cost(state.param()));
+        state.gradient = Some(problem.gradient(state.param()));
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -307,9 +305,8 @@ where
         // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
         // (the inner left cost/gradient at the augmented-Lagrangian value).
         state.param = result.state.param().clone();
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
-        state.cost = Some(cost);
-        state.gradient = Some(grad);
+        state.cost = Some(problem.cost(&state.param));
+        state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
         state.gradient_evals += 1;
 

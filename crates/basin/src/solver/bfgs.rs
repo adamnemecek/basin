@@ -4,7 +4,7 @@ use crate::core::math::{
     Dot, GeneralRankOneUpdate, MatVec, MatrixIdentity, NegInPlace, NormSquared, ScaleInPlace,
     ScaledAdd, VectorLen,
 };
-use crate::core::problem::{CostAndGradient, CostFunction, Gradient};
+use crate::core::problem::{CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::QuasiNewtonState;
 use crate::core::termination::TerminationReason;
@@ -48,10 +48,7 @@ use crate::line_search::{LineSearch, Wolfe};
 /// [`DenseMatrix`](crate::DenseMatrix):
 ///
 /// ```
-/// use basin::{
-///     BasicState, CostAndGradient, CostFunction, DenseMatrix, Executor, Gradient,
-///     QuasiNewtonState, BFGS,
-/// };
+/// use basin::{BasicState, CostFunction, DenseMatrix, Executor, Gradient, QuasiNewtonState, BFGS};
 ///
 /// struct Rosenbrock;
 /// impl CostFunction for Rosenbrock {
@@ -71,7 +68,6 @@ use crate::line_search::{LineSearch, Wolfe};
 ///         ]
 ///     }
 /// }
-/// impl CostAndGradient for Rosenbrock {}
 ///
 /// let result = Executor::new(
 ///     Rosenbrock,
@@ -125,15 +121,14 @@ impl<S> BFGS<S> {
 
 impl<P, S, V, M> Solver<P, QuasiNewtonState<V, M>> for BFGS<S>
 where
-    P: CostAndGradient + CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
     S: LineSearch<P, V>,
     V: Clone + Dot + NormSquared + ScaledAdd<f64> + ScaleInPlace + NegInPlace + VectorLen,
     M: MatVec<V> + MatrixIdentity + ScaleInPlace + GeneralRankOneUpdate<V>,
 {
     fn init(&mut self, problem: &P, mut state: QuasiNewtonState<V, M>) -> QuasiNewtonState<V, M> {
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
-        state.cost = Some(cost);
-        state.gradient = Some(grad);
+        state.cost = Some(problem.cost(&state.param));
+        state.gradient = Some(problem.gradient(&state.param));
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -179,10 +174,7 @@ where
         s.scale_in_place(step.alpha);
         state.param.scaled_add(1.0, &s);
 
-        // Fused cost+grad at the new iterate: one fused call, both
-        // values consumed below.
-        let (cost_new, g_new) = problem.cost_and_gradient(&state.param);
-        state.cost_evals += 1;
+        let g_new = problem.gradient(&state.param);
         state.gradient_evals += 1;
 
         // y = g_new − g.
@@ -224,7 +216,8 @@ where
         // H update; the line search still produced a descent step, so we
         // continue. If this persists, max_iter / GradientTolerance halt.
 
-        state.cost = Some(cost_new);
+        state.cost = Some(problem.cost(&state.param));
+        state.cost_evals += 1;
         state.gradient = Some(g_new);
         (state, None)
     }

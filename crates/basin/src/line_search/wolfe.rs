@@ -294,7 +294,6 @@ mod tests {
             vec![2.0 * (x[0] - 3.0)]
         }
     }
-    impl crate::CostAndGradient for Quadratic {}
 
     #[test]
     fn satisfies_strong_wolfe_on_quadratic() {
