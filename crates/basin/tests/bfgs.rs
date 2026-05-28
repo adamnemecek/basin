@@ -116,7 +116,6 @@ impl CostFunction for Quadratic {
 }
 
 impl Gradient for Quadratic {
-    type Param = DVector<f64>;
     type Gradient = DVector<f64>;
     fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
         let mut g = DVector::zeros(x.len());

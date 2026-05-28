@@ -25,7 +25,6 @@ impl CostFunction for Rosen {
     }
 }
 impl Gradient for Rosen {
-    type Param = DVector<f64>;
     type Gradient = DVector<f64>;
     fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
         let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);

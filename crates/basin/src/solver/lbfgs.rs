@@ -335,7 +335,7 @@ impl<Mode, S> LBFGS<Mode, S> {
 
 impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Bounded, S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstraints,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V> + BoxConstraints,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
     S: LineSearch<P, V>,
 {
@@ -356,8 +356,9 @@ where
             &mut work.boxed,
         );
 
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state.work = Some(work);
@@ -668,9 +669,8 @@ where
 
             // Recompute f, g at the new iterate. (MoreThuente
             // discards the final trial's values; cleanest workaround
-            // is one extra cost+grad eval per iter.)
-            let f_new = problem.cost(&state.param);
-            let g_new = problem.gradient(&state.param);
+            // is one fused cost+grad eval per iter.)
+            let (f_new, g_new) = problem.cost_and_gradient(&state.param);
             state.cost_evals += 1;
             state.gradient_evals += 1;
 
@@ -748,7 +748,7 @@ where
 
 impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Unbounded, S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
     S: LineSearch<P, V>,
 {
@@ -756,8 +756,9 @@ where
         // Cache cost and gradient at the initial iterate. `state.work`
         // stays `None` — the box-constrained scratch buffers are
         // never touched on the unbounded path.
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -865,8 +866,7 @@ where
 
         // x ← x + stp · d.
         state.param.scaled_add(stp, &d_v);
-        let f_new = problem.cost(&state.param);
-        let g_new = problem.gradient(&state.param);
+        let (f_new, g_new) = problem.cost_and_gradient(&state.param);
         state.cost_evals += 1;
         state.gradient_evals += 1;
 
@@ -1183,7 +1183,6 @@ mod tests {
             }
         }
         impl Gradient for Quad {
-            type Param = Vec<f64>;
             type Gradient = Vec<f64>;
             fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
                 x.iter().zip(&self.c).map(|(a, b)| 2.0 * (a - b)).collect()
@@ -1239,7 +1238,6 @@ mod tests {
             }
         }
         impl Gradient for Rosen {
-            type Param = Vec<f64>;
             type Gradient = Vec<f64>;
             fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
                 let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);

@@ -23,7 +23,6 @@ impl CostFunction for Rosen {
     }
 }
 impl Gradient for Rosen {
-    type Param = Array1<f64>;
     type Gradient = Array1<f64>;
     fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
         let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);

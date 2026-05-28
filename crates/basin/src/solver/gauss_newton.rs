@@ -117,7 +117,7 @@ impl<V, M> GaussNewton<V, M> {
 
 impl<P, V, M> Solver<P, BasicState<V>> for GaussNewton<V, M>
 where
-    P: Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
+    P: Residual<Param = V, Output = V> + Jacobian<Jacobian = M>,
     V: ScaledAdd<f64> + NormSquared + NormInfinity + NegInPlace + Clone,
     M: GramMatrix + MatTransposeVec<V> + LinearSolveSpd<V>,
 {
@@ -125,8 +125,7 @@ where
         // Seed cost so iter-0 termination criteria see a populated
         // state. Both `r(x₀)` and `J(x₀)` are stashed so the first
         // `next_iter` doesn't re-evaluate them at the same point.
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;

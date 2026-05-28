@@ -20,7 +20,6 @@ impl CostFunction for Quadratic {
 }
 
 impl Gradient for Quadratic {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
 
     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {

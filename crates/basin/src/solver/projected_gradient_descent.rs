@@ -91,7 +91,6 @@ use crate::line_search::{Constant, LineSearch};
 ///     }
 /// }
 /// impl Gradient for ShiftedSphere {
-///     type Param = Vec<f64>;
 ///     type Gradient = Vec<f64>;
 ///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
 ///         vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)]
@@ -143,7 +142,7 @@ impl<S> ProjectedGradientDescent<S> {
 
 impl<P, V, S> Solver<P, BasicState<V>> for ProjectedGradientDescent<S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstraints,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V> + BoxConstraints,
     V: ScaledAdd<f64> + NegInPlace + ClampInPlace + Clone,
     S: LineSearch<P, V>,
 {
@@ -152,8 +151,9 @@ where
         // see a feasible iterate. Subsequent iterations preserve
         // feasibility by construction.
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -180,8 +180,9 @@ where
         state.gradient_evals += step.gradient_evals;
         state.param.scaled_add(step.alpha, &direction);
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         (state, None)

@@ -67,7 +67,6 @@ use crate::line_search::{Constant, LineSearch};
 ///     }
 /// }
 /// impl Gradient for Sphere {
-///     type Param = Vec<f64>;
 ///     type Gradient = Vec<f64>;
 ///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
 ///         x.iter().map(|xi| 2.0 * xi).collect()
@@ -127,7 +126,7 @@ impl<L, V> GradientDescent<L, V> {
 
 impl<P, V, L> Solver<P, BasicState<V>> for GradientDescent<L, V>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: ScaledAdd<f64> + NegInPlace + ScaleInPlace + Clone,
     L: LineSearch<P, V>,
 {
@@ -138,8 +137,9 @@ where
         // Seed cost and gradient at the initial param so iter-0 termination
         // checks (e.g. `GradientTolerance` on a near-optimal start) see a
         // complete state. Same work we'd do on iter 1, hoisted.
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -188,8 +188,9 @@ where
             self.velocity = Some(velocity);
         }
 
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         (state, None)
@@ -230,7 +231,6 @@ mod tests {
     }
 
     impl Gradient for Quadratic {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             x.iter().map(|v| 2.0 * v).collect()
@@ -254,7 +254,6 @@ mod tests {
     }
 
     impl Gradient for IllConditioned {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             vec![2.0 * x[0], 200.0 * x[1]]

@@ -88,7 +88,7 @@ impl Wolfe {
 
 impl<P, V> LineSearch<P, V> for Wolfe
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: ScaledAdd<f64> + Dot + Clone,
 {
     fn next(
@@ -222,7 +222,7 @@ impl Wolfe {
         mut gradient_evals: u64,
     ) -> LineSearchResult
     where
-        P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+        P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
         V: ScaledAdd<f64> + Dot + Clone,
     {
         for _ in 0..self.max_iter {
@@ -288,7 +288,6 @@ mod tests {
     }
 
     impl Gradient for Quadratic {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             vec![2.0 * (x[0] - 3.0)]

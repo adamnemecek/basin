@@ -411,7 +411,6 @@ impl CostFunction for Bowl {
 }
 
 impl Gradient for Bowl {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
         let h = 1e-4;

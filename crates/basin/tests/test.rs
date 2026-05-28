@@ -34,7 +34,6 @@ impl CostFunction for MyProblem {
 
 // 1b. Its gradient, ∇f(x) = 2(x − 2).
 impl Gradient for MyProblem {
-    type Param = DVector<f64>;
     type Gradient = DVector<f64>;
     fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
         DVector::from_vec(vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)])

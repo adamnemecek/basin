@@ -218,7 +218,6 @@ where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex,
 {
-    type Param = V;
     type Gradient = V;
     fn gradient(&self, param: &V) -> V {
         match self.gradient_method {
@@ -243,9 +242,8 @@ where
     P: Residual<Param = V, Output = V>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
-    type Param = V;
-    type Output = <V as DenseMatrixFromFn>::Matrix;
-    fn jacobian(&self, param: &V) -> Self::Output {
+    type Jacobian = <V as DenseMatrixFromFn>::Matrix;
+    fn jacobian(&self, param: &V) -> Self::Jacobian {
         match self.jacobian_method {
             Method::Forward => forward_difference_jacobian(
                 &self.problem,
@@ -268,9 +266,8 @@ where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
-    type Param = V;
-    type Output = <V as DenseMatrixFromFn>::Matrix;
-    fn hessian(&self, param: &V) -> Self::Output {
+    type Hessian = <V as DenseMatrixFromFn>::Matrix;
+    fn hessian(&self, param: &V) -> Self::Hessian {
         match self.hessian_method {
             Method::Forward => forward_difference_hessian(
                 &self.problem,

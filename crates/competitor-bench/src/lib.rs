@@ -209,8 +209,7 @@ impl Residual for VarDim<DVector<f64>> {
 }
 
 impl Jacobian for VarDim<DVector<f64>> {
-    type Param = DVector<f64>;
-    type Output = DMatrix<f64>;
+    type Jacobian = DMatrix<f64>;
     fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
         let mut out = vec![0.0; (self.n + 2) * self.n];
         vardim_jacobian_row_major(x.as_slice(), &mut out);
@@ -230,8 +229,7 @@ impl Residual for VarDim<Col<f64>> {
 }
 
 impl Jacobian for VarDim<Col<f64>> {
-    type Param = Col<f64>;
-    type Output = Mat<f64>;
+    type Jacobian = Mat<f64>;
     fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
         let xs: Vec<f64> = (0..self.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; (self.n + 2) * self.n];
@@ -390,8 +388,7 @@ impl Residual for UnderDet<DVector<f64>> {
 }
 
 impl Jacobian for UnderDet<DVector<f64>> {
-    type Param = DVector<f64>;
-    type Output = DMatrix<f64>;
+    type Jacobian = DMatrix<f64>;
     fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
         let mut out = vec![0.0; self.data.m * self.data.n];
         self.data.jacobian_row_major(x.as_slice(), &mut out);
@@ -411,8 +408,7 @@ impl Residual for UnderDet<Col<f64>> {
 }
 
 impl Jacobian for UnderDet<Col<f64>> {
-    type Param = Col<f64>;
-    type Output = Mat<f64>;
+    type Jacobian = Mat<f64>;
     fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
         let xs: Vec<f64> = (0..self.data.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; self.data.m * self.data.n];

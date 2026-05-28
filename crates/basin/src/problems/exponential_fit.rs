@@ -204,8 +204,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for ExponentialFit<DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = DMatrix<f64>;
+        type Jacobian = DMatrix<f64>;
         fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
             let m = self.t.len();
             let mut buf = vec![0.0_f64; m * 2];
@@ -278,8 +277,7 @@ mod faer_impl {
     }
 
     impl Jacobian for ExponentialFit<Col<f64>> {
-        type Param = Col<f64>;
-        type Output = Mat<f64>;
+        type Jacobian = Mat<f64>;
         fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
             let m = self.t.len();
             let mut buf = vec![0.0_f64; m * 2];

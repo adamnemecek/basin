@@ -59,7 +59,6 @@ use crate::line_search::{LineSearch, Wolfe};
 ///     }
 /// }
 /// impl Gradient for Rosenbrock {
-///     type Param = Vec<f64>;
 ///     type Gradient = Vec<f64>;
 ///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
 ///         vec![
@@ -121,14 +120,15 @@ impl<S> BFGS<S> {
 
 impl<P, S, V, M> Solver<P, QuasiNewtonState<V, M>> for BFGS<S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     S: LineSearch<P, V>,
     V: Clone + Dot + NormSquared + ScaledAdd<f64> + ScaleInPlace + NegInPlace + VectorLen,
     M: MatVec<V> + MatrixIdentity + ScaleInPlace + GeneralRankOneUpdate<V>,
 {
     fn init(&mut self, problem: &P, mut state: QuasiNewtonState<V, M>) -> QuasiNewtonState<V, M> {
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -174,7 +174,11 @@ where
         s.scale_in_place(step.alpha);
         state.param.scaled_add(1.0, &s);
 
-        let g_new = problem.gradient(&state.param);
+        // Fused cost+grad at the new iterate — one fused call gives both
+        // values consumed below (BFGS update reads g_new; state caches
+        // cost_new at the bottom of the iter).
+        let (cost_new, g_new) = problem.cost_and_gradient(&state.param);
+        state.cost_evals += 1;
         state.gradient_evals += 1;
 
         // y = g_new − g.
@@ -216,8 +220,7 @@ where
         // H update; the line search still produced a descent step, so we
         // continue. If this persists, max_iter / GradientTolerance halt.
 
-        state.cost = Some(problem.cost(&state.param));
-        state.cost_evals += 1;
+        state.cost = Some(cost_new);
         state.gradient = Some(g_new);
         (state, None)
     }

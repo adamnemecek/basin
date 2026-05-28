@@ -33,7 +33,6 @@
 //!     }
 //! }
 //! impl Gradient for Sphere {
-//!     type Param = Vec<f64>;
 //!     type Gradient = Vec<f64>;
 //!     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
 //!         x.iter().map(|xi| 2.0 * xi).collect()

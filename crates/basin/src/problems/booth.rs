@@ -119,7 +119,6 @@ impl CostFunction for Booth<Vec<f64>> {
 }
 
 impl Gradient for Booth<Vec<f64>> {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
         let mut out = vec![0.0; x.len()];
@@ -166,7 +165,6 @@ impl CostFunction for BoothBoxed<Vec<f64>> {
 }
 
 impl Gradient for BoothBoxed<Vec<f64>> {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
         let mut out = vec![0.0; x.len()];
@@ -302,7 +300,6 @@ mod nalgebra_impl {
     }
 
     impl Gradient for Booth<DVector<f64>> {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             let mut out = DVector::zeros(x.len());
@@ -320,7 +317,6 @@ mod nalgebra_impl {
     }
 
     impl Gradient for BoothBoxed<DVector<f64>> {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             let mut out = DVector::zeros(x.len());
@@ -357,8 +353,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for BoothResiduals<DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = DMatrix<f64>;
+        type Jacobian = DMatrix<f64>;
         fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
             // Constant 2×2 Jacobian — independent of x.
             let mut buf = [0.0_f64; 4];
@@ -386,8 +381,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for BoothBoxedResiduals<DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = DMatrix<f64>;
+        type Jacobian = DMatrix<f64>;
         fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
@@ -420,7 +414,6 @@ mod ndarray_impl {
     }
 
     impl Gradient for Booth<Array1<f64>> {
-        type Param = Array1<f64>;
         type Gradient = Array1<f64>;
         fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
             let mut out = Array1::zeros(x.len());
@@ -441,7 +434,6 @@ mod ndarray_impl {
     }
 
     impl Gradient for BoothBoxed<Array1<f64>> {
-        type Param = Array1<f64>;
         type Gradient = Array1<f64>;
         fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
             let mut out = Array1::zeros(x.len());
@@ -499,7 +491,6 @@ mod faer_impl {
     }
 
     impl Gradient for Booth<Col<f64>> {
-        type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
             grad_inline(x)
@@ -515,7 +506,6 @@ mod faer_impl {
     }
 
     impl Gradient for BoothBoxed<Col<f64>> {
-        type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
             grad_inline(x)
@@ -555,8 +545,7 @@ mod faer_impl {
     }
 
     impl Jacobian for BoothResiduals<Col<f64>> {
-        type Param = Col<f64>;
-        type Output = Mat<f64>;
+        type Jacobian = Mat<f64>;
         fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
@@ -581,8 +570,7 @@ mod faer_impl {
     }
 
     impl Jacobian for BoothBoxedResiduals<Col<f64>> {
-        type Param = Col<f64>;
-        type Output = Mat<f64>;
+        type Jacobian = Mat<f64>;
         fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);

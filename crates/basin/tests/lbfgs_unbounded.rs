@@ -35,7 +35,6 @@ fn rosenbrock_vec() {
         }
     }
     impl Gradient for Rosen {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             let (a, b) = rosenbrock::grad(x[0], x[1]);
@@ -71,7 +70,6 @@ fn rosenbrock_nalgebra() {
         }
     }
     impl Gradient for Rosen {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             let (a, b) = rosenbrock::grad(x[0], x[1]);
@@ -107,7 +105,6 @@ fn rosenbrock_faer() {
         }
     }
     impl Gradient for Rosen {
-        type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
             let (a, b) = rosenbrock::grad(x[0], x[1]);
@@ -144,7 +141,6 @@ fn rosenbrock_ndarray() {
         }
     }
     impl Gradient for Rosen {
-        type Param = Array1<f64>;
         type Gradient = Array1<f64>;
         fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
             let (a, b) = rosenbrock::grad(x[0], x[1]);

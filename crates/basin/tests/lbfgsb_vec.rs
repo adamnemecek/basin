@@ -37,7 +37,6 @@ fn unbounded_rosenbrock_2d_converges() {
         }
     }
     impl Gradient for Rosen {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
@@ -176,7 +175,6 @@ fn quadratic_5d_diagonal_converges_quickly() {
         }
     }
     impl Gradient for Quadratic {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             let mut g = vec![0.0; x.len()];

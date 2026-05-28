@@ -135,7 +135,7 @@ impl MoreThuente {
 
 impl<P, V> LineSearch<P, V> for MoreThuente
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: ScaledAdd<f64> + Dot + Clone,
 {
     fn next(
@@ -488,7 +488,6 @@ mod tests {
     }
 
     impl Gradient for Quadratic {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             vec![2.0 * (x[0] - 3.0)]
@@ -513,7 +512,6 @@ mod tests {
     }
 
     impl Gradient for Cubic {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             let t = x[0] - 2.0;

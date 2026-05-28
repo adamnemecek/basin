@@ -250,7 +250,7 @@ impl<So> BarrierMethod<So> {
 impl<P, V, M, So> Solver<P, BasicState<V>> for BarrierMethod<So>
 where
     P: CostFunction<Param = V, Output = f64>
-        + Gradient<Param = V, Gradient = V>
+        + Gradient<Gradient = V>
         + LinearInequalityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
     V: ScaledAdd<f64> + NegInPlace + VectorIndex + VectorLen + NormSquared + Clone,
@@ -269,8 +269,9 @@ where
 
         // Seed the *true* objective so framework criteria and the public
         // result read f, not the barrier value.
-        state.cost = Some(problem.cost(state.param()));
-        state.gradient = Some(problem.gradient(state.param()));
+        let (cost, grad) = problem.cost_and_gradient(state.param());
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -317,8 +318,9 @@ where
         // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
         // (the inner left cost/gradient at the barrier objective).
         state.param = result.state.param().clone();
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
 

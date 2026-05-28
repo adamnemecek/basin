@@ -108,11 +108,12 @@ where
 
 impl<P, V, M> Gradient for LogBarrier<'_, P>
 where
-    P: Gradient<Param = V, Gradient = V> + LinearInequalityConstraints<Param = V, Matrix = M>,
+    P: CostFunction<Param = V, Output = f64>
+        + Gradient<Gradient = V>
+        + LinearInequalityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
     V: ScaledAdd<f64> + NegInPlace + VectorIndex + VectorLen,
 {
-    type Param = V;
     type Gradient = V;
 
     fn gradient(&self, x: &V) -> V {
@@ -162,7 +163,6 @@ mod tests {
     }
 
     impl Gradient for Probe {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             x.clone()

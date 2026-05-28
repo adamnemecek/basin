@@ -105,11 +105,12 @@ where
 
 impl<P, V, M> Gradient for AugmentedLagrangian<'_, P, V>
 where
-    P: Gradient<Param = V, Gradient = V> + LinearEqualityConstraints<Param = V, Matrix = M>,
+    P: CostFunction<Param = V, Output = f64>
+        + Gradient<Gradient = V>
+        + LinearEqualityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
-    V: ScaledAdd<f64> + Clone,
+    V: ScaledAdd<f64> + Dot + NormSquared + Clone,
 {
-    type Param = V;
     type Gradient = V;
 
     fn gradient(&self, x: &V) -> V {
@@ -156,7 +157,6 @@ mod tests {
     }
 
     impl Gradient for Probe {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             x.clone()

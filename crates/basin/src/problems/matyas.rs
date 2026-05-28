@@ -96,7 +96,6 @@ impl CostFunction for Matyas<Vec<f64>> {
 }
 
 impl Gradient for Matyas<Vec<f64>> {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
         let mut out = vec![0.0; x.len()];
@@ -120,7 +119,6 @@ mod nalgebra_impl {
     }
 
     impl Gradient for Matyas<DVector<f64>> {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             let mut out = DVector::zeros(x.len());
@@ -145,7 +143,6 @@ mod ndarray_impl {
     }
 
     impl Gradient for Matyas<Array1<f64>> {
-        type Param = Array1<f64>;
         type Gradient = Array1<f64>;
         fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
             let mut out = Array1::zeros(x.len());
@@ -178,7 +175,6 @@ mod faer_impl {
     }
 
     impl Gradient for Matyas<Col<f64>> {
-        type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
             debug_assert_eq!(x.nrows(), 2);

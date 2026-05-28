@@ -79,7 +79,6 @@ mod nalgebra_impl {
     }
 
     impl Gradient for ConstrainedQuadratic<DMatrix<f64>, DVector<f64>> {
-        type Param = DVector<f64>;
         type Gradient = DVector<f64>;
         fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
             2.0 * (x - &self.c)
@@ -117,7 +116,6 @@ mod faer_impl {
     }
 
     impl Gradient for ConstrainedQuadratic<Mat<f64>, Col<f64>> {
-        type Param = Col<f64>;
         type Gradient = Col<f64>;
         fn gradient(&self, x: &Col<f64>) -> Col<f64> {
             Col::from_fn(x.nrows(), |i| 2.0 * (x[i] - self.c[i]))
@@ -152,7 +150,6 @@ mod vec_impl {
     }
 
     impl Gradient for ConstrainedQuadratic<DenseMatrix, Vec<f64>> {
-        type Param = Vec<f64>;
         type Gradient = Vec<f64>;
         fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
             x.iter()
@@ -188,7 +185,6 @@ mod ndarray_impl {
     }
 
     impl Gradient for ConstrainedQuadratic<Array2<f64>, Array1<f64>> {
-        type Param = Array1<f64>;
         type Gradient = Array1<f64>;
         fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
             (x - &self.c).mapv(|v| 2.0 * v)

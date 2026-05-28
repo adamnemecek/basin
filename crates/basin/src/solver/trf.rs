@@ -251,9 +251,7 @@ impl<V, M> Trf<V, M> {
 
 impl<P, V, M> Solver<P, BasicState<V>> for Trf<V, M>
 where
-    P: Residual<Param = V, Output = V>
-        + Jacobian<Param = V, Output = M>
-        + BoxConstraints<Param = V>,
+    P: Residual<Param = V, Output = V> + Jacobian<Jacobian = M> + BoxConstraints<Param = V>,
     V: ScaledAdd<f64> + NormSquared + NegInPlace + Dot + BoxAffineScaling + Clone,
     M: GramMatrix
         + MatTransposeVec<V>
@@ -270,8 +268,7 @@ where
             .param
             .project_strictly_inside(problem.lower(), problem.upper(), self.rstep);
 
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;

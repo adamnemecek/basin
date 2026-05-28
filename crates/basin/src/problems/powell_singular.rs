@@ -197,8 +197,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for PowellSingular<DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = DMatrix<f64>;
+        type Jacobian = DMatrix<f64>;
         fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
             let mut buf = [0.0_f64; 16];
             powell_singular_jacobian(x.as_slice(), &mut buf);
@@ -277,8 +276,7 @@ mod faer_impl {
     }
 
     impl Jacobian for PowellSingular<Col<f64>> {
-        type Param = Col<f64>;
-        type Output = Mat<f64>;
+        type Jacobian = Mat<f64>;
         fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
             // Route through the row-major raw fn for a single source of
             // truth. The Col → slice copy is 4 entries.

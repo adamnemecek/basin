@@ -124,8 +124,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for SparseLeastSquares<CscMatrix<f64>, DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = CscMatrix<f64>;
+        type Jacobian = CscMatrix<f64>;
         fn jacobian(&self, _x: &DVector<f64>) -> CscMatrix<f64> {
             // J(x) = A — constant in x for linear residuals.
             self.a.clone()
@@ -153,8 +152,7 @@ mod nalgebra_impl {
     }
 
     impl Jacobian for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
-        type Param = DVector<f64>;
-        type Output = CscMatrix<f64>;
+        type Jacobian = CscMatrix<f64>;
         fn jacobian(&self, _x: &DVector<f64>) -> CscMatrix<f64> {
             self.a.clone()
         }
@@ -204,8 +202,7 @@ mod faer_impl {
     }
 
     impl Jacobian for SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>> {
-        type Param = Col<f64>;
-        type Output = SparseColMat<usize, f64>;
+        type Jacobian = SparseColMat<usize, f64>;
         fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
             // J(x) = A — constant in x for linear residuals.
             self.a.clone()
@@ -237,8 +234,7 @@ mod faer_impl {
     }
 
     impl Jacobian for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
-        type Param = Col<f64>;
-        type Output = SparseColMat<usize, f64>;
+        type Jacobian = SparseColMat<usize, f64>;
         fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
             self.a.clone()
         }
