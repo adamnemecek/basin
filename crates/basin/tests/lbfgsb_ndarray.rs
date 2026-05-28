@@ -18,16 +18,19 @@ struct Rosen {
 impl CostFunction for Rosen {
     type Param = Array1<f64>;
     type Output = f64;
-    fn cost(&self, x: &Array1<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2))
     }
 }
 impl Gradient for Rosen {
     type Gradient = Array1<f64>;
-    fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
-        let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
-        let dfdx1 = 200.0 * (x[1] - x[0] * x[0]);
-        array![dfdx0, dfdx1]
+    fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
+        Ok({
+            let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
+            let dfdx1 = 200.0 * (x[1] - x[0] * x[0]);
+            array![dfdx0, dfdx1]
+        })
     }
 }
 impl BoxConstraints for Rosen {
@@ -52,7 +55,8 @@ fn unbounded_rosenbrock_2d_converges() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(
@@ -74,7 +78,8 @@ fn booth_at_corner_converges() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(100))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-5 && (result.param()[1] - 1.0).abs() < 1e-5,
@@ -100,7 +105,8 @@ fn booth_slack_bounds_recover_unconstrained_minimum() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(100))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-10))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-4 && (result.param()[1] - 3.0).abs() < 1e-4,

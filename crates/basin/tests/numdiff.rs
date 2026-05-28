@@ -21,7 +21,8 @@ fn gradient_descent_on_finite_diff_sphere_converges() {
     let result = Executor::new(problem, GradientDescent::new(0.2), BasicState::new(initial))
         .max_iter(500)
         .terminate_on(GradientTolerance(1e-9))
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert!(result.cost() < 1e-12, "cost = {}", result.cost());
@@ -49,7 +50,8 @@ mod nalgebra {
             BasicState::new(initial.clone()),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
         let fd = Executor::new(
             FiniteDiff::new(RosenbrockResiduals::<DVector<f64>>::new()),
@@ -57,7 +59,8 @@ mod nalgebra {
             BasicState::new(initial),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
         assert_eq!(fd.reason, TerminationReason::SolverConverged);
         assert!(fd.cost() < 1e-12, "fd cost = {}", fd.cost());
@@ -95,7 +98,8 @@ mod faer {
             BasicState::new(initial),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
         assert_eq!(fd.reason, TerminationReason::SolverConverged);
         assert!(fd.cost() < 1e-12, "fd cost = {}", fd.cost());

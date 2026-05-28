@@ -22,7 +22,8 @@ fn slack_bounds_recover_unconstrained_minimum() {
         BasicState::new(initial),
     )
     .max_iter(2000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-4,
@@ -47,7 +48,8 @@ fn tight_bounds_converge_to_box_corner() {
         BasicState::new(initial),
     )
     .max_iter(2000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-6,
@@ -72,7 +74,8 @@ fn infeasible_initial_param_is_projected_at_init() {
         BasicState::new(initial),
     )
     .max_iter(0)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.param()[0], 1.0);
@@ -93,7 +96,8 @@ fn projected_gradient_tolerance_triggers_at_corner_minimum() {
     )
     .max_iter(2000)
     .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-7))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::ProjectedGradientTolerance);
 }

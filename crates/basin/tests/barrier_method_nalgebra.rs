@@ -30,7 +30,8 @@ fn active_constraint_converges_to_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -57,7 +58,8 @@ fn inactive_constraint_recovers_unconstrained_minimum() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -79,7 +81,8 @@ fn infeasible_start_is_reported_as_failure() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverFailed);
 }
@@ -95,7 +98,8 @@ fn eval_counts_are_recorded() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     // Inner barrier solves plus the per-outer-iter true-objective evals must
     // have accumulated onto the outer state.
@@ -124,7 +128,8 @@ fn two_constraints_both_active() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -151,7 +156,8 @@ fn bfgs_inner_converges_to_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(

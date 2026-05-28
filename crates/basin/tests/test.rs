@@ -27,16 +27,20 @@ struct MyProblem {
 impl CostFunction for MyProblem {
     type Param = DVector<f64>;
     type Output = f64;
-    fn cost(&self, x: &DVector<f64>) -> f64 {
-        (x[0] - 2.0).powi(2) + (x[1] - 2.0).powi(2)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok((x[0] - 2.0).powi(2) + (x[1] - 2.0).powi(2))
     }
 }
 
 // 1b. Its gradient, ∇f(x) = 2(x − 2).
 impl Gradient for MyProblem {
     type Gradient = DVector<f64>;
-    fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-        DVector::from_vec(vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)])
+    fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+        Ok(DVector::from_vec(vec![
+            2.0 * (x[0] - 2.0),
+            2.0 * (x[1] - 2.0),
+        ]))
     }
 }
 
@@ -80,7 +84,10 @@ fn barrier_method_tour() {
 
     // 5. Drive it with the usual `Executor`. `max_iter` is only an outer
     //    safety net — convergence comes from the gap test inside the solver.
-    let result = Executor::new(problem, solver, x0).max_iter(50).run();
+    let result = Executor::new(problem, solver, x0)
+        .max_iter(50)
+        .run()
+        .unwrap();
 
     // 6. Inspect the result.
     let x = result.param();

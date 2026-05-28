@@ -110,8 +110,9 @@ impl<P> HasSpec for Ackley<P> {
 impl CostFunction for Ackley<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        ackley(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(ackley(x))
     }
 }
 
@@ -124,8 +125,9 @@ mod nalgebra_impl {
     impl CostFunction for Ackley<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            ackley(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(ackley(x.as_slice()))
         }
     }
 }
@@ -139,8 +141,9 @@ mod ndarray_impl {
     impl CostFunction for Ackley<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            ackley(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(ackley(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 }
@@ -157,7 +160,8 @@ mod faer_impl {
     impl CostFunction for Ackley<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let c = 2.0 * core::f64::consts::PI;
             let mut sum_sq = 0.0;
@@ -168,7 +172,11 @@ mod faer_impl {
                 sum_cos += (c * v).cos();
             }
             let nf = n as f64;
-            -A * (-B * (sum_sq / nf).sqrt()).exp() - (sum_cos / nf).exp() + A + core::f64::consts::E
+            Ok(
+                -A * (-B * (sum_sq / nf).sqrt()).exp() - (sum_cos / nf).exp()
+                    + A
+                    + core::f64::consts::E,
+            )
         }
     }
 }
@@ -214,8 +222,9 @@ impl AckleyBoxed<Vec<f64>> {
 impl CostFunction for AckleyBoxed<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        ackley(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(ackley(x))
     }
 }
 
@@ -248,8 +257,9 @@ mod nalgebra_boxed_impl {
     impl CostFunction for AckleyBoxed<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            ackley(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(ackley(x.as_slice()))
         }
     }
 
@@ -283,8 +293,9 @@ mod ndarray_boxed_impl {
     impl CostFunction for AckleyBoxed<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            ackley(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(ackley(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
@@ -318,7 +329,8 @@ mod faer_boxed_impl {
     impl CostFunction for AckleyBoxed<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let c = 2.0 * core::f64::consts::PI;
             let mut sum_sq = 0.0;
@@ -329,7 +341,11 @@ mod faer_boxed_impl {
                 sum_cos += (c * v).cos();
             }
             let nf = n as f64;
-            -A * (-B * (sum_sq / nf).sqrt()).exp() - (sum_cos / nf).exp() + A + core::f64::consts::E
+            Ok(
+                -A * (-B * (sum_sq / nf).sqrt()).exp() - (sum_cos / nf).exp()
+                    + A
+                    + core::f64::consts::E,
+            )
         }
     }
 
@@ -393,7 +409,7 @@ mod tests {
         let unboxed: Ackley<Vec<f64>> = Ackley::default();
         let boxed = AckleyBoxed::<Vec<f64>>::with_standard_bounds(3);
         let x = vec![0.3, -0.7, 1.2];
-        assert!((unboxed.cost(&x) - boxed.cost(&x)).abs() < 1e-12);
+        assert!((unboxed.cost(&x).unwrap() - boxed.cost(&x).unwrap()).abs() < 1e-12);
     }
 
     #[test]

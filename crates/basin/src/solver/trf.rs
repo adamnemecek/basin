@@ -260,7 +260,13 @@ where
         + MaxDiagonal
         + Clone,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = <P as Residual>::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         // Project the starting iterate strictly into (lower, upper).
         // D is undefined where v_i = 0 (a finite face), so an
         // on-boundary or infeasible start is silently corrected.
@@ -268,7 +274,7 @@ where
             .param
             .project_strictly_inside(problem.lower(), problem.upper(), self.rstep);
 
-        let (r, j) = problem.residual_and_jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param)?;
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;
@@ -294,14 +300,14 @@ where
         self.nu = 2.0;
         self.r_cache = Some(r);
         self.j_cache = Some(j);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         // Use cached `r` / `J` when available (set by init or by the
         // previous accept/reject branch). Only count an eval when the
         // cache misses.
@@ -309,14 +315,14 @@ where
             Some(r) => r,
             None => {
                 state.cost_evals += 1;
-                problem.residual(&state.param)
+                problem.residual(&state.param)?
             }
         };
         let j = match self.j_cache.take() {
             Some(j) => j,
             None => {
                 state.gradient_evals += 1;
-                problem.jacobian(&state.param)
+                problem.jacobian(&state.param)?
             }
         };
 
@@ -345,7 +351,7 @@ where
             // mirroring LM's pattern keeps the contract uniform.
             self.r_cache = Some(r);
             self.j_cache = Some(j);
-            return (state, Some(TerminationReason::SolverConverged));
+            return Ok((state, Some(TerminationReason::SolverConverged)));
         }
 
         let mut neg_g = g.clone();
@@ -383,7 +389,7 @@ where
                         // State unchanged; restore both caches.
                         self.r_cache = Some(r);
                         self.j_cache = Some(j);
-                        return (state, Some(TerminationReason::SolverFailed));
+                        return Ok((state, Some(TerminationReason::SolverFailed)));
                     }
                     mu *= nu;
                     nu *= 2.0;
@@ -406,7 +412,7 @@ where
         // Trial step.
         let mut x_trial = state.param.clone();
         x_trial.scaled_add(alpha, &h);
-        let r_trial = problem.residual(&x_trial);
+        let r_trial = problem.residual(&x_trial)?;
         state.cost_evals += 1;
         let f_trial = 0.5 * r_trial.norm_squared();
 
@@ -461,6 +467,6 @@ where
 
         self.mu = Some(mu);
         self.nu = nu;
-        (state, None)
+        Ok((state, None))
     }
 }

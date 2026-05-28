@@ -18,7 +18,8 @@ fn stepper_run_to_end_matches_executor_run() {
         BasicState::new(initial.clone()),
     )
     .max_iter(500)
-    .run();
+    .run()
+    .unwrap();
 
     let via_stepper = Executor::new(
         problem_b,
@@ -27,7 +28,9 @@ fn stepper_run_to_end_matches_executor_run() {
     )
     .max_iter(500)
     .into_stepper()
-    .run_to_end();
+    .unwrap()
+    .run_to_end()
+    .unwrap();
 
     assert_eq!(direct.iter(), via_stepper.iter());
     assert_eq!(direct.reason, via_stepper.reason);
@@ -48,11 +51,12 @@ fn stepper_advances_one_iter_per_step() {
         BasicState::new(vec![-1.2, 1.0]),
     )
     .max_iter(10)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     assert_eq!(stepper.iter(), 0, "stepper sits at iter 0 after init");
     for expected in 1..=5 {
-        let outcome = stepper.step();
+        let outcome = stepper.step().unwrap();
         assert_eq!(outcome, StepOutcome::Continue);
         assert_eq!(stepper.iter(), expected);
     }
@@ -67,13 +71,14 @@ fn stepper_stops_on_max_iter_with_correct_reason() {
         BasicState::new(vec![-1.2, 1.0]),
     )
     .max_iter(3)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..3 {
-        assert_eq!(stepper.step(), StepOutcome::Continue);
+        assert_eq!(stepper.step().unwrap(), StepOutcome::Continue);
     }
     assert_eq!(
-        stepper.step(),
+        stepper.step().unwrap(),
         StepOutcome::Stopped(TerminationReason::MaxIter),
     );
     assert_eq!(stepper.iter(), 3);
@@ -88,11 +93,12 @@ fn stepper_is_sticky_after_stop() {
         BasicState::new(vec![-1.2, 1.0]),
     )
     .max_iter(1)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
-    stepper.step();
-    let first_stop = stepper.step();
-    let second_stop = stepper.step();
+    stepper.step().unwrap();
+    let first_stop = stepper.step().unwrap();
+    let second_stop = stepper.step().unwrap();
     assert_eq!(first_stop, StepOutcome::Stopped(TerminationReason::MaxIter));
     assert_eq!(first_stop, second_stop);
 }
@@ -107,9 +113,10 @@ fn stepper_honors_gradient_tolerance() {
     )
     .max_iter(100)
     .terminate_on(GradientTolerance(1e-6))
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
-    let result = stepper.run_to_end();
+    let result = stepper.run_to_end().unwrap();
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert_eq!(result.iter(), 0, "should fire at iter 0");
 }
@@ -118,7 +125,7 @@ fn stepper_honors_gradient_tolerance() {
 fn stepper_state_is_observable_between_steps() {
     let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let mut stepper = Executor::new(
         problem,
@@ -126,10 +133,11 @@ fn stepper_state_is_observable_between_steps() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     let mut trajectory: Vec<Vec<f64>> = vec![stepper.state().param().clone()];
-    while stepper.step() == StepOutcome::Continue {
+    while stepper.step().unwrap() == StepOutcome::Continue {
         trajectory.push(stepper.state().param().clone());
     }
 

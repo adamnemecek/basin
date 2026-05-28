@@ -5,7 +5,7 @@ use basin::{Backtracking, BasicState, CostFunction, Executor, GradientDescent, T
 fn gradient_descent_decreases_rosenbrock_cost() {
     let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let result = Executor::new(
         problem,
@@ -13,7 +13,8 @@ fn gradient_descent_decreases_rosenbrock_cost() {
         BasicState::new(initial),
     )
     .max_iter(10_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.iter(), 10_000, "should hit max_iter");
     assert_eq!(result.reason, TerminationReason::MaxIter);
@@ -33,7 +34,7 @@ fn gradient_descent_with_momentum_decreases_rosenbrock_cost() {
     // down sharply from the classical start.
     let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let result = Executor::new(
         problem,
@@ -41,7 +42,8 @@ fn gradient_descent_with_momentum_decreases_rosenbrock_cost() {
         BasicState::new(initial),
     )
     .max_iter(10_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < initial_cost * 0.1,
@@ -55,7 +57,7 @@ fn gradient_descent_with_momentum_decreases_rosenbrock_cost() {
 fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
     let problem = Rosenbrock::<Vec<f64>>::default();
     let initial = vec![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let result = Executor::new(
         problem,
@@ -63,7 +65,8 @@ fn gradient_descent_with_backtracking_decreases_rosenbrock_cost() {
         BasicState::new(initial),
     )
     .max_iter(10_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < initial_cost * 0.1,

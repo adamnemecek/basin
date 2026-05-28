@@ -111,17 +111,18 @@ impl<P> HasSpec for McCormick<P> {
 impl CostFunction for McCormick<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        mccormick(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(mccormick(x))
     }
 }
 
 impl Gradient for McCormick<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         mccormick_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -134,17 +135,18 @@ mod nalgebra_impl {
     impl CostFunction for McCormick<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            mccormick(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(mccormick(x.as_slice()))
         }
     }
 
     impl Gradient for McCormick<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             mccormick_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -158,20 +160,21 @@ mod ndarray_impl {
     impl CostFunction for McCormick<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            mccormick(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(mccormick(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for McCormick<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             mccormick_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -188,24 +191,25 @@ mod faer_impl {
     impl CostFunction for McCormick<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let d = a - b;
-            (a + b).sin() + d * d - 1.5 * a + 2.5 * b + 1.0
+            Ok((a + b).sin() + d * d - 1.5 * a + 2.5 * b + 1.0)
         }
     }
 
     impl Gradient for McCormick<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let c = (a + b).cos();
             let d = a - b;
             let g0 = c + 2.0 * d - 1.5;
             let g1 = c - 2.0 * d + 2.5;
-            Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+            Ok(Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 }))
         }
     }
 }

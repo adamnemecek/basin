@@ -13,17 +13,18 @@ struct Quadratic;
 impl CostFunction for Quadratic {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = std::convert::Infallible;
 
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        0.5 * x.iter().map(|v| v * v).sum::<f64>()
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(0.5 * x.iter().map(|v| v * v).sum::<f64>())
     }
 }
 
 impl Gradient for Quadratic {
     type Gradient = Vec<f64>;
 
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        x.clone()
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok(x.clone())
     }
 }
 
@@ -37,7 +38,8 @@ fn gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {
         BasicState::new(vec![0.0, 0.0]),
     )
     .terminate_on(GradientTolerance(1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert_eq!(result.iter(), 0, "should not have done any iterations");
@@ -52,7 +54,8 @@ fn gradient_tolerance_fires_after_convergence() {
     )
     .max_iter(1_000)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert!(result.iter() > 0 && result.iter() < 1_000);
@@ -76,7 +79,8 @@ fn relative_gradient_tolerance_fires_after_convergence() {
     )
     .max_iter(1_000)
     .terminate_on(RelativeGradientTolerance::new(1e-3))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::RelativeGradientTolerance);
     assert!(
@@ -96,7 +100,8 @@ fn relative_gradient_tolerance_fires_at_iter_zero_when_starting_at_optimum() {
         BasicState::new(vec![0.0, 0.0]),
     )
     .terminate_on(RelativeGradientTolerance::new(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::RelativeGradientTolerance);
     assert_eq!(result.iter(), 0);
@@ -118,6 +123,7 @@ fn relative_gradient_tolerance_is_scale_invariant() {
         .max_iter(1_000)
         .terminate_on(RelativeGradientTolerance::new(1e-3))
         .run()
+        .unwrap()
     };
 
     let small = run_from(1.0);
@@ -140,7 +146,8 @@ fn max_iter_field_default_is_one_thousand() {
         GradientDescent::new(0.001), // tiny step → won't converge in 1000
         BasicState::new(vec![10.0, 10.0]),
     )
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 1_000);
@@ -155,7 +162,8 @@ fn explicit_max_iter_criterion_works_alongside_default() {
         BasicState::new(vec![10.0, 10.0]),
     )
     .terminate_on(MaxIter(5))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 5);
@@ -170,7 +178,8 @@ fn param_tolerance_fires_when_steps_become_small() {
     )
     .max_iter(1_000)
     .terminate_on(ParamTolerance::new(1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::ParamTolerance);
 }
@@ -184,7 +193,8 @@ fn cost_tolerance_fires_when_cost_stagnates() {
     )
     .max_iter(1_000)
     .terminate_on(CostTolerance::new(1e-12))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::CostTolerance);
 }
@@ -203,7 +213,8 @@ fn relative_param_tolerance_fires_when_relative_step_small() {
     )
     .max_iter(1_000)
     .terminate_on(RelativeParamTolerance::new(1e-2))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::RelativeParamTolerance);
     assert!(result.iter() < 5, "fired late at iter {}", result.iter());
@@ -220,7 +231,8 @@ fn relative_cost_tolerance_fires_when_relative_reduction_small() {
     )
     .max_iter(1_000)
     .terminate_on(RelativeCostTolerance::new(1e-2))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::RelativeCostTolerance);
     assert!(result.iter() < 5, "fired late at iter {}", result.iter());
@@ -236,7 +248,8 @@ fn target_cost_fires_at_iter_zero_when_start_is_below_target() {
         BasicState::new(vec![0.5, 0.5]),
     )
     .terminate_on(TargetCost(1.0))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::TargetCost);
     assert_eq!(result.iter(), 0);
@@ -254,7 +267,8 @@ fn target_cost_fires_when_cost_drops_to_target() {
     )
     .max_iter(1_000)
     .terminate_on(TargetCost(1e-3))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::TargetCost);
     assert!(result.iter() > 0 && result.iter() < 1_000);
@@ -272,7 +286,8 @@ fn target_cost_does_not_fire_when_target_unreachable() {
     )
     .terminate_on(MaxIter(10))
     .terminate_on(TargetCost(-1.0))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 10);
@@ -291,7 +306,8 @@ fn no_improvement_fires_after_patience_stalled_iters() {
     )
     .max_iter(100)
     .terminate_on(NoImprovement::new(3, 10.0))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::NoImprovement);
     assert_eq!(result.iter(), 3);
@@ -309,7 +325,8 @@ fn no_improvement_does_not_fire_under_monotone_decrease() {
     )
     .terminate_on(MaxIter(20))
     .terminate_on(NoImprovement::new(5, 0.0))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 20);
@@ -331,7 +348,8 @@ fn no_improvement_resets_counter_on_real_improvement() {
     )
     .max_iter(100)
     .terminate_on(NoImprovement::new(3, 0.1))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::NoImprovement);
     assert_eq!(result.iter(), 5);
@@ -353,6 +371,7 @@ fn relative_cost_tolerance_is_scale_invariant() {
         .max_iter(1_000)
         .terminate_on(RelativeCostTolerance::new(1e-2))
         .run()
+        .unwrap()
     };
 
     let small = run_from(1.0);
@@ -378,7 +397,8 @@ fn first_criterion_to_fire_wins() {
     )
     .max_iter(1_000)
     .terminate_on(ParamTolerance::new(100.0))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::ParamTolerance);
     assert!(result.iter() < 5);
@@ -394,7 +414,8 @@ fn max_time_eventually_fires() {
     )
     .max_iter(u64::MAX)
     .terminate_on(MaxTime::new(Duration::from_millis(50)))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxTime);
 }
@@ -405,12 +426,13 @@ fn max_time_eventually_fires() {
 struct AlwaysConverged;
 
 impl Solver<Quadratic, BasicState<Vec<f64>>> for AlwaysConverged {
+    type Error = std::convert::Infallible;
     fn next_iter(
         &mut self,
         _problem: &Quadratic,
         state: BasicState<Vec<f64>>,
-    ) -> (BasicState<Vec<f64>>, Option<TerminationReason>) {
-        (state, None)
+    ) -> Result<(BasicState<Vec<f64>>, Option<TerminationReason>), Self::Error> {
+        Ok((state, None))
     }
 
     fn terminate(&self, _state: &BasicState<Vec<f64>>) -> Option<TerminationReason> {
@@ -420,7 +442,9 @@ impl Solver<Quadratic, BasicState<Vec<f64>>> for AlwaysConverged {
 
 #[test]
 fn solver_terminate_hook_is_honored() {
-    let result = Executor::new(Quadratic, AlwaysConverged, BasicState::new(vec![1.0, 2.0])).run();
+    let result = Executor::new(Quadratic, AlwaysConverged, BasicState::new(vec![1.0, 2.0]))
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert_eq!(result.iter(), 0);
@@ -435,17 +459,20 @@ struct FailsOnSecondCall {
 }
 
 impl Solver<Quadratic, BasicState<Vec<f64>>> for FailsOnSecondCall {
+    type Error = std::convert::Infallible;
     fn next_iter(
         &mut self,
         _problem: &Quadratic,
         state: BasicState<Vec<f64>>,
-    ) -> (BasicState<Vec<f64>>, Option<TerminationReason>) {
-        self.calls += 1;
-        if self.calls >= 2 {
-            (state, Some(TerminationReason::SolverFailed))
-        } else {
-            (state, None)
-        }
+    ) -> Result<(BasicState<Vec<f64>>, Option<TerminationReason>), Self::Error> {
+        Ok({
+            self.calls += 1;
+            if self.calls >= 2 {
+                (state, Some(TerminationReason::SolverFailed))
+            } else {
+                (state, None)
+            }
+        })
     }
 }
 
@@ -457,7 +484,8 @@ fn solver_can_signal_termination_mid_iter() {
         BasicState::new(vec![1.0, 2.0]),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverFailed);
     // First call completed (iter 0 → 1), second call bailed without
@@ -484,7 +512,8 @@ fn cost_evals_matches_iter_for_constant_step_gradient_descent() {
         BasicState::new(vec![10.0, 10.0]),
     )
     .terminate_on(MaxIter(20))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.iter(), 20);
     assert_eq!(result.state.cost_evals(), 21);
@@ -501,7 +530,8 @@ fn cost_evals_exceeds_iter_with_backtracking() {
         BasicState::new(vec![1.0, 1.0]),
     )
     .terminate_on(MaxIter(10))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.iter(), 10);
     assert!(
@@ -522,7 +552,8 @@ fn cost_evals_exceeds_iter_for_nelder_mead_shrinks() {
         BasicSimplexState::new(vec![2.0, -3.0]),
     )
     .terminate_on(MaxIter(50))
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.state.cost_evals() >= result.iter() + 3);
 }
@@ -536,7 +567,8 @@ fn max_gradient_evals_fires_before_max_iter() {
     )
     .max_iter(10_000)
     .terminate_on(MaxGradientEvals(5))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxGradientEvals);
     assert!(result.state.gradient_evals() >= 5);
@@ -551,7 +583,8 @@ fn max_cost_evals_fires_before_max_iter() {
     )
     .max_iter(10_000)
     .terminate_on(MaxCostEvals(25))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxCostEvals);
     assert!(
@@ -570,7 +603,8 @@ fn custom_termination_criterion() {
     )
     .max_iter(1_000)
     .terminate_on(StopAt(7))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert_eq!(result.iter(), 7);

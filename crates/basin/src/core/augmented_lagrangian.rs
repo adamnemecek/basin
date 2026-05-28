@@ -93,13 +93,18 @@ where
 {
     type Param = V;
     type Output = f64;
+    // Pass through the wrapped problem's hard-abort error. `L_ρ` is finite
+    // everywhere (no feasibility wall, no soft-reject path), so the only
+    // `Err` that can come out of this `cost` is one the user's `cost`
+    // returned.
+    type Error = <P as CostFunction>::Error;
 
-    fn cost(&self, x: &V) -> f64 {
+    fn cost(&self, x: &V) -> Result<f64, Self::Error> {
         // Constraint residual c = A x − b.
         let mut c = self.problem.a().matvec(x);
         c.scaled_add(-1.0, self.problem.b());
         // L_ρ = f(x) + λᵀc + (ρ/2)‖c‖².
-        self.problem.cost(x) + self.lambda.dot(&c) + 0.5 * self.rho * c.norm_squared()
+        Ok(self.problem.cost(x)? + self.lambda.dot(&c) + 0.5 * self.rho * c.norm_squared())
     }
 }
 
@@ -113,7 +118,7 @@ where
 {
     type Gradient = V;
 
-    fn gradient(&self, x: &V) -> V {
+    fn gradient(&self, x: &V) -> Result<V, <Self as CostFunction>::Error> {
         // Constraint residual c = A x − b.
         let mut c = self.problem.a().matvec(x);
         c.scaled_add(-1.0, self.problem.b());
@@ -121,10 +126,10 @@ where
         let mut w = self.lambda.clone();
         w.scaled_add(self.rho, &c);
         // ∇L_ρ = ∇f + Aᵀ(λ + ρ c).
-        let mut g = self.problem.gradient(x);
+        let mut g = self.problem.gradient(x)?;
         let constraint_grad = self.problem.a().mat_transpose_vec(&w);
         g.scaled_add(1.0, &constraint_grad);
-        g
+        Ok(g)
     }
 }
 
@@ -151,15 +156,16 @@ mod tests {
     impl CostFunction for Probe {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            0.5 * x.dot(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(0.5 * x.dot(x))
         }
     }
 
     impl Gradient for Probe {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            x.clone()
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(x.clone())
         }
     }
 
@@ -184,7 +190,7 @@ mod tests {
         // L = 0.125 + 0.5·(−2.1) + 0.5·2·(−2.1)² = 0.125 − 1.05 + 4.41.
         let c = (0.3 - 0.4) - 2.0;
         let expected = 0.125 + 0.5 * c + 0.5 * rho * c * c;
-        assert!((al.cost(&x) - expected).abs() < 1e-12);
+        assert!((al.cost(&x).unwrap() - expected).abs() < 1e-12);
     }
 
     #[test]
@@ -194,7 +200,7 @@ mod tests {
         let lambda = DVector::from_vec(vec![0.0]);
         let al = AugmentedLagrangian::new(&p, &lambda, 1.0);
         let x = DVector::from_vec(vec![100.0, 100.0]);
-        assert!(al.cost(&x).is_finite());
+        assert!(al.cost(&x).unwrap().is_finite());
     }
 
     #[test]
@@ -203,7 +209,7 @@ mod tests {
         let lambda = DVector::from_vec(vec![0.7]);
         let al = AugmentedLagrangian::new(&p, &lambda, 1.3);
         let x = DVector::from_vec(vec![0.3, -0.4]);
-        let analytic = al.gradient(&x);
+        let analytic = al.gradient(&x).unwrap();
 
         let h = 1e-6;
         for j in 0..2 {
@@ -211,7 +217,7 @@ mod tests {
             let mut xm = x.clone();
             xp[j] += h;
             xm[j] -= h;
-            let fd = (al.cost(&xp) - al.cost(&xm)) / (2.0 * h);
+            let fd = (al.cost(&xp).unwrap() - al.cost(&xm).unwrap()) / (2.0 * h);
             assert!(
                 (analytic[j] - fd).abs() < 1e-5,
                 "component {j}: analytic {} vs fd {}",

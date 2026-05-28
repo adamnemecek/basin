@@ -121,36 +121,42 @@ where
     V: ScaledAdd<f64> + NormSquared + NormInfinity + NegInPlace + Clone,
     M: GramMatrix + MatTransposeVec<V> + LinearSolveSpd<V>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = <P as Residual>::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         // Seed cost so iter-0 termination criteria see a populated
         // state. Both `r(x₀)` and `J(x₀)` are stashed so the first
         // `next_iter` doesn't re-evaluate them at the same point.
-        let (r, j) = problem.residual_and_jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param)?;
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;
         self.r_cache = Some(r);
         self.j_cache = Some(j);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         let r = match self.r_cache.take() {
             Some(r) => r,
             None => {
                 state.cost_evals += 1;
-                problem.residual(&state.param)
+                problem.residual(&state.param)?
             }
         };
         let j = match self.j_cache.take() {
             Some(j) => j,
             None => {
                 state.gradient_evals += 1;
-                problem.jacobian(&state.param)
+                problem.jacobian(&state.param)?
             }
         };
 
@@ -161,7 +167,7 @@ where
         if self.tol_grad > 0.0 && g.norm_infinity() <= self.tol_grad {
             self.r_cache = Some(r);
             self.j_cache = Some(j);
-            return (state, Some(TerminationReason::SolverConverged));
+            return Ok((state, Some(TerminationReason::SolverConverged)));
         }
 
         // Solve (JᵀJ) δ = −Jᵀr. Cholesky failure means JᵀJ is not
@@ -177,7 +183,7 @@ where
                 // for any subsequent reuse (e.g. via `InnerExecutor`).
                 self.r_cache = Some(r);
                 self.j_cache = Some(j);
-                return (state, Some(TerminationReason::SolverFailed));
+                return Ok((state, Some(TerminationReason::SolverFailed)));
             }
         };
 
@@ -186,12 +192,12 @@ where
         // that residual so the next iter reuses it without re-eval.
         // `J(x_new)` is not computed, so `j_cache` stays empty.
         state.param.scaled_add(1.0, &delta);
-        let r_new = problem.residual(&state.param);
+        let r_new = problem.residual(&state.param)?;
         state.cost = Some(0.5 * r_new.norm_squared());
         state.cost_evals += 1;
         self.r_cache = Some(r_new);
         self.j_cache = None;
 
-        (state, None)
+        Ok((state, None))
     }
 }

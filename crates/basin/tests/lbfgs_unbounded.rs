@@ -30,15 +30,18 @@ fn rosenbrock_vec() {
     impl CostFunction for Rosen {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            rosenbrock::cost(x[0], x[1])
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock::cost(x[0], x[1]))
         }
     }
     impl Gradient for Rosen {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            let (a, b) = rosenbrock::grad(x[0], x[1]);
-            vec![a, b]
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+            Ok({
+                let (a, b) = rosenbrock::grad(x[0], x[1]);
+                vec![a, b]
+            })
         }
     }
 
@@ -46,7 +49,8 @@ fn rosenbrock_vec() {
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(
@@ -65,15 +69,18 @@ fn rosenbrock_nalgebra() {
     impl CostFunction for Rosen {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            rosenbrock::cost(x[0], x[1])
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock::cost(x[0], x[1]))
         }
     }
     impl Gradient for Rosen {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            let (a, b) = rosenbrock::grad(x[0], x[1]);
-            DVector::from_vec(vec![a, b])
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok({
+                let (a, b) = rosenbrock::grad(x[0], x[1]);
+                DVector::from_vec(vec![a, b])
+            })
         }
     }
 
@@ -81,7 +88,8 @@ fn rosenbrock_nalgebra() {
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(
@@ -100,15 +108,18 @@ fn rosenbrock_faer() {
     impl CostFunction for Rosen {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            rosenbrock::cost(x[0], x[1])
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock::cost(x[0], x[1]))
         }
     }
     impl Gradient for Rosen {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            let (a, b) = rosenbrock::grad(x[0], x[1]);
-            Col::from_fn(2, |i| if i == 0 { a } else { b })
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok({
+                let (a, b) = rosenbrock::grad(x[0], x[1]);
+                Col::from_fn(2, |i| if i == 0 { a } else { b })
+            })
         }
     }
 
@@ -117,7 +128,8 @@ fn rosenbrock_faer() {
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(
@@ -136,15 +148,18 @@ fn rosenbrock_ndarray() {
     impl CostFunction for Rosen {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            rosenbrock::cost(x[0], x[1])
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock::cost(x[0], x[1]))
         }
     }
     impl Gradient for Rosen {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
-            let (a, b) = rosenbrock::grad(x[0], x[1]);
-            array![a, b]
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
+            Ok({
+                let (a, b) = rosenbrock::grad(x[0], x[1]);
+                array![a, b]
+            })
         }
     }
 
@@ -152,7 +167,8 @@ fn rosenbrock_ndarray() {
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(

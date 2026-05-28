@@ -14,7 +14,8 @@ fn gauss_newton_converges_on_rosenbrock_residuals() {
 
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(20)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-20, "cost = {}", result.cost());
@@ -43,7 +44,8 @@ fn gauss_newton_single_step_matches_normal_equation_solution() {
 
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(1)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 1);
@@ -71,7 +73,8 @@ fn gauss_newton_emits_solver_converged_via_first_order_optimality() {
 
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
@@ -89,7 +92,8 @@ fn gauss_newton_fails_on_rank_deficient_powell_singular_jacobian() {
 
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverFailed);
 }
@@ -119,7 +123,8 @@ fn gauss_newton_caches_residual_and_jacobian_across_iterations() {
         BasicState::new(initial),
     )
     .max_iter(3)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 3);

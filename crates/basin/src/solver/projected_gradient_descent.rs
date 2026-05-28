@@ -86,14 +86,15 @@ use crate::line_search::{Constant, LineSearch};
 /// impl CostFunction for ShiftedSphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         (x[0] - 2.0).powi(2) + (x[1] - 2.0).powi(2)
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+///         Ok((x[0] - 2.0).powi(2) + (x[1] - 2.0).powi(2))
 ///     }
 /// }
 /// impl Gradient for ShiftedSphere {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)]
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+///         Ok(vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)])
 ///     }
 /// }
 /// impl BoxConstraints for ShiftedSphere {
@@ -108,7 +109,8 @@ use crate::line_search::{Constant, LineSearch};
 ///     BasicState::new(vec![0.0, 0.0]),
 /// )
 /// .max_iter(1_000)
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!((result.param()[0] - 1.0).abs() < 1e-6);
 /// assert!((result.param()[1] - 1.0).abs() < 1e-6);
 /// ```
@@ -144,26 +146,32 @@ impl<P, V, S> Solver<P, BasicState<V>> for ProjectedGradientDescent<S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V> + BoxConstraints,
     V: ScaledAdd<f64> + NegInPlace + ClampInPlace + Clone,
-    S: LineSearch<P, V>,
+    S: LineSearch<P, V, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         // Project an infeasible start once so iter-0 termination checks
         // see a feasible iterate. Subsequent iterations preserve
         // feasibility by construction.
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         let grad = state
             .gradient
             .take()
@@ -175,16 +183,16 @@ where
         direction.neg_in_place();
         let step = self
             .line_search
-            .next(problem, &state.param, prev_cost, &grad, &direction);
+            .next(problem, &state.param, prev_cost, &grad, &direction)?;
         state.cost_evals += step.cost_evals;
         state.gradient_evals += step.gradient_evals;
         state.param.scaled_add(step.alpha, &direction);
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        (state, None)
+        Ok((state, None))
     }
 }

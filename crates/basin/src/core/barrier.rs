@@ -86,8 +86,13 @@ where
 {
     type Param = V;
     type Output = f64;
+    // Pass through the wrapped problem's hard-abort error: barrier-internal
+    // issues (slack ≤ 0) still use the soft `+∞` reject path, so the only
+    // `Err` that can come out of this `cost` is one the user's `cost`
+    // returned.
+    type Error = <P as CostFunction>::Error;
 
-    fn cost(&self, x: &V) -> f64 {
+    fn cost(&self, x: &V) -> Result<f64, Self::Error> {
         // slack s = b − A x.
         let mut s = self.problem.a().matvec(x);
         s.neg_in_place();
@@ -98,11 +103,11 @@ where
             let si = s.get_scalar(i);
             if si <= 0.0 {
                 // Infeasible: barrier is +∞, so the whole objective is +∞.
-                return f64::INFINITY;
+                return Ok(f64::INFINITY);
             }
             log_sum += si.ln();
         }
-        self.problem.cost(x) - self.mu * log_sum
+        Ok(self.problem.cost(x)? - self.mu * log_sum)
     }
 }
 
@@ -116,7 +121,7 @@ where
 {
     type Gradient = V;
 
-    fn gradient(&self, x: &V) -> V {
+    fn gradient(&self, x: &V) -> Result<V, <Self as CostFunction>::Error> {
         // slack s = b − A x, reused in place as the barrier weights
         // wᵢ = μ / sᵢ. ∇[−μ log(bᵢ − aᵢᵀx)] = μ aᵢ / sᵢ, summed = Aᵀ w.
         let mut s = self.problem.a().matvec(x);
@@ -127,10 +132,10 @@ where
             s.set_scalar(i, self.mu / si);
         }
 
-        let mut g = self.problem.gradient(x);
+        let mut g = self.problem.gradient(x)?;
         let barrier_grad = self.problem.a().mat_transpose_vec(&s);
         g.scaled_add(1.0, &barrier_grad);
-        g
+        Ok(g)
     }
 }
 
@@ -157,15 +162,16 @@ mod tests {
     impl CostFunction for Probe {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            0.5 * x.dot(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(0.5 * x.dot(x))
         }
     }
 
     impl Gradient for Probe {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            x.clone()
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(x.clone())
         }
     }
 
@@ -187,7 +193,7 @@ mod tests {
         let x = DVector::from_vec(vec![0.0, 0.0]);
         // f = 0; slack = 2 − 0 = 2; φ = 0 − μ·ln(2).
         let expected = -mu * 2.0_f64.ln();
-        assert!((lb.cost(&x) - expected).abs() < 1e-12);
+        assert!((lb.cost(&x).unwrap() - expected).abs() < 1e-12);
     }
 
     #[test]
@@ -196,7 +202,7 @@ mod tests {
         let lb = LogBarrier::new(&p, 1.0);
         // x₀ + x₁ = 3 > 2 ⇒ slack negative ⇒ +∞.
         let x = DVector::from_vec(vec![2.0, 1.0]);
-        assert!(lb.cost(&x).is_infinite());
+        assert!(lb.cost(&x).unwrap().is_infinite());
     }
 
     #[test]
@@ -204,7 +210,7 @@ mod tests {
         let p = Probe::new();
         let lb = LogBarrier::new(&p, 0.7);
         let x = DVector::from_vec(vec![0.3, -0.4]);
-        let analytic = lb.gradient(&x);
+        let analytic = lb.gradient(&x).unwrap();
 
         let h = 1e-6;
         for j in 0..2 {
@@ -212,7 +218,7 @@ mod tests {
             let mut xm = x.clone();
             xp[j] += h;
             xm[j] -= h;
-            let fd = (lb.cost(&xp) - lb.cost(&xm)) / (2.0 * h);
+            let fd = (lb.cost(&xp).unwrap() - lb.cost(&xm).unwrap()) / (2.0 * h);
             assert!(
                 (analytic[j] - fd).abs() < 1e-5,
                 "component {j}: analytic {} vs fd {}",

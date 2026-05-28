@@ -121,8 +121,9 @@ impl<P> HasSpec for Rastrigin<P> {
 impl CostFunction for Rastrigin<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        rastrigin(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(rastrigin(x))
     }
 }
 
@@ -135,8 +136,9 @@ mod nalgebra_impl {
     impl CostFunction for Rastrigin<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            rastrigin(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rastrigin(x.as_slice()))
         }
     }
 }
@@ -150,8 +152,9 @@ mod ndarray_impl {
     impl CostFunction for Rastrigin<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            rastrigin(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rastrigin(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 }
@@ -168,7 +171,8 @@ mod faer_impl {
     impl CostFunction for Rastrigin<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let two_pi = 2.0 * core::f64::consts::PI;
             let mut s = A * n as f64;
@@ -176,7 +180,7 @@ mod faer_impl {
                 let v = x[i];
                 s += v * v - A * (two_pi * v).cos();
             }
-            s
+            Ok(s)
         }
     }
 }
@@ -231,8 +235,9 @@ impl RastriginBoxed<Vec<f64>> {
 impl CostFunction for RastriginBoxed<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        rastrigin(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(rastrigin(x))
     }
 }
 
@@ -265,8 +270,9 @@ mod nalgebra_boxed_impl {
     impl CostFunction for RastriginBoxed<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            rastrigin(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rastrigin(x.as_slice()))
         }
     }
 
@@ -300,8 +306,9 @@ mod ndarray_boxed_impl {
     impl CostFunction for RastriginBoxed<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            rastrigin(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rastrigin(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
@@ -335,7 +342,8 @@ mod faer_boxed_impl {
     impl CostFunction for RastriginBoxed<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let two_pi = 2.0 * core::f64::consts::PI;
             let mut s = A * n as f64;
@@ -343,7 +351,7 @@ mod faer_boxed_impl {
                 let v = x[i];
                 s += v * v - A * (two_pi * v).cos();
             }
-            s
+            Ok(s)
         }
     }
 
@@ -440,7 +448,7 @@ mod tests {
         let unboxed: Rastrigin<Vec<f64>> = Rastrigin::default();
         let boxed = RastriginBoxed::<Vec<f64>>::with_standard_bounds(3);
         let x = vec![0.3, -0.7, 1.2];
-        assert!((unboxed.cost(&x) - boxed.cost(&x)).abs() < 1e-12);
+        assert!((unboxed.cost(&x).unwrap() - boxed.cost(&x).unwrap()).abs() < 1e-12);
     }
 
     #[test]

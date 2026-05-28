@@ -72,12 +72,13 @@ fn basin_trace<P, S, So>(exec: Executor<P, S, So>) -> Vec<(u128, f64)>
 where
     S: BasinState<Float = f64>,
     So: Solver<P, S>,
+    So::Error: std::fmt::Debug,
 {
-    let mut stepper = exec.max_iter(MAX_ITERS).into_stepper();
+    let mut stepper = exec.max_iter(MAX_ITERS).into_stepper().unwrap();
     let mut pts = Vec::with_capacity(MAX_ITERS as usize + 1);
     pts.push((0u128, stepper.state().cost()));
     let t0 = Instant::now();
-    while stepper.step() == StepOutcome::Continue {
+    while stepper.step().unwrap() == StepOutcome::Continue {
         pts.push((t0.elapsed().as_nanos(), stepper.state().cost()));
     }
     pts

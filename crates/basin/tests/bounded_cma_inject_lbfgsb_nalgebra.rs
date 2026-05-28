@@ -45,7 +45,8 @@ fn converges_on_booth_boxed_slack() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     let err = (p[0] - 1.0).abs().max((p[1] - 3.0).abs());
@@ -89,7 +90,8 @@ fn aggregates_lbfgsb_work_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     // Memetic variant on the same seed and outer budget; TolX disabled
     // for the same reason.
@@ -104,7 +106,8 @@ fn aggregates_lbfgsb_work_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     let min_extra = (outer_iters.saturating_sub(1)) * (k as u64) * 3;
     assert!(

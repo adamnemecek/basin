@@ -201,40 +201,42 @@ impl<V> VarDim<V> {
 impl Residual for VarDim<DVector<f64>> {
     type Param = DVector<f64>;
     type Output = DVector<f64>;
-    fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; self.n + 2];
         vardim_residual(x.as_slice(), &mut out);
-        DVector::from_vec(out)
+        Ok(DVector::from_vec(out))
     }
 }
 
 impl Jacobian for VarDim<DVector<f64>> {
     type Jacobian = DMatrix<f64>;
-    fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+    fn jacobian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; (self.n + 2) * self.n];
         vardim_jacobian_row_major(x.as_slice(), &mut out);
-        DMatrix::from_row_slice(self.n + 2, self.n, &out)
+        Ok(DMatrix::from_row_slice(self.n + 2, self.n, &out))
     }
 }
 
 impl Residual for VarDim<Col<f64>> {
     type Param = Col<f64>;
     type Output = Col<f64>;
-    fn residual(&self, x: &Col<f64>) -> Col<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
         let xs: Vec<f64> = (0..self.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; self.n + 2];
         vardim_residual(&xs, &mut out);
-        Col::from_fn(self.n + 2, |i| out[i])
+        Ok(Col::from_fn(self.n + 2, |i| out[i]))
     }
 }
 
 impl Jacobian for VarDim<Col<f64>> {
     type Jacobian = Mat<f64>;
-    fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+    fn jacobian(&self, x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
         let xs: Vec<f64> = (0..self.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; (self.n + 2) * self.n];
         vardim_jacobian_row_major(&xs, &mut out);
-        Mat::from_fn(self.n + 2, self.n, |i, j| out[i * self.n + j])
+        Ok(Mat::from_fn(self.n + 2, self.n, |i, j| out[i * self.n + j]))
     }
 }
 
@@ -380,40 +382,44 @@ impl<V> UnderDet<V> {
 impl Residual for UnderDet<DVector<f64>> {
     type Param = DVector<f64>;
     type Output = DVector<f64>;
-    fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; self.data.m];
         self.data.residual(x.as_slice(), &mut out);
-        DVector::from_vec(out)
+        Ok(DVector::from_vec(out))
     }
 }
 
 impl Jacobian for UnderDet<DVector<f64>> {
     type Jacobian = DMatrix<f64>;
-    fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+    fn jacobian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; self.data.m * self.data.n];
         self.data.jacobian_row_major(x.as_slice(), &mut out);
-        DMatrix::from_row_slice(self.data.m, self.data.n, &out)
+        Ok(DMatrix::from_row_slice(self.data.m, self.data.n, &out))
     }
 }
 
 impl Residual for UnderDet<Col<f64>> {
     type Param = Col<f64>;
     type Output = Col<f64>;
-    fn residual(&self, x: &Col<f64>) -> Col<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
         let xs: Vec<f64> = (0..self.data.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; self.data.m];
         self.data.residual(&xs, &mut out);
-        Col::from_fn(self.data.m, |i| out[i])
+        Ok(Col::from_fn(self.data.m, |i| out[i]))
     }
 }
 
 impl Jacobian for UnderDet<Col<f64>> {
     type Jacobian = Mat<f64>;
-    fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+    fn jacobian(&self, x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
         let xs: Vec<f64> = (0..self.data.n).map(|i| x[i]).collect();
         let mut out = vec![0.0; self.data.m * self.data.n];
         self.data.jacobian_row_major(&xs, &mut out);
-        Mat::from_fn(self.data.m, self.data.n, |i, j| out[i * self.data.n + j])
+        Ok(Mat::from_fn(self.data.m, self.data.n, |i, j| {
+            out[i * self.data.n + j]
+        }))
     }
 }
 

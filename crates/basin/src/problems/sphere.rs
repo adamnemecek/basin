@@ -75,17 +75,18 @@ impl<P> HasSpec for Sphere<P> {
 impl CostFunction for Sphere<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        sphere(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(sphere(x))
     }
 }
 
 impl Gradient for Sphere<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         sphere_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -98,17 +99,18 @@ mod nalgebra_impl {
     impl CostFunction for Sphere<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            sphere(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(sphere(x.as_slice()))
         }
     }
 
     impl Gradient for Sphere<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             sphere_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -122,20 +124,21 @@ mod ndarray_impl {
     impl CostFunction for Sphere<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            sphere(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(sphere(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for Sphere<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             sphere_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -149,21 +152,22 @@ mod faer_impl {
     impl CostFunction for Sphere<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let mut s = 0.0;
             for i in 0..n {
                 s += x[i] * x[i];
             }
-            s
+            Ok(s)
         }
     }
 
     impl Gradient for Sphere<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let n = x.nrows();
-            Col::<f64>::from_fn(n, |i| 2.0 * x[i])
+            Ok(Col::<f64>::from_fn(n, |i| 2.0 * x[i]))
         }
     }
 }

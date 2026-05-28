@@ -46,7 +46,8 @@ fn main() {
         BasicState::new(DVector::from_vec(vec![5.0e4, -0.3])),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
     println!(
         "  basin/nalg  {:>5} iters  cost={:.3e}  a={:.6}  b={:.6}  ({} cost-evals, {:?})",
         r.iter(),
@@ -63,7 +64,8 @@ fn main() {
         BasicState::new(Col::from_fn(2, |i| if i == 0 { 5.0e4 } else { -0.3 })),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
     println!(
         "  basin/faer  {:>5} iters  cost={:.3e}  a={:.6}  b={:.6}  ({} cost-evals, {:?})",
         r.iter(),
@@ -91,7 +93,8 @@ fn main() {
         BasicState::new(DVector::from_vec(vec![3.0, -1.0, 0.0, 1.0])),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
     let p = r.param();
     println!(
         "  basin/nalg  {:>5} iters  cost={:.3e}  x=[{:.2e}, {:.2e}, {:.2e}, {:.2e}]  ({} cost-evals, {:?})",
@@ -104,7 +107,8 @@ fn main() {
         BasicState::new(Col::from_fn(4, |i| [3.0, -1.0, 0.0, 1.0][i])),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
     let p = r.param();
     println!(
         "  basin/faer  {:>5} iters  cost={:.3e}  x=[{:.2e}, {:.2e}, {:.2e}, {:.2e}]  ({} cost-evals, {:?})",
@@ -137,7 +141,8 @@ fn main() {
             BasicState::new(DVector::from_vec(start.clone())),
         )
         .max_iter(500)
-        .run();
+        .run()
+        .unwrap();
         println!(
             "  basin/nalg  {:>5} iters  cost={:.3e}  ‖x−1‖∞={:.2e}  ({} cost-evals, {:?})",
             r.iter(),
@@ -156,7 +161,8 @@ fn main() {
             BasicState::new(Col::from_fn(n, |i| start[i])),
         )
         .max_iter(500)
-        .run();
+        .run()
+        .unwrap();
         println!(
             "  basin/faer  {:>5} iters  cost={:.3e}  ‖x−1‖∞={:.2e}  ({} cost-evals, {:?})",
             r.iter(),
@@ -192,7 +198,8 @@ fn main() {
         let x0 = DVector::from_vec(p.start());
         let r = Executor::new(p, basin_lm(), BasicState::new(x0))
             .max_iter(500)
-            .run();
+            .run()
+            .unwrap();
         println!(
             "  basin/nalg  {:>5} iters  cost={:.6e}  ‖x‖∞={:.2e}  ({} cost-evals, {:?})",
             r.iter(),
@@ -207,7 +214,8 @@ fn main() {
         let x0 = Col::from_fn(n, |i| start[i]);
         let r = Executor::new(p, basin_lm(), BasicState::new(x0))
             .max_iter(500)
-            .run();
+            .run()
+            .unwrap();
         println!(
             "  basin/faer  {:>5} iters  cost={:.6e}  ‖x‖∞={:.2e}  ({} cost-evals, {:?})",
             r.iter(),

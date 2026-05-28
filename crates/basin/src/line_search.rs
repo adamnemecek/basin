@@ -17,9 +17,22 @@ pub use wolfe::Wolfe;
 /// Convention: `direction` is a *descent* direction (`gᵀd < 0`); the caller
 /// applies `x_new = x + α d`. Solvers that descend along `−∇f` (e.g. plain
 /// gradient descent) compute `d = −∇f` themselves and pass it in.
+///
+/// # Error type
+///
+/// `Error` is the hard-abort error the line search propagates — concrete
+/// impls set `type Error = P::Error;` (with `P: CostFunction`) so the
+/// user's typed problem error bubbles untouched through the solver out of
+/// [`Executor::run`](crate::Executor::run). See the
+/// [`problem`](crate::core::problem) module docs for the soft-reject /
+/// hard-abort split.
 pub trait LineSearch<P, V> {
+    /// Hard-abort error type, mirroring the underlying problem's `Error`.
+    type Error;
+
     /// Returns an `α` plus the number of cost / gradient evaluations spent
-    /// finding it (callers add these to the state's counters).
+    /// finding it (callers add these to the state's counters). Returns
+    /// `Err` if any inner `problem.cost` / `problem.gradient` call does.
     fn next(
         &mut self,
         problem: &P,
@@ -27,7 +40,7 @@ pub trait LineSearch<P, V> {
         cost: f64,
         gradient: &V,
         direction: &V,
-    ) -> LineSearchResult;
+    ) -> Result<LineSearchResult, Self::Error>;
 }
 
 /// Outcome of a [`LineSearch::next`] call: the chosen step plus how much
@@ -53,7 +66,12 @@ impl Constant {
     }
 }
 
-impl<P, V> LineSearch<P, V> for Constant {
+impl<P: crate::core::problem::CostFunction, V> LineSearch<P, V> for Constant {
+    // `Constant` makes no problem calls and so could declare any error
+    // type, but solver bounds expect `L::Error = P::Error`; matching here
+    // means callers never need a conversion glue layer.
+    type Error = P::Error;
+
     fn next(
         &mut self,
         _problem: &P,
@@ -61,11 +79,11 @@ impl<P, V> LineSearch<P, V> for Constant {
         _cost: f64,
         _gradient: &V,
         _direction: &V,
-    ) -> LineSearchResult {
-        LineSearchResult {
+    ) -> Result<LineSearchResult, Self::Error> {
+        Ok(LineSearchResult {
             alpha: self.0,
             cost_evals: 0,
             gradient_evals: 0,
-        }
+        })
     }
 }

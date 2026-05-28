@@ -103,9 +103,10 @@ struct Problem2D(ProblemKind);
 impl CostFunction for Problem2D {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = std::convert::Infallible;
 
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        match self.0 {
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(match self.0 {
             ProblemKind::Sphere => sphere(x),
             ProblemKind::Rosenbrock => rosenbrock(x),
             ProblemKind::Beale => beale(x),
@@ -113,14 +114,14 @@ impl CostFunction for Problem2D {
             ProblemKind::Matyas => matyas(x),
             ProblemKind::McCormick => mccormick(x),
             ProblemKind::GoldsteinPrice => goldstein_price(x),
-        }
+        })
     }
 }
 
 impl Gradient for Problem2D {
     type Gradient = Vec<f64>;
 
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         match self.0 {
             ProblemKind::Sphere => sphere_gradient(x, &mut out),
@@ -131,7 +132,7 @@ impl Gradient for Problem2D {
             ProblemKind::McCormick => mccormick_gradient(x, &mut out),
             ProblemKind::GoldsteinPrice => goldstein_price_gradient(x, &mut out),
         }
-        out
+        Ok(out)
     }
 }
 
@@ -175,7 +176,7 @@ pub fn eval_grid(
         let row = j * nx;
         for i in 0..nx {
             xy[0] = xmin + dx * i as f64;
-            out[row + i] = p.cost(&xy);
+            out[row + i] = p.cost(&xy).unwrap();
         }
     }
     out
@@ -205,10 +206,10 @@ enum Inner {
 impl Inner {
     fn step(&mut self) -> StepOutcome {
         match self {
-            Inner::GdConstant(s) => s.step(),
-            Inner::GdBacktracking(s) => s.step(),
-            Inner::NelderMead(s) => s.step(),
-            Inner::Lbfgs(s) => s.step(),
+            Inner::GdConstant(s) => s.step().unwrap(),
+            Inner::GdBacktracking(s) => s.step().unwrap(),
+            Inner::NelderMead(s) => s.step().unwrap(),
+            Inner::Lbfgs(s) => s.step().unwrap(),
         }
     }
 
@@ -378,7 +379,7 @@ impl Run {
     ) -> Run {
         let p = Problem2D(problem);
         let initial = vec![x0, y0];
-        let initial_cost = p.cost(&initial);
+        let initial_cost = p.cost(&initial).unwrap();
         // The only termination beyond `max_iter` is the suboptimality stop
         // applied in `step_many_inner`; solvers themselves run unbounded.
         let inner = match solver {
@@ -407,7 +408,8 @@ impl Run {
                     BasicSimplexState::<Vec<f64>>::new(initial.clone()),
                 )
                 .max_iter(max_iter as u64)
-                .into_stepper();
+                .into_stepper()
+                .unwrap();
                 Inner::NelderMead(stepper)
             }
             SolverKind::Lbfgs => {
@@ -420,7 +422,8 @@ impl Run {
                     LbfgsState::new(initial.clone(), m),
                 )
                 .max_iter(max_iter as u64)
-                .into_stepper();
+                .into_stepper()
+                .unwrap();
                 Inner::Lbfgs(Box::new(stepper))
             }
         };
@@ -489,6 +492,7 @@ where
     Executor::new(problem, solver, BasicState::new(initial.to_vec()))
         .max_iter(max_iter as u64)
         .into_stepper()
+        .unwrap_or_else(|_| unreachable!("Problem2D's Error is Infallible"))
 }
 
 /// Stable, JS-friendly string for a `TerminationReason`. The wasm

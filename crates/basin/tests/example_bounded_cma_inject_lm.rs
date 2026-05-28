@@ -51,7 +51,10 @@ fn example_bounded_cma_inject_lm_on_booth_corner() {
     // 4. Drive.
     // -----------------------------------------------------------------
     let state = BasicPopulationState::<DVector<f64>>::with_size(lambda);
-    let result = Executor::new(problem, solver, state).max_iter(100).run();
+    let result = Executor::new(problem, solver, state)
+        .max_iter(100)
+        .run()
+        .unwrap();
 
     let p = result.param();
     eprintln!();

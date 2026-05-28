@@ -280,14 +280,15 @@ struct Bowl;
 impl CostFunction for Bowl {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        raw_height(x[0], x[1])
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(raw_height(x[0], x[1]))
     }
 }
 
 impl Gradient for Bowl {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         // Central difference of `raw_height`, so the descent follows the actual
         // rippled surface (no need to hand-differentiate the ripple).
         let h = 1e-4;
@@ -299,7 +300,7 @@ impl Gradient for Bowl {
             xm[k] -= h;
             *gk = (raw_height(xp[0], xp[1]) - raw_height(xm[0], xm[1])) / (2.0 * h);
         }
-        g
+        Ok(g)
     }
 }
 
@@ -307,10 +308,12 @@ impl Gradient for Bowl {
 /// `Solver` loop, capturing every iterate then decimating.
 fn trace_river() -> Vec<[f64; 2]> {
     let mut solver = GradientDescent::new(RIVER_ALPHA).with_momentum(RIVER_BETA);
-    let mut state = solver.init(&Bowl, BasicState::new(RIVER_START.to_vec()));
+    let mut state = solver
+        .init(&Bowl, BasicState::new(RIVER_START.to_vec()))
+        .unwrap();
     let mut full = vec![[state.param()[0], state.param()[1]]];
     for _ in 0..RIVER_ITERS {
-        let (next, stop) = solver.next_iter(&Bowl, state);
+        let (next, stop) = solver.next_iter(&Bowl, state).unwrap();
         state = next;
         full.push([state.param()[0], state.param()[1]]);
         if stop.is_some() {

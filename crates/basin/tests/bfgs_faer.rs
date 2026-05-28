@@ -21,7 +21,8 @@ fn bfgs_converges_on_rosenbrock() {
         QuasiNewtonState::<Col<f64>, Mat<f64>>::new(initial),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-8,
@@ -52,7 +53,8 @@ fn bfgs_terminates_on_gradient_tolerance() {
     )
     .max_iter(200)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());

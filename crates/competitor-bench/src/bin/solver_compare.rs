@@ -133,15 +133,16 @@ fn basin_trace<P, S, So>(exec: Executor<P, S, So>, budget: Duration) -> Vec<(u12
 where
     S: BasinState<Float = f64>,
     So: Solver<P, S>,
+    So::Error: std::fmt::Debug,
 {
     // The executor defaults to `max_iter = 1000`; bump it well past anything
     // reachable inside `budget` so the wall-clock guard is the only stop.
-    let mut stepper = exec.max_iter(u64::MAX).into_stepper();
+    let mut stepper = exec.max_iter(u64::MAX).into_stepper().unwrap();
     let mut pts = Vec::new();
     pts.push((0u128, stepper.state().cost()));
     let t0 = Instant::now();
     while t0.elapsed() < budget {
-        if stepper.step() != StepOutcome::Continue {
+        if stepper.step().unwrap() != StepOutcome::Continue {
             break;
         }
         let cost = stepper.state().cost();

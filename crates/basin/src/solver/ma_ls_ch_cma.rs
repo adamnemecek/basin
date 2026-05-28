@@ -457,8 +457,15 @@ where
         + RankOneUpdate<V>
         + SymmetricEigen<V>
         + Clone,
+    CmaEs<V, M>: Solver<P, BasicPopulationState<V>, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: MaLsChState<V, M>) -> MaLsChState<V, M> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: MaLsChState<V, M>,
+    ) -> Result<MaLsChState<V, M>, Self::Error> {
         let lo = problem.lower();
         let hi = problem.upper();
         let mut rng = ChaCha8Rng::seed_from_u64(self.seed);
@@ -471,7 +478,7 @@ where
         state.ls_application_count.clear();
         for _ in 0..self.pop_size {
             let x = V::sample_uniform_box(lo, hi, &mut rng);
-            let c = problem.cost(&x);
+            let c = problem.cost(&x)?;
             state.candidates.push(x);
             state.costs.push(c);
             state.cma_chains.push(None);
@@ -482,14 +489,14 @@ where
         sort_parallel_arrays(&mut state);
 
         self.rng = Some(rng);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: MaLsChState<V, M>,
-    ) -> (MaLsChState<V, M>, Option<TerminationReason>) {
+    ) -> Result<(MaLsChState<V, M>, Option<TerminationReason>), Self::Error> {
         let rng = self
             .rng
             .as_mut()
@@ -518,7 +525,7 @@ where
                 self.bga_range_fraction,
                 rng,
             );
-            let c_child = problem.cost(&child);
+            let c_child = problem.cost(&child)?;
             state.cost_evals += 1;
             if let Some(replaced_idx) =
                 replace_worst_if_better(&mut state.candidates, &mut state.costs, child, c_child)
@@ -588,7 +595,7 @@ where
         // box per chain segment — negligible against I_str evals.
         let mut criteria: Vec<Box<dyn TerminationCriterion<BasicPopulationState<V>>>> =
             vec![Box::new(MaxCostEvals(self.ls_intensity))];
-        let inner_result = run_loop(problem, inner_state, &mut cma, &mut criteria, u64::MAX);
+        let inner_result = run_loop(problem, inner_state, &mut cma, &mut criteria, u64::MAX)?;
 
         // -- Phase 5: aggregate, route failures, write back. --
         // Rule 1: eval aggregation.
@@ -599,7 +606,7 @@ where
         // consumes.
         if inner_result.reason.is_failure() {
             // Leave the chain dropped so a future pick would restart.
-            return (state, Some(inner_result.reason));
+            return Ok((state, Some(inner_result.reason)));
         }
 
         let new_cost = inner_result.cost();
@@ -620,7 +627,7 @@ where
         // -- Phase 6: resort all parallel arrays jointly. --
         sort_parallel_arrays(&mut state);
 
-        (state, None)
+        Ok((state, None))
     }
 }
 

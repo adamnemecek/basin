@@ -157,9 +157,15 @@ where
     /// Advance one iteration. Once a `Stopped` outcome has been returned
     /// the stepper is sticky: subsequent calls keep returning the same
     /// `Stopped(reason)` without touching the state or solver.
-    pub fn step(&mut self) -> StepOutcome {
+    ///
+    /// Returns `Err` when the underlying problem returns `Err` from any
+    /// cost / gradient / residual / Jacobian / Hessian call during the
+    /// step. The stepper is *not* made sticky on `Err` — the typical
+    /// downstream pattern is to surface the error and drop the stepper,
+    /// but callers may inspect [`state`](Self::state) and try again.
+    pub fn step(&mut self) -> Result<StepOutcome, So::Error> {
         if let Some(reason) = self.finished {
-            return StepOutcome::Stopped(reason);
+            return Ok(StepOutcome::Stopped(reason));
         }
         let outcome = step_once(
             &self.problem,
@@ -167,22 +173,22 @@ where
             &mut self.solver,
             &mut self.criteria,
             self.max_iter,
-        );
+        )?;
         if let StepOutcome::Stopped(reason) = outcome {
             self.finished = Some(reason);
         }
-        outcome
+        Ok(outcome)
     }
 
     /// Drive [`step`](Self::step) to completion and return an
     /// [`OptimizationResult`].
-    pub fn run_to_end(mut self) -> OptimizationResult<S> {
+    pub fn run_to_end(mut self) -> Result<OptimizationResult<S>, So::Error> {
         loop {
-            if let StepOutcome::Stopped(reason) = self.step() {
-                return OptimizationResult {
+            if let StepOutcome::Stopped(reason) = self.step()? {
+                return Ok(OptimizationResult {
                     state: self.state.take().expect("state slot is Some on stop"),
                     reason,
-                };
+                });
             }
         }
     }
@@ -199,14 +205,18 @@ where
 /// untouched) or hands the state to `solver.next_iter`, increments the
 /// iteration counter, and puts the returned state back in `state_slot`.
 ///
-/// Invariant: `state_slot` is `Some` on entry and `Some` on return.
+/// Returns `Err` when [`Solver::next_iter`] does. The state slot is
+/// untouched on `Err` (the previous iterate is still readable).
+///
+/// Invariant: `state_slot` is `Some` on entry and `Some` on return
+/// (including on the `Err` path).
 fn step_once<P, S, So>(
     problem: &P,
     state_slot: &mut Option<S>,
     solver: &mut So,
     criteria: &mut [Box<dyn TerminationCriterion<S>>],
     max_iter: u64,
-) -> StepOutcome
+) -> Result<StepOutcome, So::Error>
 where
     S: State,
     So: Solver<P, S>,
@@ -216,26 +226,39 @@ where
             .as_ref()
             .expect("step_once called with empty state slot");
         if state.iter() >= max_iter {
-            return StepOutcome::Stopped(TerminationReason::MaxIter);
+            return Ok(StepOutcome::Stopped(TerminationReason::MaxIter));
         }
         for criterion in criteria.iter_mut() {
             if let Some(reason) = criterion.check(state) {
-                return StepOutcome::Stopped(reason);
+                return Ok(StepOutcome::Stopped(reason));
             }
         }
         if let Some(reason) = solver.terminate(state) {
-            return StepOutcome::Stopped(reason);
+            return Ok(StepOutcome::Stopped(reason));
         }
     }
     let prev = state_slot.take().unwrap();
-    let (mut next, mid_iter_reason) = solver.next_iter(problem, prev);
+    let next_iter_result = solver.next_iter(problem, prev);
+    let (mut next, mid_iter_reason) = match next_iter_result {
+        Ok(t) => t,
+        Err(e) => {
+            // step_once owes the caller the `state_slot is Some on return`
+            // invariant even on the error path; we lost `prev` to
+            // `next_iter` (which took it by value), so there's nothing to
+            // put back. Mid-iter hard-aborts therefore leave the slot
+            // empty and the stepper consumes itself — this is the
+            // intentional shape: typed Err is terminal, the typical
+            // caller bubbles it out and drops the stepper.
+            return Err(e);
+        }
+    };
     if let Some(reason) = mid_iter_reason {
         *state_slot = Some(next);
-        return StepOutcome::Stopped(reason);
+        return Ok(StepOutcome::Stopped(reason));
     }
     next.increment_iter();
     *state_slot = Some(next);
-    StepOutcome::Continue
+    Ok(StepOutcome::Continue)
 }
 
 /// Drive a solver to completion against a borrowed problem.
@@ -258,23 +281,23 @@ pub fn run_loop<P, S, So>(
     solver: &mut So,
     criteria: &mut [Box<dyn TerminationCriterion<S>>],
     max_iter: u64,
-) -> OptimizationResult<S>
+) -> Result<OptimizationResult<S>, So::Error>
 where
     S: State,
     So: Solver<P, S>,
 {
-    let state = solver.init(problem, state);
+    let state = solver.init(problem, state)?;
     let mut slot = Some(state);
     let reason = loop {
-        match step_once(problem, &mut slot, solver, criteria, max_iter) {
+        match step_once(problem, &mut slot, solver, criteria, max_iter)? {
             StepOutcome::Continue => continue,
             StepOutcome::Stopped(reason) => break reason,
         }
     };
-    OptimizationResult {
+    Ok(OptimizationResult {
         state: slot.take().expect("state slot is Some on stop"),
         reason,
-    }
+    })
 }
 
 /// User-facing driver. Owns the problem, solver, initial state, and the
@@ -295,21 +318,23 @@ where
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl Gradient for Sphere {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         x.iter().map(|xi| 2.0 * xi).collect()
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| 2.0 * xi).collect())
 ///     }
 /// }
 ///
 /// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![3.0, -4.0]))
 ///     .max_iter(1_000)
 ///     .terminate_on(GradientTolerance(1e-9))
-///     .run();
+///     .run()
+///     .unwrap();
 ///
 /// assert!(result.cost() < 1e-12);
 /// ```
@@ -362,7 +387,10 @@ where
     /// Convert the executor into a [`Stepper`] for one-iteration-at-a-time
     /// control. `solver.init` runs here so the returned stepper sits at
     /// iter 0 with a complete state.
-    pub fn into_stepper(self) -> Stepper<P, S, So> {
+    ///
+    /// Returns `Err` when [`Solver::init`] does (e.g. the problem's
+    /// initial cost/gradient evaluation `Err`-ed).
+    pub fn into_stepper(self) -> Result<Stepper<P, S, So>, So::Error> {
         let Executor {
             problem,
             state,
@@ -370,20 +398,25 @@ where
             max_iter,
             criteria,
         } = self;
-        let state = solver.init(&problem, state);
-        Stepper {
+        let state = solver.init(&problem, state)?;
+        Ok(Stepper {
             problem,
             state: Some(state),
             solver,
             criteria,
             max_iter,
             finished: None,
-        }
+        })
     }
 
     /// Drive the iteration loop to completion and return the
     /// [`OptimizationResult`].
-    pub fn run(self) -> OptimizationResult<S> {
-        self.into_stepper().run_to_end()
+    ///
+    /// Returns `Err` when the underlying problem returns `Err` from any
+    /// cost / gradient / residual / Jacobian / Hessian call (the
+    /// `P::Error`-flavored hard-abort path; see the
+    /// [`problem`](crate::core::problem) module docs).
+    pub fn run(self) -> Result<OptimizationResult<S>, So::Error> {
+        self.into_stepper()?.run_to_end()
     }
 }

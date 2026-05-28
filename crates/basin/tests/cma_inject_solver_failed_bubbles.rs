@@ -24,8 +24,13 @@ use nalgebra::{DMatrix, DVector};
 struct AlwaysFails;
 
 impl<P, S: State> Solver<P, S> for AlwaysFails {
-    fn next_iter(&mut self, _problem: &P, state: S) -> (S, Option<TerminationReason>) {
-        (state, Some(TerminationReason::SolverFailed))
+    type Error = std::convert::Infallible;
+    fn next_iter(
+        &mut self,
+        _problem: &P,
+        state: S,
+    ) -> Result<(S, Option<TerminationReason>), Self::Error> {
+        Ok((state, Some(TerminationReason::SolverFailed)))
     }
 }
 
@@ -53,7 +58,8 @@ fn bubbles_inner_failure() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(20)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(
         result.reason,

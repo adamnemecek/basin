@@ -64,6 +64,8 @@ where
     P: CostFunction<Param = V, Output = f64>,
     V: ScaledAdd<f64> + Dot + Clone,
 {
+    type Error = P::Error;
+
     fn next(
         &mut self,
         problem: &P,
@@ -71,7 +73,7 @@ where
         cost: f64,
         gradient: &V,
         direction: &V,
-    ) -> LineSearchResult {
+    ) -> Result<LineSearchResult, Self::Error> {
         // Armijo: f(x + α d) ≤ f(x) + c α (∇f · d). For a descent direction,
         // `g_dot_d` is negative, so the threshold drops with α.
         let g_dot_d = gradient.dot(direction);
@@ -80,22 +82,22 @@ where
         for _ in 0..self.max_iter {
             let mut trial = param.clone();
             trial.scaled_add(alpha, direction);
-            let trial_cost = problem.cost(&trial);
+            let trial_cost = problem.cost(&trial)?;
             cost_evals += 1;
             if trial_cost <= cost + self.c * alpha * g_dot_d {
-                return LineSearchResult {
+                return Ok(LineSearchResult {
                     alpha,
                     cost_evals,
                     gradient_evals: 0,
-                };
+                });
             }
             alpha *= self.rho;
         }
-        LineSearchResult {
+        Ok(LineSearchResult {
             alpha,
             cost_evals,
             gradient_evals: 0,
-        }
+        })
     }
 }
 
@@ -110,18 +112,19 @@ mod tests {
     impl CostFunction for Quadratic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            (x[0] - 3.0).powi(2)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok((x[0] - 3.0).powi(2))
         }
     }
 
     fn run(ls: &mut Backtracking, x: &[f64], grad: &[f64], dir: &[f64]) -> LineSearchResult {
         let p = Quadratic;
         let x = x.to_vec();
-        let f0 = p.cost(&x);
+        let f0 = p.cost(&x).unwrap();
         let g = grad.to_vec();
         let d = dir.to_vec();
-        ls.next(&p, &x, f0, &g, &d)
+        ls.next(&p, &x, f0, &g, &d).unwrap()
     }
 
     #[test]

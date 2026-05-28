@@ -54,17 +54,18 @@ use crate::line_search::{LineSearch, Wolfe};
 /// impl CostFunction for Rosenbrock {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+///         Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2))
 ///     }
 /// }
 /// impl Gradient for Rosenbrock {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         vec![
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+///         Ok(vec![
 ///             -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
 ///             200.0 * (x[1] - x[0].powi(2)),
-///         ]
+///         ])
 ///     }
 /// }
 ///
@@ -74,7 +75,8 @@ use crate::line_search::{LineSearch, Wolfe};
 ///     QuasiNewtonState::<Vec<f64>, DenseMatrix>::new(vec![-1.2, 1.0]),
 /// )
 /// .max_iter(100)
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!(result.cost() < 1e-8);
 /// ```
 pub struct BFGS<S = Wolfe> {
@@ -121,24 +123,30 @@ impl<S> BFGS<S> {
 impl<P, S, V, M> Solver<P, QuasiNewtonState<V, M>> for BFGS<S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
-    S: LineSearch<P, V>,
+    S: LineSearch<P, V, Error = P::Error>,
     V: Clone + Dot + NormSquared + ScaledAdd<f64> + ScaleInPlace + NegInPlace + VectorLen,
     M: MatVec<V> + MatrixIdentity + ScaleInPlace + GeneralRankOneUpdate<V>,
 {
-    fn init(&mut self, problem: &P, mut state: QuasiNewtonState<V, M>) -> QuasiNewtonState<V, M> {
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: QuasiNewtonState<V, M>,
+    ) -> Result<QuasiNewtonState<V, M>, Self::Error> {
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: QuasiNewtonState<V, M>,
-    ) -> (QuasiNewtonState<V, M>, Option<TerminationReason>) {
+    ) -> Result<(QuasiNewtonState<V, M>, Option<TerminationReason>), Self::Error> {
         let g = state
             .gradient
             .take()
@@ -154,7 +162,7 @@ where
 
         let step = self
             .line_search
-            .next(problem, &state.param, cost_old, &g, &direction);
+            .next(problem, &state.param, cost_old, &g, &direction)?;
         state.cost_evals += step.cost_evals;
         state.gradient_evals += step.gradient_evals;
 
@@ -166,7 +174,7 @@ where
         if !(step.alpha.is_finite() && step.alpha > 0.0) {
             state.gradient = Some(g);
             state.cost = Some(cost_old);
-            return (state, Some(TerminationReason::SolverConverged));
+            return Ok((state, Some(TerminationReason::SolverConverged)));
         }
 
         // s = α d, x ← x + s.
@@ -177,7 +185,7 @@ where
         // Fused cost+grad at the new iterate — one fused call gives both
         // values consumed below (BFGS update reads g_new; state caches
         // cost_new at the bottom of the iter).
-        let (cost_new, g_new) = problem.cost_and_gradient(&state.param);
+        let (cost_new, g_new) = problem.cost_and_gradient(&state.param)?;
         state.cost_evals += 1;
         state.gradient_evals += 1;
 
@@ -222,7 +230,7 @@ where
 
         state.cost = Some(cost_new);
         state.gradient = Some(g_new);
-        (state, None)
+        Ok((state, None))
     }
 }
 

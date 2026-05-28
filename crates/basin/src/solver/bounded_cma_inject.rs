@@ -148,7 +148,7 @@ where
 impl<P, I, V, M> Solver<P, BasicPopulationState<V>> for BoundedCmaInject<I, V, M>
 where
     P: CostFunction<Param = V, Output = f64> + BoxConstraints,
-    I: MemeticInner<V> + Solver<P, <I as WarmStart<V>>::State>,
+    I: MemeticInner<V> + Solver<P, <I as WarmStart<V>>::State, Error = P::Error>,
     I::State: State<Param = V, Float = f64>,
     V: VectorLen
         + Clone
@@ -169,8 +169,15 @@ where
         + RankOneUpdate<V>
         + SymmetricEigen<V>
         + Clone,
+    BoundedCmaEs<V, M>: Solver<P, BasicPopulationState<V>, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         self.cma.init(problem, state)
     }
 
@@ -178,11 +185,11 @@ where
         &mut self,
         problem: &P,
         state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         // 1. Standard BoundedCmaEs iteration first.
-        let (mut state, reason) = self.cma.next_iter(problem, state);
+        let (mut state, reason) = self.cma.next_iter(problem, state)?;
         if let Some(r) = reason {
-            return (state, Some(r));
+            return Ok((state, Some(r)));
         }
 
         // Snapshot CMA-ES internals for clipping.
@@ -201,14 +208,15 @@ where
             let inner_state = self.inner.solver().seed_scaled(&state.candidates[i], sigma);
 
             // 3. Drive the inner solver.
-            let inner_result: OptimizationResult<I::State> = self.inner.run(problem, inner_state);
+            let inner_result: OptimizationResult<I::State> =
+                self.inner.run(problem, inner_state)?;
 
             // 4. Eval aggregation.
             state.cost_evals += self.inner.solver().work_units(&inner_result.state);
 
             // 5. Failure routing: bubble SolverFailed only.
             if inner_result.reason.is_failure() {
-                return (state, Some(inner_result.reason));
+                return Ok((state, Some(inner_result.reason)));
             }
 
             // 6. Extract refined point.
@@ -257,7 +265,7 @@ where
                     problem.upper(),
                     &w.gamma,
                     n,
-                );
+                )?;
                 pen
             };
             state.cost_evals += 1;
@@ -270,7 +278,7 @@ where
             sort_population_ascending(&mut state.candidates, &mut state.costs);
         }
 
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, state: &BasicPopulationState<V>) -> Option<TerminationReason> {

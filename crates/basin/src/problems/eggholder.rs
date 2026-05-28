@@ -79,8 +79,9 @@ impl<P> HasSpec for Eggholder<P> {
 impl CostFunction for Eggholder<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        eggholder(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(eggholder(x))
     }
 }
 
@@ -93,8 +94,9 @@ mod nalgebra_impl {
     impl CostFunction for Eggholder<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            eggholder(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(eggholder(x.as_slice()))
         }
     }
 }
@@ -108,8 +110,9 @@ mod ndarray_impl {
     impl CostFunction for Eggholder<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            eggholder(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(eggholder(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 }
@@ -123,11 +126,12 @@ mod faer_impl {
     impl CostFunction for Eggholder<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let c = b + 47.0;
-            -c * (a / 2.0 + c).abs().sqrt().sin() - a * (a - c).abs().sqrt().sin()
+            Ok(-c * (a / 2.0 + c).abs().sqrt().sin() - a * (a - c).abs().sqrt().sin())
         }
     }
 }

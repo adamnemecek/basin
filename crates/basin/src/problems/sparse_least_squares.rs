@@ -105,56 +105,60 @@ mod nalgebra_impl {
     impl CostFunction for SparseLeastSquares<CscMatrix<f64>, DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
             // ½ ‖A·x − b‖² (LM convention).
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            0.5 * r.iter().map(|v| v * v).sum::<f64>()
+            Ok(0.5 * r.iter().map(|v| v * v).sum::<f64>())
         }
     }
 
     impl Residual for SparseLeastSquares<CscMatrix<f64>, DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            r
+            Ok(r)
         }
     }
 
     impl Jacobian for SparseLeastSquares<CscMatrix<f64>, DVector<f64>> {
         type Jacobian = CscMatrix<f64>;
-        fn jacobian(&self, _x: &DVector<f64>) -> CscMatrix<f64> {
+        fn jacobian(&self, _x: &DVector<f64>) -> Result<CscMatrix<f64>, std::convert::Infallible> {
             // J(x) = A — constant in x for linear residuals.
-            self.a.clone()
+            Ok(self.a.clone())
         }
     }
 
     impl CostFunction for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            0.5 * r.iter().map(|v| v * v).sum::<f64>()
+            Ok(0.5 * r.iter().map(|v| v * v).sum::<f64>())
         }
     }
 
     impl Residual for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            r
+            Ok(r)
         }
     }
 
     impl Jacobian for SparseLeastSquaresBoxed<CscMatrix<f64>, DVector<f64>> {
         type Jacobian = CscMatrix<f64>;
-        fn jacobian(&self, _x: &DVector<f64>) -> CscMatrix<f64> {
-            self.a.clone()
+        fn jacobian(&self, _x: &DVector<f64>) -> Result<CscMatrix<f64>, std::convert::Infallible> {
+            Ok(self.a.clone())
         }
     }
 
@@ -179,7 +183,8 @@ mod faer_impl {
     impl CostFunction for SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             // ½ ‖A·x − b‖² (LM convention).
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
@@ -187,56 +192,65 @@ mod faer_impl {
             for i in 0..r.nrows() {
                 s += r[i] * r[i];
             }
-            0.5 * s
+            Ok(0.5 * s)
         }
     }
 
     impl Residual for SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            r
+            Ok(r)
         }
     }
 
     impl Jacobian for SparseLeastSquares<SparseColMat<usize, f64>, Col<f64>> {
         type Jacobian = SparseColMat<usize, f64>;
-        fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
+        fn jacobian(
+            &self,
+            _x: &Col<f64>,
+        ) -> Result<SparseColMat<usize, f64>, std::convert::Infallible> {
             // J(x) = A — constant in x for linear residuals.
-            self.a.clone()
+            Ok(self.a.clone())
         }
     }
 
     impl CostFunction for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
             let mut s = 0.0;
             for i in 0..r.nrows() {
                 s += r[i] * r[i];
             }
-            0.5 * s
+            Ok(0.5 * s)
         }
     }
 
     impl Residual for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let mut r = self.a.matvec(x);
             r.scaled_add(-1.0, &self.b);
-            r
+            Ok(r)
         }
     }
 
     impl Jacobian for SparseLeastSquaresBoxed<SparseColMat<usize, f64>, Col<f64>> {
         type Jacobian = SparseColMat<usize, f64>;
-        fn jacobian(&self, _x: &Col<f64>) -> SparseColMat<usize, f64> {
-            self.a.clone()
+        fn jacobian(
+            &self,
+            _x: &Col<f64>,
+        ) -> Result<SparseColMat<usize, f64>, std::convert::Infallible> {
+            Ok(self.a.clone())
         }
     }
 
@@ -283,7 +297,7 @@ mod tests {
         let a = SparseColMat::<usize, f64>::try_new_from_triplets(3, 2, &triplets).unwrap();
         let b = Col::<f64>::from_fn(3, |i| [1.0, 2.0, 4.0][i]);
         let prob = SparseLeastSquares::new(a, b);
-        let r = prob.residual(&Col::<f64>::zeros(2));
+        let r = prob.residual(&Col::<f64>::zeros(2)).unwrap();
         // r(0) = A·0 − b = −b.
         assert_eq!(r.nrows(), 3);
         assert_eq!(r[0], -1.0);

@@ -464,21 +464,21 @@ pub(crate) fn evaluate_with_penalty<P, V>(
     upper: &V,
     gamma: &V,
     n: usize,
-) -> (f64, f64)
+) -> Result<(f64, f64), P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ClampInPlace + std::ops::Index<usize, Output = f64>,
 {
     let mut x_rep = x.clone();
     x_rep.clamp_in_place(lower, upper);
-    let raw = problem.cost(&x_rep);
+    let raw = problem.cost(&x_rep)?;
     let mut penalty = 0.0;
     for i in 0..n {
         let dx = x[i] - x_rep[i];
         penalty += gamma[i] * dx * dx;
     }
     penalty /= n as f64;
-    (raw, raw + penalty)
+    Ok((raw, raw + penalty))
 }
 
 /// γ adaptation. Mirrors pycma `BoundPenalty.update`
@@ -605,13 +605,19 @@ where
         + SymmetricEigen<V>
         + Clone,
 {
-    fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         // Idempotent: a paused BoundedCmaEs re-entered via `run_loop`
         // must not have its evolution state rebuilt. Mirrors the
         // CmaEs::init early-return; see that solver's docs for the
         // chain-resumption use case.
         if self.state.is_some() {
-            return state;
+            return Ok(state);
         }
         let mut w = self.build_working();
         // Seed (b, d, d_inv): isotropic (1, …, 1) by default, or
@@ -666,7 +672,7 @@ where
                 problem.upper(),
                 &w.gamma,
                 w.n,
-            );
+            )?;
             state.candidates.push(x_k);
             state.costs.push(pen);
             w.raw_costs.push(raw);
@@ -675,14 +681,14 @@ where
         sort_population_ascending(&mut state.candidates, &mut state.costs);
 
         self.state = Some(w);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         let w = self
             .state
             .as_mut()
@@ -773,7 +779,7 @@ where
         // Refresh eigendecomposition of the new C.
         let (b_new, eigs) = match w.c.try_eigh() {
             Ok(pair) => pair,
-            Err(_) => return (state, Some(TerminationReason::SolverFailed)),
+            Err(_) => return Ok((state, Some(TerminationReason::SolverFailed))),
         };
         w.b = b_new;
         for i in 0..w.n {
@@ -808,7 +814,7 @@ where
                 problem.upper(),
                 &w.gamma,
                 w.n,
-            );
+            )?;
             state.candidates.push(x_k);
             state.costs.push(pen);
             w.raw_costs.push(raw);
@@ -816,7 +822,7 @@ where
         state.cost_evals += w.lambda as u64;
         sort_population_ascending(&mut state.candidates, &mut state.costs);
 
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, _state: &BasicPopulationState<V>) -> Option<TerminationReason> {

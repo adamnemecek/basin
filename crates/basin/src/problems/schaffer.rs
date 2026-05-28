@@ -110,17 +110,18 @@ impl<P> HasSpec for SchafferN2<P> {
 impl CostFunction for SchafferN2<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        schaffer_n2(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(schaffer_n2(x))
     }
 }
 
 impl Gradient for SchafferN2<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         schaffer_n2_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -190,8 +191,9 @@ impl<P> HasSpec for SchafferN4<P> {
 impl CostFunction for SchafferN4<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        schaffer_n4(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(schaffer_n4(x))
     }
 }
 
@@ -204,25 +206,27 @@ mod nalgebra_impl {
     impl CostFunction for SchafferN2<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            schaffer_n2(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(schaffer_n2(x.as_slice()))
         }
     }
 
     impl Gradient for SchafferN2<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             schaffer_n2_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl CostFunction for SchafferN4<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            schaffer_n4(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(schaffer_n4(x.as_slice()))
         }
     }
 }
@@ -236,28 +240,30 @@ mod ndarray_impl {
     impl CostFunction for SchafferN2<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            schaffer_n2(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(schaffer_n2(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for SchafferN2<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             schaffer_n2_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 
     impl CostFunction for SchafferN4<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            schaffer_n4(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(schaffer_n4(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 }
@@ -274,19 +280,20 @@ mod faer_impl {
     impl CostFunction for SchafferN2<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let u = a * a - b * b;
             let d = 1.0 + 0.001 * (a * a + b * b);
             let su = u.sin();
-            0.5 + (su * su - 0.5) / (d * d)
+            Ok(0.5 + (su * su - 0.5) / (d * d))
         }
     }
 
     impl Gradient for SchafferN2<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let u = a * a - b * b;
@@ -297,20 +304,21 @@ mod faer_impl {
             let d3 = d * d * d;
             let g0 = (2.0 * a * s2u * d - 0.004 * a * num) / d3;
             let g1 = (-2.0 * b * s2u * d - 0.004 * b * num) / d3;
-            Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+            Ok(Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 }))
         }
     }
 
     impl CostFunction for SchafferN4<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let t = (a * a - b * b).abs();
             let d = 1.0 + 0.001 * (a * a + b * b);
             let c = t.sin().cos();
-            0.5 + (c * c - 0.5) / (d * d)
+            Ok(0.5 + (c * c - 0.5) / (d * d))
         }
     }
 }

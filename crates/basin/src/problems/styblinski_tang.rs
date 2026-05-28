@@ -99,17 +99,18 @@ impl<P> HasSpec for StyblinskiTang<P> {
 impl CostFunction for StyblinskiTang<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        styblinski_tang(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(styblinski_tang(x))
     }
 }
 
 impl Gradient for StyblinskiTang<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         styblinski_tang_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -122,17 +123,18 @@ mod nalgebra_impl {
     impl CostFunction for StyblinskiTang<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            styblinski_tang(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(styblinski_tang(x.as_slice()))
         }
     }
 
     impl Gradient for StyblinskiTang<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             styblinski_tang_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -146,20 +148,21 @@ mod ndarray_impl {
     impl CostFunction for StyblinskiTang<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            styblinski_tang(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(styblinski_tang(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for StyblinskiTang<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             styblinski_tang_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -176,24 +179,25 @@ mod faer_impl {
     impl CostFunction for StyblinskiTang<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let mut s = 0.0;
             for i in 0..x.nrows() {
                 let v = x[i];
                 let v2 = v * v;
                 s += v2 * v2 - 16.0 * v2 + 5.0 * v;
             }
-            0.5 * s
+            Ok(0.5 * s)
         }
     }
 
     impl Gradient for StyblinskiTang<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            Col::<f64>::from_fn(x.nrows(), |i| {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(Col::<f64>::from_fn(x.nrows(), |i| {
                 let v = x[i];
                 2.0 * v * v * v - 16.0 * v + 2.5
-            })
+            }))
         }
     }
 }
@@ -240,17 +244,18 @@ impl StyblinskiTangBoxed<Vec<f64>> {
 impl CostFunction for StyblinskiTangBoxed<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        styblinski_tang(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(styblinski_tang(x))
     }
 }
 
 impl Gradient for StyblinskiTangBoxed<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         styblinski_tang_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -286,17 +291,18 @@ mod nalgebra_boxed_impl {
     impl CostFunction for StyblinskiTangBoxed<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            styblinski_tang(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(styblinski_tang(x.as_slice()))
         }
     }
 
     impl Gradient for StyblinskiTangBoxed<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             styblinski_tang_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
@@ -333,20 +339,21 @@ mod ndarray_boxed_impl {
     impl CostFunction for StyblinskiTangBoxed<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            styblinski_tang(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(styblinski_tang(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for StyblinskiTangBoxed<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             styblinski_tang_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 
@@ -380,24 +387,25 @@ mod faer_boxed_impl {
     impl CostFunction for StyblinskiTangBoxed<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let mut s = 0.0;
             for i in 0..x.nrows() {
                 let v = x[i];
                 let v2 = v * v;
                 s += v2 * v2 - 16.0 * v2 + 5.0 * v;
             }
-            0.5 * s
+            Ok(0.5 * s)
         }
     }
 
     impl Gradient for StyblinskiTangBoxed<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            Col::<f64>::from_fn(x.nrows(), |i| {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(Col::<f64>::from_fn(x.nrows(), |i| {
                 let v = x[i];
                 2.0 * v * v * v - 16.0 * v + 2.5
-            })
+            }))
         }
     }
 
@@ -471,10 +479,10 @@ mod tests {
         assert!(hi.iter().all(|&v| v == STANDARD_UPPER));
 
         let x = vec![0.3, -0.7, 1.2];
-        assert!((p.cost(&x) - styblinski_tang(&x)).abs() < 1e-12);
+        assert!((p.cost(&x).unwrap() - styblinski_tang(&x)).abs() < 1e-12);
         let mut g = vec![0.0; x.len()];
         styblinski_tang_gradient(&x, &mut g);
-        assert_eq!(p.gradient(&x), g);
+        assert_eq!(p.gradient(&x).unwrap(), g);
     }
 
     #[test]

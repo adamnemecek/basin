@@ -33,7 +33,8 @@ fn converges_to_affine_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -61,7 +62,8 @@ fn fully_determined_system() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -82,7 +84,8 @@ fn eval_counts_are_recorded() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     // Inner subproblem solves plus the per-outer-iter true-objective evals
     // must have accumulated onto the outer state.
@@ -108,7 +111,8 @@ fn bfgs_inner_converges_to_affine_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -131,7 +135,8 @@ fn lbfgs_inner_converges_to_affine_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(

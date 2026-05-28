@@ -38,11 +38,13 @@
 //!   calls — `result.cost_evals()` will **not** reflect them. Users who need
 //!   true cost-evaluation budgets should account for the `O(n)`/`O(n²)`
 //!   multiplier themselves.
-//! - **Domain.** Finite differences inherit the inner function's domain: if
-//!   the cost/residual is undefined (NaN/∞) at a probe point `x ± h`, the
-//!   derivative is poisoned. The derivative traits are infallible (no
-//!   `Result`), matching the rest of the framework; keeping probes inside
-//!   the domain (e.g. via [`FiniteDiff::function_precision`] or
+//! - **Domain & hard-abort.** Each probe `?`-propagates the inner
+//!   function's [`Error`](CostFunction::Error). If the inner `cost` /
+//!   `residual` returns `Err`, the derivative call returns the same `Err`
+//!   — no swallowing, no partial result. A point where the inner function
+//!   *soft-rejects* (`Ok(f64::INFINITY)`) poisons the derivative with `±∞`
+//!   rather than aborting; keeping probes inside the strict domain
+//!   (e.g. via [`FiniteDiff::function_precision`] or
 //!   [`FiniteDiff::with_step`]) is the caller's responsibility.
 
 use crate::core::constraint::BoxConstraints;
@@ -90,8 +92,9 @@ pub enum Method {
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 ///
@@ -102,7 +105,8 @@ pub enum Method {
 /// )
 /// .max_iter(1_000)
 /// .terminate_on(GradientTolerance(1e-8))
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!(result.cost() < 1e-10);
 /// ```
 #[derive(Debug, Clone, Copy)]
@@ -183,7 +187,8 @@ impl<P> FiniteDiff<P> {
 impl<P: CostFunction> CostFunction for FiniteDiff<P> {
     type Param = P::Param;
     type Output = P::Output;
-    fn cost(&self, param: &Self::Param) -> Self::Output {
+    type Error = P::Error;
+    fn cost(&self, param: &Self::Param) -> Result<Self::Output, Self::Error> {
         self.problem.cost(param)
     }
 }
@@ -191,7 +196,8 @@ impl<P: CostFunction> CostFunction for FiniteDiff<P> {
 impl<P: Residual> Residual for FiniteDiff<P> {
     type Param = P::Param;
     type Output = P::Output;
-    fn residual(&self, param: &Self::Param) -> Self::Output {
+    type Error = P::Error;
+    fn residual(&self, param: &Self::Param) -> Result<Self::Output, Self::Error> {
         self.problem.residual(param)
     }
 }
@@ -219,7 +225,7 @@ where
     V: Clone + VectorLen + VectorIndex,
 {
     type Gradient = V;
-    fn gradient(&self, param: &V) -> V {
+    fn gradient(&self, param: &V) -> Result<V, P::Error> {
         match self.gradient_method {
             Method::Forward => forward_difference_gradient(
                 &self.problem,
@@ -243,7 +249,7 @@ where
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     type Jacobian = <V as DenseMatrixFromFn>::Matrix;
-    fn jacobian(&self, param: &V) -> Self::Jacobian {
+    fn jacobian(&self, param: &V) -> Result<Self::Jacobian, P::Error> {
         match self.jacobian_method {
             Method::Forward => forward_difference_jacobian(
                 &self.problem,
@@ -267,7 +273,7 @@ where
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     type Hessian = <V as DenseMatrixFromFn>::Matrix;
-    fn hessian(&self, param: &V) -> Self::Hessian {
+    fn hessian(&self, param: &V) -> Result<Self::Hessian, P::Error> {
         match self.hessian_method {
             Method::Forward => forward_difference_hessian(
                 &self.problem,
@@ -313,13 +319,13 @@ fn nr_step(xj: f64, scale: f64, fixed_step: Option<f64>) -> f64 {
 ///
 /// `function_precision` is the assumed relative accuracy of `f` (floored at
 /// `f64::EPSILON`); `fixed_step`, when `Some`, overrides the adaptive step.
-/// `2n` cost evaluations.
+/// `2n` cost evaluations. Returns `Err` if any probe's `cost` does.
 pub fn central_difference_gradient<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> V
+) -> Result<V, P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex,
@@ -332,43 +338,44 @@ where
         let xj = x.get_scalar(j);
         let h = nr_step(xj, scale, fixed_step);
         probe.set_scalar(j, xj + h);
-        let fp = problem.cost(&probe);
+        let fp = problem.cost(&probe)?;
         probe.set_scalar(j, xj - h);
-        let fm = problem.cost(&probe);
+        let fm = problem.cost(&probe)?;
         probe.set_scalar(j, xj);
         grad.set_scalar(j, (fp - fm) / (2.0 * h));
     }
-    grad
+    Ok(grad)
 }
 
 /// Forward-difference gradient `∇f(x)ⱼ ≈ (f(x+hⱼeⱼ) − f(x)) / hⱼ`.
 ///
 /// Cheaper than [`central_difference_gradient`] (`n+1` cost evaluations) at
-/// the cost of `O(h)` rather than `O(h²)` accuracy.
+/// the cost of `O(h)` rather than `O(h²)` accuracy. Returns `Err` if any
+/// probe's `cost` does.
 pub fn forward_difference_gradient<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> V
+) -> Result<V, P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex,
 {
     let n = x.vec_len();
     let scale = function_precision.max(f64::EPSILON).sqrt();
-    let f0 = problem.cost(x);
+    let f0 = problem.cost(x)?;
     let mut probe = x.clone();
     let mut grad = x.clone();
     for j in 0..n {
         let xj = x.get_scalar(j);
         let h = nr_step(xj, scale, fixed_step);
         probe.set_scalar(j, xj + h);
-        let fp = problem.cost(&probe);
+        let fp = problem.cost(&probe)?;
         probe.set_scalar(j, xj);
         grad.set_scalar(j, (fp - f0) / h);
     }
-    grad
+    Ok(grad)
 }
 
 /// Forward-difference Jacobian, column `j ≈ (r(x+hⱼeⱼ) − r(x)) / hⱼ`.
@@ -376,18 +383,19 @@ where
 /// Reproduces MINPACK `fdjac2`: `eps = sqrt(function_precision)`,
 /// `hⱼ = eps·|xⱼ|`, `hⱼ = eps` when `xⱼ = 0`. `n+1` residual evaluations.
 /// The result is an `m × n` matrix (`m = r(x).len()`, `n = x.len()`).
+/// Returns `Err` if any probe's `residual` does.
 pub fn forward_difference_jacobian<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> <V as DenseMatrixFromFn>::Matrix
+) -> Result<<V as DenseMatrixFromFn>::Matrix, P::Error>
 where
     P: Residual<Param = V, Output = V>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     let n = x.vec_len();
-    let r0 = problem.residual(x);
+    let r0 = problem.residual(x)?;
     let m = r0.vec_len();
     let eps = function_precision.max(f64::EPSILON).sqrt();
     let mut probe = x.clone();
@@ -406,32 +414,33 @@ where
             }
         };
         probe.set_scalar(j, xj + h);
-        let mut col = problem.residual(&probe);
+        let mut col = problem.residual(&probe)?;
         probe.set_scalar(j, xj);
         for i in 0..m {
             col.set_scalar(i, (col.get_scalar(i) - r0.get_scalar(i)) / h);
         }
         columns.push(col);
     }
-    V::dense_from_fn(m, n, |i, j| columns[j].get_scalar(i))
+    Ok(V::dense_from_fn(m, n, |i, j| columns[j].get_scalar(i)))
 }
 
 /// Central-difference Jacobian, column `j ≈ (r(x+hⱼeⱼ) − r(x−hⱼeⱼ)) / 2hⱼ`.
 ///
 /// More accurate than [`forward_difference_jacobian`] (`O(h²)`) at `2n+1`
-/// residual evaluations. Result shape is `m × n`.
+/// residual evaluations. Result shape is `m × n`. Returns `Err` if any
+/// probe's `residual` does.
 pub fn central_difference_jacobian<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> <V as DenseMatrixFromFn>::Matrix
+) -> Result<<V as DenseMatrixFromFn>::Matrix, P::Error>
 where
     P: Residual<Param = V, Output = V>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     let n = x.vec_len();
-    let m = problem.residual(x).vec_len();
+    let m = problem.residual(x)?.vec_len();
     let scale = function_precision.max(f64::EPSILON).cbrt();
     let mut probe = x.clone();
     let mut columns: Vec<V> = Vec::with_capacity(n);
@@ -439,16 +448,16 @@ where
         let xj = x.get_scalar(j);
         let h = nr_step(xj, scale, fixed_step);
         probe.set_scalar(j, xj + h);
-        let mut col = problem.residual(&probe);
+        let mut col = problem.residual(&probe)?;
         probe.set_scalar(j, xj - h);
-        let rm = problem.residual(&probe);
+        let rm = problem.residual(&probe)?;
         probe.set_scalar(j, xj);
         for i in 0..m {
             col.set_scalar(i, (col.get_scalar(i) - rm.get_scalar(i)) / (2.0 * h));
         }
         columns.push(col);
     }
-    V::dense_from_fn(m, n, |i, j| columns[j].get_scalar(i))
+    Ok(V::dense_from_fn(m, n, |i, j| columns[j].get_scalar(i)))
 }
 
 /// Central-difference Hessian (Numerical Recipes second differences).
@@ -456,20 +465,20 @@ where
 /// Diagonal `Hᵢᵢ = (f(x+hᵢeᵢ) − 2f(x) + f(x−hᵢeᵢ)) / hᵢ²`; off-diagonal the
 /// four-point stencil `(f₊₊ − f₊₋ − f₋₊ + f₋₋) / 4hᵢhⱼ`. Symmetric `n × n`
 /// by construction (the upper triangle is mirrored). `~2n²` cost
-/// evaluations.
+/// evaluations. Returns `Err` if any probe's `cost` does.
 pub fn central_difference_hessian<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> <V as DenseMatrixFromFn>::Matrix
+) -> Result<<V as DenseMatrixFromFn>::Matrix, P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     let n = x.vec_len();
     let scale = function_precision.max(f64::EPSILON).powf(0.25);
-    let f0 = problem.cost(x);
+    let f0 = problem.cost(x)?;
     let h: Vec<f64> = (0..n)
         .map(|j| nr_step(x.get_scalar(j), scale, fixed_step))
         .collect();
@@ -478,22 +487,22 @@ where
     for i in 0..n {
         let xi = x.get_scalar(i);
         probe.set_scalar(i, xi + h[i]);
-        let fp = problem.cost(&probe);
+        let fp = problem.cost(&probe)?;
         probe.set_scalar(i, xi - h[i]);
-        let fm = problem.cost(&probe);
+        let fm = problem.cost(&probe)?;
         probe.set_scalar(i, xi);
         hess[i * n + i] = (fp - 2.0 * f0 + fm) / (h[i] * h[i]);
         for j in (i + 1)..n {
             let xj = x.get_scalar(j);
             probe.set_scalar(i, xi + h[i]);
             probe.set_scalar(j, xj + h[j]);
-            let fpp = problem.cost(&probe);
+            let fpp = problem.cost(&probe)?;
             probe.set_scalar(j, xj - h[j]);
-            let fpm = problem.cost(&probe);
+            let fpm = problem.cost(&probe)?;
             probe.set_scalar(i, xi - h[i]);
-            let fmm = problem.cost(&probe);
+            let fmm = problem.cost(&probe)?;
             probe.set_scalar(j, xj + h[j]);
-            let fmp = problem.cost(&probe);
+            let fmp = problem.cost(&probe)?;
             probe.set_scalar(i, xi);
             probe.set_scalar(j, xj);
             let v = (fpp - fpm - fmp + fmm) / (4.0 * h[i] * h[j]);
@@ -501,55 +510,55 @@ where
             hess[j * n + i] = v;
         }
     }
-    V::dense_from_fn(n, n, |i, j| hess[i * n + j])
+    Ok(V::dense_from_fn(n, n, |i, j| hess[i * n + j]))
 }
 
 /// Forward-difference Hessian (one-sided second differences).
 ///
 /// `Hᵢⱼ = (f(x+hᵢeᵢ+hⱼeⱼ) − f(x+hᵢeᵢ) − f(x+hⱼeⱼ) + f(x)) / hᵢhⱼ`, with the
 /// diagonal as the `i = j` case (`f(x+2hᵢeᵢ)`). Symmetric `n × n` by
-/// construction; `1 + n + n(n+1)/2` cost evaluations.
+/// construction; `1 + n + n(n+1)/2` cost evaluations. Returns `Err` if any
+/// probe's `cost` does.
 pub fn forward_difference_hessian<P, V>(
     problem: &P,
     x: &V,
     function_precision: f64,
     fixed_step: Option<f64>,
-) -> <V as DenseMatrixFromFn>::Matrix
+) -> Result<<V as DenseMatrixFromFn>::Matrix, P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
 {
     let n = x.vec_len();
     let scale = function_precision.max(f64::EPSILON).powf(0.25);
-    let f0 = problem.cost(x);
+    let f0 = problem.cost(x)?;
     let h: Vec<f64> = (0..n)
         .map(|j| nr_step(x.get_scalar(j), scale, fixed_step))
         .collect();
     let mut probe = x.clone();
     // f(x + hₖeₖ) for each k.
-    let fi: Vec<f64> = (0..n)
-        .map(|k| {
-            let xk = x.get_scalar(k);
-            probe.set_scalar(k, xk + h[k]);
-            let f = problem.cost(&probe);
-            probe.set_scalar(k, xk);
-            f
-        })
-        .collect();
+    let mut fi: Vec<f64> = Vec::with_capacity(n);
+    for (k, &hk) in h.iter().enumerate().take(n) {
+        let xk = x.get_scalar(k);
+        probe.set_scalar(k, xk + hk);
+        let f = problem.cost(&probe)?;
+        probe.set_scalar(k, xk);
+        fi.push(f);
+    }
     let mut hess = vec![0.0_f64; n * n];
     for i in 0..n {
         let xi = x.get_scalar(i);
         for j in i..n {
             let cross = if i == j {
                 probe.set_scalar(i, xi + 2.0 * h[i]);
-                let c = problem.cost(&probe);
+                let c = problem.cost(&probe)?;
                 probe.set_scalar(i, xi);
                 c
             } else {
                 let xj = x.get_scalar(j);
                 probe.set_scalar(i, xi + h[i]);
                 probe.set_scalar(j, xj + h[j]);
-                let c = problem.cost(&probe);
+                let c = problem.cost(&probe)?;
                 probe.set_scalar(i, xi);
                 probe.set_scalar(j, xj);
                 c
@@ -559,7 +568,7 @@ where
             hess[j * n + i] = v;
         }
     }
-    V::dense_from_fn(n, n, |i, j| hess[i * n + j])
+    Ok(V::dense_from_fn(n, n, |i, j| hess[i * n + j]))
 }
 
 #[cfg(test)]
@@ -575,8 +584,9 @@ mod tests {
     impl CostFunction for DiagQuadratic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            x.iter().zip(&self.a).map(|(xi, ai)| ai * xi * xi).sum()
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(x.iter().zip(&self.a).map(|(xi, ai)| ai * xi * xi).sum())
         }
     }
 
@@ -588,7 +598,9 @@ mod tests {
     fn central_gradient_matches_analytic_quadratic() {
         let a = vec![1.0, 2.0, 0.5];
         let x = vec![-1.2, 0.7, 3.0];
-        let g = FiniteDiff::new(DiagQuadratic { a: a.clone() }).gradient(&x);
+        let g = FiniteDiff::new(DiagQuadratic { a: a.clone() })
+            .gradient(&x)
+            .unwrap();
         for i in 0..3 {
             let want = 2.0 * a[i] * x[i];
             assert!(approx(g[i], want, 1e-7), "i={i} got {} want {want}", g[i]);
@@ -601,7 +613,8 @@ mod tests {
         let x = vec![-1.2, 0.7, 3.0];
         let g = FiniteDiff::new(DiagQuadratic { a: a.clone() })
             .gradient_method(Method::Forward)
-            .gradient(&x);
+            .gradient(&x)
+            .unwrap();
         for i in 0..3 {
             let want = 2.0 * a[i] * x[i];
             assert!(approx(g[i], want, 1e-5), "i={i} got {} want {want}", g[i]);
@@ -611,14 +624,18 @@ mod tests {
     #[test]
     fn gradient_handles_zero_coordinate_and_singletons() {
         // x = 0 exercises the |xⱼ| = 0 step branch.
-        let g = FiniteDiff::new(DiagQuadratic { a: vec![3.0] }).gradient(&vec![0.0]);
+        let g = FiniteDiff::new(DiagQuadratic { a: vec![3.0] })
+            .gradient(&vec![0.0])
+            .unwrap();
         assert!(approx(g[0], 0.0, 1e-9), "got {}", g[0]);
         assert_eq!(g.len(), 1);
     }
 
     #[test]
     fn gradient_of_empty_param_is_empty() {
-        let g = FiniteDiff::new(DiagQuadratic { a: vec![] }).gradient(&Vec::<f64>::new());
+        let g = FiniteDiff::new(DiagQuadratic { a: vec![] })
+            .gradient(&Vec::<f64>::new())
+            .unwrap();
         assert!(g.is_empty());
     }
 
@@ -639,7 +656,9 @@ mod tests {
         #[test]
         fn central_gradient_matches_sphere_analytic() {
             let x = vec![-1.2, 1.0, 0.7, 0.4];
-            let g = FiniteDiff::new(Sphere::<Vec<f64>>::new()).gradient(&x);
+            let g = FiniteDiff::new(Sphere::<Vec<f64>>::new())
+                .gradient(&x)
+                .unwrap();
             let mut want = vec![0.0; x.len()];
             sphere_gradient(&x, &mut want);
             for i in 0..x.len() {
@@ -650,7 +669,9 @@ mod tests {
         #[test]
         fn central_gradient_matches_rosenbrock_analytic() {
             let x = vec![-1.2, 1.0, 0.7, 0.4];
-            let g = FiniteDiff::new(Rosenbrock::<Vec<f64>>::new()).gradient(&x);
+            let g = FiniteDiff::new(Rosenbrock::<Vec<f64>>::new())
+                .gradient(&x)
+                .unwrap();
             let mut want = vec![0.0; x.len()];
             rosenbrock_gradient(&x, &mut want);
             for i in 0..x.len() {
@@ -688,8 +709,12 @@ mod tests {
         #[test]
         fn forward_jacobian_matches_analytic() {
             let x = DVector::from_vec(vec![-1.2, 1.0]);
-            let analytic = RosenbrockResiduals::<DVector<f64>>::new().jacobian(&x);
-            let fd = FiniteDiff::new(RosenbrockResiduals::<DVector<f64>>::new()).jacobian(&x);
+            let analytic = RosenbrockResiduals::<DVector<f64>>::new()
+                .jacobian(&x)
+                .unwrap();
+            let fd = FiniteDiff::new(RosenbrockResiduals::<DVector<f64>>::new())
+                .jacobian(&x)
+                .unwrap();
             assert_eq!(fd.shape(), (2, 2));
             for i in 0..2 {
                 for j in 0..2 {
@@ -706,10 +731,13 @@ mod tests {
         #[test]
         fn central_jacobian_is_tighter_than_forward() {
             let x = DVector::from_vec(vec![-1.2, 1.0]);
-            let analytic = RosenbrockResiduals::<DVector<f64>>::new().jacobian(&x);
+            let analytic = RosenbrockResiduals::<DVector<f64>>::new()
+                .jacobian(&x)
+                .unwrap();
             let central = FiniteDiff::new(RosenbrockResiduals::<DVector<f64>>::new())
                 .jacobian_method(Method::Central)
-                .jacobian(&x);
+                .jacobian(&x)
+                .unwrap();
             for i in 0..2 {
                 for j in 0..2 {
                     assert!(approx(central[(i, j)], analytic[(i, j)], 1e-7));
@@ -720,7 +748,9 @@ mod tests {
         #[test]
         fn hessian_of_sphere_is_two_times_identity() {
             let x = DVector::from_vec(vec![0.5, -1.5, 2.0]);
-            let h = FiniteDiff::new(Sphere::<DVector<f64>>::new()).hessian(&x);
+            let h = FiniteDiff::new(Sphere::<DVector<f64>>::new())
+                .hessian(&x)
+                .unwrap();
             assert_eq!(h.shape(), (3, 3));
             for i in 0..3 {
                 for j in 0..3 {
@@ -735,7 +765,9 @@ mod tests {
             // Analytic 2D Rosenbrock Hessian (cost form, n=2):
             //   H₀₀ = 2 − 400(x₁ − 3x₀²),  H₀₁ = H₁₀ = −400x₀,  H₁₁ = 200.
             let x = DVector::from_vec(vec![-1.2, 1.0]);
-            let h = FiniteDiff::new(Rosenbrock::<DVector<f64>>::new()).hessian(&x);
+            let h = FiniteDiff::new(Rosenbrock::<DVector<f64>>::new())
+                .hessian(&x)
+                .unwrap();
             let (x0, x1) = (x[0], x[1]);
             let want = [
                 [2.0 - 400.0 * (x1 - 3.0 * x0 * x0), -400.0 * x0],
@@ -762,8 +794,10 @@ mod tests {
         #[test]
         fn forward_jacobian_matches_analytic() {
             let x = Col::<f64>::from_fn(2, |i| [-1.2, 1.0][i]);
-            let analytic = RosenbrockResiduals::<Col<f64>>::new().jacobian(&x);
-            let fd = FiniteDiff::new(RosenbrockResiduals::<Col<f64>>::new()).jacobian(&x);
+            let analytic = RosenbrockResiduals::<Col<f64>>::new().jacobian(&x).unwrap();
+            let fd = FiniteDiff::new(RosenbrockResiduals::<Col<f64>>::new())
+                .jacobian(&x)
+                .unwrap();
             assert_eq!((fd.nrows(), fd.ncols()), (2, 2));
             for i in 0..2 {
                 for j in 0..2 {
@@ -780,7 +814,9 @@ mod tests {
         #[test]
         fn hessian_of_sphere_is_two_times_identity() {
             let x = Col::<f64>::from_fn(3, |i| [0.5, -1.5, 2.0][i]);
-            let h = FiniteDiff::new(Sphere::<Col<f64>>::new()).hessian(&x);
+            let h = FiniteDiff::new(Sphere::<Col<f64>>::new())
+                .hessian(&x)
+                .unwrap();
             assert_eq!((h.nrows(), h.ncols()), (3, 3));
             for i in 0..3 {
                 for j in 0..3 {

@@ -23,7 +23,8 @@ fn same_seed_yields_identical_trajectory() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
 
     let result_b = Executor::new(
         BoothBoxed::<Col<f64>>::new(lower, upper),
@@ -31,7 +32,8 @@ fn same_seed_yields_identical_trajectory() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result_a.cost(), result_b.cost());
     let (a, b) = (result_a.param(), result_b.param());
@@ -56,7 +58,8 @@ fn slack_bounds_recover_unconstrained_minimum() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(400)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     assert!(
@@ -81,7 +84,8 @@ fn tight_bounds_converge_to_box_corner() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(800)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     assert!(
@@ -107,7 +111,8 @@ fn infeasible_initial_mean_converges_to_box_corner() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(800)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     assert!(
@@ -133,7 +138,8 @@ fn slack_bounds_terminate_solver_converged_on_tol_x() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(2000)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
@@ -152,10 +158,11 @@ fn population_invariants_hold_after_iteration() {
         BasicPopulationState::<Col<f64>>::with_size(lambda),
     )
     .max_iter(10)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..10 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         let state = stepper.state();

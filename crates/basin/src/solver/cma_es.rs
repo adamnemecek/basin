@@ -559,7 +559,13 @@ where
         + SymmetricEigen<V>
         + Clone,
 {
-    fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         // Idempotent: if a previous init already seeded the internal
         // state, return the caller-provided state untouched. This lets
         // chain-style outer solvers (e.g. MaLsChCma) call `run_loop`
@@ -568,7 +574,7 @@ where
         // a freshly constructed CmaEs has `self.state == None` and
         // proceeds through the full setup below.
         if self.state.is_some() {
-            return state;
+            return Ok(state);
         }
         let mut w = self.build_working();
         // Zero the path vectors and seed (b, d, d_inv). For the isotropic
@@ -609,7 +615,7 @@ where
             } else {
                 x_k.scaled_add(w.sigma, &z_k);
             }
-            let cost = problem.cost(&x_k);
+            let cost = problem.cost(&x_k)?;
             state.candidates.push(x_k);
             state.costs.push(cost);
         }
@@ -617,14 +623,14 @@ where
         sort_population_ascending(&mut state.candidates, &mut state.costs);
 
         self.state = Some(w);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         let w = self
             .state
             .as_mut()
@@ -723,7 +729,7 @@ where
         // Refresh eigendecomposition of the new C.
         let (b_new, eigs) = match w.c.try_eigh() {
             Ok(pair) => pair,
-            Err(_) => return (state, Some(TerminationReason::SolverFailed)),
+            Err(_) => return Ok((state, Some(TerminationReason::SolverFailed))),
         };
         w.b = b_new;
         // d_i = √max(λ_i, 0); d_inv_i = 1/d_i. Floating-point can produce
@@ -747,14 +753,14 @@ where
             let bd_z = w.b.matvec(&bd_z);
             let mut x_k = w.m.clone();
             x_k.scaled_add(w.sigma, &bd_z);
-            let cost = problem.cost(&x_k);
+            let cost = problem.cost(&x_k)?;
             state.candidates.push(x_k);
             state.costs.push(cost);
         }
         state.cost_evals += w.lambda as u64;
         sort_population_ascending(&mut state.candidates, &mut state.costs);
 
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, _state: &BasicPopulationState<V>) -> Option<TerminationReason> {

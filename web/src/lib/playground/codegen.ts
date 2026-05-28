@@ -61,21 +61,21 @@ export const DEFAULT_CONFIG: PlaygroundConfig = {
 const COST_IMPL = `impl CostFunction for Rosenbrock {
     type Param = Vec<f64>;
     type Output = f64;
+    type Error = std::convert::Infallible;
 
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2))
     }
 }`;
 
 const GRADIENT_IMPL = `impl Gradient for Rosenbrock {
-    type Param = Vec<f64>;
     type Gradient = Vec<f64>;
 
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        vec![
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok(vec![
             -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0].powi(2)),
             200.0 * (x[1] - x[0].powi(2)),
-        ]
+        ])
     }
 }`;
 
@@ -159,7 +159,8 @@ export function generateSnippet(cfg: PlaygroundConfig): string {
             '',
             `    let result = Executor::new(Rosenbrock, solver, state)`,
             `        .max_iter(${rustInt(cfg.maxIter)})`,
-            '        .run();',
+            '        .run()',
+            '        .unwrap();',
             '',
             `    println!("${buildOutputLine('{:?}', '{}')}", result.param(), result.cost());`,
             '}',

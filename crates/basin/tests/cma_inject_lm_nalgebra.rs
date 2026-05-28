@@ -33,7 +33,8 @@ fn converges_on_rosenbrock_residuals_2d() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     let err = (p[0] - 1.0).abs().max((p[1] - 1.0).abs());
@@ -75,7 +76,8 @@ fn aggregates_lm_work_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     // Memetic variant on the same seed and outer budget.
     let cma = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.5, 23);
@@ -89,7 +91,8 @@ fn aggregates_lm_work_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     // Per outer iter (after iter 0), CmaInject does at minimum:
     // LM init (1 residual + 1 jacobian) + 1 re-eval = 3 work units.

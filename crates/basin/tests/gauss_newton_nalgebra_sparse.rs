@@ -36,7 +36,8 @@ fn gauss_newton_converges_on_sparse_linear_regression() {
     let (problem, initial) = fixture();
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(20)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-20, "cost = {}", result.cost());
@@ -65,7 +66,8 @@ fn gauss_newton_single_step_matches_closed_form() {
     let (problem, initial) = fixture();
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(1)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 1);
@@ -91,6 +93,7 @@ fn gauss_newton_emits_solver_converged_via_first_order_optimality() {
     let (problem, initial) = fixture();
     let result = Executor::new(problem, GaussNewton::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }

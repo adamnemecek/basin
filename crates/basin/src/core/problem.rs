@@ -2,6 +2,29 @@
 //! bind on whichever subset they need (e.g. gradient descent requires
 //! [`CostFunction`] *and* [`Gradient`]; Nelder-Mead only needs
 //! [`CostFunction`]).
+//!
+//! # Soft reject vs hard abort
+//!
+//! Every problem trait method returns `Result<_, Self::Error>`. The two
+//! ways to signal "something went wrong" are *deliberately* distinct:
+//!
+//! - **Soft reject (`Ok(f64::INFINITY)`)** — return `+∞` from
+//!   [`CostFunction::cost`] to reject a single point. Line searches treat
+//!   it as worse and retreat; population solvers treat it as worst
+//!   fitness. This is the right channel for "this `x` is outside my
+//!   domain, but the solve should continue."
+//! - **Hard abort (`Err(_)`)** — return `Err` to terminate the entire
+//!   solve. The error bubbles all the way out of
+//!   [`Executor::run`](crate::Executor::run) typed as
+//!   `Result<_, P::Error>`. Use this when the failure is *not* about a
+//!   particular `x` — a downstream service vanished, the user pressed
+//!   cancel, an early-stopping criterion in the problem's own state fired.
+//!
+//! Problems that never fail in this way pick
+//! `type Error = std::convert::Infallible;` (or
+//! [`!`](https://doc.rust-lang.org/std/primitive.never.html) on nightly).
+//! Niche optimization collapses `Result<f64, Infallible>` to `f64` layout,
+//! so the happy path stays zero-cost.
 
 /// Scalar-valued objective `f(x): Param → Output`. The smallest
 /// problem trait — every solver binds at least on this.
@@ -10,16 +33,25 @@
 ///
 /// - **Implementor must:** be a *pure* function of `param` —
 ///   evaluating at the same `param` twice must return the same
-///   `Output`. Solvers cache costs across iterations, line searches
-///   reuse evaluations, and termination criteria assume the cost they
-///   read from the state matches what a fresh `cost(param)` would
-///   return.
+///   `Output` (or the same `Err`). Solvers cache costs across iterations,
+///   line searches reuse evaluations, and termination criteria assume the
+///   cost they read from the state matches what a fresh `cost(param)`
+///   would return.
 /// - **Implementor must not:** assume any particular call order or
 ///   frequency. Solvers may evaluate at exploratory points outside the
 ///   accepted iterate sequence (line-search probes, Nelder-Mead
 ///   reflections / contractions / shrinks, finite-difference probes).
 ///
+/// # Soft reject vs hard abort
+///
+/// See the [module docs](self#soft-reject-vs-hard-abort). Return
+/// `Ok(f64::INFINITY)` to *reject one point*; return `Err(_)` to abort
+/// the entire solve.
+///
 /// # Examples
+///
+/// A never-fails problem uses [`Infallible`](std::convert::Infallible) as
+/// its error:
 ///
 /// ```
 /// use basin::CostFunction;
@@ -28,12 +60,13 @@
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 ///
-/// assert_eq!(Sphere.cost(&vec![3.0, 4.0]), 25.0);
+/// assert_eq!(Sphere.cost(&vec![3.0, 4.0]).unwrap(), 25.0);
 /// ```
 pub trait CostFunction {
     /// The parameter type the objective is defined over.
@@ -41,17 +74,22 @@ pub trait CostFunction {
     /// Scalar cost type. In practice `f64` (see `AGENTS.md`'s
     /// provisional choices).
     type Output;
+    /// User-chosen hard-abort error. Pick
+    /// [`std::convert::Infallible`] when the cost cannot fail — its
+    /// niche optimization keeps `Result<f64, Infallible>` the same
+    /// layout as bare `f64` on the happy path.
+    type Error;
 
     /// Evaluate the objective at `param`.
-    fn cost(&self, param: &Self::Param) -> Self::Output;
+    fn cost(&self, param: &Self::Param) -> Result<Self::Output, Self::Error>;
 }
 
 /// Analytic gradient `∇f(x): Param → Gradient`. Required by
 /// first-order solvers (gradient descent, BFGS, …).
 ///
 /// `Gradient` is a *subtrait* of [`CostFunction`]: a gradient is the
-/// gradient *of* a cost, so the parameter type is inherited and the
-/// two cannot disagree.
+/// gradient *of* a cost, so the parameter and error types are inherited
+/// and the two cannot disagree.
 ///
 /// # Contract
 ///
@@ -95,18 +133,19 @@ pub trait CostFunction {
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl Gradient for Sphere {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         x.iter().map(|xi| 2.0 * xi).collect()
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| 2.0 * xi).collect())
 ///     }
 /// }
 ///
-/// assert_eq!(Sphere.gradient(&vec![1.0, 2.0]), vec![2.0, 4.0]);
+/// assert_eq!(Sphere.gradient(&vec![1.0, 2.0]).unwrap(), vec![2.0, 4.0]);
 /// ```
 ///
 /// Fusion override (cost and gradient share `x * x`):
@@ -118,16 +157,20 @@ pub trait CostFunction {
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl Gradient for Sphere {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         x.iter().map(|xi| 2.0 * xi).collect()
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| 2.0 * xi).collect())
 ///     }
-///     fn cost_and_gradient(&self, x: &Vec<f64>) -> (f64, Vec<f64>) {
+///     fn cost_and_gradient(
+///         &self,
+///         x: &Vec<f64>,
+///     ) -> Result<(f64, Vec<f64>), std::convert::Infallible> {
 ///         // Single pass over x; the per-element work is shared.
 ///         let mut cost = 0.0;
 ///         let grad = x
@@ -137,7 +180,7 @@ pub trait CostFunction {
 ///                 2.0 * xi
 ///             })
 ///             .collect();
-///         (cost, grad)
+///         Ok((cost, grad))
 ///     }
 /// }
 /// ```
@@ -147,7 +190,7 @@ pub trait Gradient: CostFunction {
     type Gradient;
 
     /// Evaluate the gradient at `param`.
-    fn gradient(&self, param: &Self::Param) -> Self::Gradient;
+    fn gradient(&self, param: &Self::Param) -> Result<Self::Gradient, Self::Error>;
 
     /// Evaluate cost *and* gradient at `param` in one call. The default
     /// body delegates to [`CostFunction::cost`] and
@@ -164,8 +207,11 @@ pub trait Gradient: CostFunction {
     /// **Eval counting.** One fused call counts as one cost evaluation
     /// *and* one gradient evaluation: it produced both values, in the
     /// work of one fused evaluation.
-    fn cost_and_gradient(&self, param: &Self::Param) -> (Self::Output, Self::Gradient) {
-        (self.cost(param), self.gradient(param))
+    fn cost_and_gradient(
+        &self,
+        param: &Self::Param,
+    ) -> Result<(Self::Output, Self::Gradient), Self::Error> {
+        Ok((self.cost(param)?, self.gradient(param)?))
     }
 }
 
@@ -187,6 +233,14 @@ pub trait Gradient: CostFunction {
 ///   the existing Rosenbrock cost, which is the published unscaled
 ///   form).
 ///
+/// # Soft reject vs hard abort
+///
+/// `Residual` carries its *own* [`Error`](Residual::Error) (independent
+/// of [`CostFunction::Error`]); the soft/hard split from the
+/// [module docs](self#soft-reject-vs-hard-abort) applies identically.
+/// NLLS solvers `?`-propagate residual errors and treat any `Err` as a
+/// hard abort.
+///
 /// # Examples
 ///
 /// ```
@@ -197,12 +251,16 @@ pub trait Gradient: CostFunction {
 /// impl Residual for Affine {
 ///     type Param = Vec<f64>;
 ///     type Output = Vec<f64>;
-///     fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
-///         vec![x[0] - 1.0, x[1] - 2.0]
+///     type Error = std::convert::Infallible;
+///     fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+///         Ok(vec![x[0] - 1.0, x[1] - 2.0])
 ///     }
 /// }
 ///
-/// assert_eq!(Affine.residual(&vec![0.0, 0.0]), vec![-1.0, -2.0]);
+/// assert_eq!(
+///     Affine.residual(&vec![0.0, 0.0]).unwrap(),
+///     vec![-1.0, -2.0]
+/// );
 /// ```
 pub trait Residual {
     /// The parameter type the residual is defined over (matches
@@ -211,9 +269,14 @@ pub trait Residual {
     /// The residual vector type. Length is the number of residuals `m`,
     /// independent of `param.len() = n`.
     type Output;
+    /// User-chosen hard-abort error. Independent of
+    /// [`CostFunction::Error`] — the trait families are orthogonal
+    /// (NLLS solvers bind on `Residual` + [`Jacobian`]; first-order
+    /// solvers bind on `CostFunction` + [`Gradient`]).
+    type Error;
 
     /// Evaluate the residual at `param`.
-    fn residual(&self, param: &Self::Param) -> Self::Output;
+    fn residual(&self, param: &Self::Param) -> Result<Self::Output, Self::Error>;
 }
 
 /// Analytic Jacobian `J(x) = ∂r/∂x: Param → Jacobian` for least-squares
@@ -224,7 +287,8 @@ pub trait Residual {
 /// baking in a specific backend or assuming density.
 ///
 /// `Jacobian` is a *subtrait* of [`Residual`]: a Jacobian is the
-/// Jacobian *of* a residual, so the parameter type is inherited.
+/// Jacobian *of* a residual, so the parameter and error types are
+/// inherited.
 ///
 /// # Contract
 ///
@@ -277,18 +341,25 @@ pub trait Residual {
 /// impl Residual for Affine {
 ///     type Param = DVector<f64>;
 ///     type Output = DVector<f64>;
-///     fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
-///         DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0])
+///     type Error = std::convert::Infallible;
+///     fn residual(
+///         &self,
+///         x: &DVector<f64>,
+///     ) -> Result<DVector<f64>, std::convert::Infallible> {
+///         Ok(DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0]))
 ///     }
 /// }
 /// impl Jacobian for Affine {
 ///     type Jacobian = DMatrix<f64>;
-///     fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
-///         DMatrix::identity(2, 2)
+///     fn jacobian(
+///         &self,
+///         _x: &DVector<f64>,
+///     ) -> Result<DMatrix<f64>, std::convert::Infallible> {
+///         Ok(DMatrix::identity(2, 2))
 ///     }
 /// }
 ///
-/// let j = Affine.jacobian(&DVector::from_vec(vec![0.0, 0.0]));
+/// let j = Affine.jacobian(&DVector::from_vec(vec![0.0, 0.0])).unwrap();
 /// assert_eq!(j[(0, 0)], 1.0);
 /// # }
 /// ```
@@ -297,7 +368,7 @@ pub trait Jacobian: Residual {
     type Jacobian;
 
     /// Evaluate the Jacobian at `param`.
-    fn jacobian(&self, param: &Self::Param) -> Self::Jacobian;
+    fn jacobian(&self, param: &Self::Param) -> Result<Self::Jacobian, <Self as Residual>::Error>;
 
     /// Evaluate residual *and* Jacobian at `param` in one call. The
     /// default body delegates to [`Residual::residual`] and
@@ -316,8 +387,8 @@ pub trait Jacobian: Residual {
     fn residual_and_jacobian(
         &self,
         param: &Self::Param,
-    ) -> (<Self as Residual>::Output, Self::Jacobian) {
-        (self.residual(param), self.jacobian(param))
+    ) -> Result<(<Self as Residual>::Output, Self::Jacobian), <Self as Residual>::Error> {
+        Ok((self.residual(param)?, self.jacobian(param)?))
     }
 }
 
@@ -330,6 +401,7 @@ pub trait Jacobian: Residual {
 ///
 /// `Hessian` is a *subtrait* of [`Gradient`] (which is a subtrait of
 /// [`CostFunction`]): a Hessian is the second derivative of a cost.
+/// The error type is therefore [`CostFunction::Error`].
 ///
 /// # Contract
 ///
@@ -378,20 +450,31 @@ pub trait Jacobian: Residual {
 /// impl CostFunction for Sphere {
 ///     type Param = DVector<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &DVector<f64>) -> f64 { x.dot(x) }
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.dot(x))
+///     }
 /// }
 /// impl Gradient for Sphere {
 ///     type Gradient = DVector<f64>;
-///     fn gradient(&self, x: &DVector<f64>) -> DVector<f64> { 2.0 * x }
+///     fn gradient(
+///         &self,
+///         x: &DVector<f64>,
+///     ) -> Result<DVector<f64>, std::convert::Infallible> {
+///         Ok(2.0 * x)
+///     }
 /// }
 /// impl Hessian for Sphere {
 ///     type Hessian = DMatrix<f64>;
-///     fn hessian(&self, x: &DVector<f64>) -> DMatrix<f64> {
-///         2.0 * DMatrix::identity(x.len(), x.len())
+///     fn hessian(
+///         &self,
+///         x: &DVector<f64>,
+///     ) -> Result<DMatrix<f64>, std::convert::Infallible> {
+///         Ok(2.0 * DMatrix::identity(x.len(), x.len()))
 ///     }
 /// }
 ///
-/// let h = Sphere.hessian(&DVector::from_vec(vec![1.0, 1.0]));
+/// let h = Sphere.hessian(&DVector::from_vec(vec![1.0, 1.0])).unwrap();
 /// assert_eq!(h[(0, 0)], 2.0);
 /// # }
 /// ```
@@ -400,7 +483,7 @@ pub trait Hessian: Gradient {
     type Hessian;
 
     /// Evaluate the Hessian at `param`.
-    fn hessian(&self, param: &Self::Param) -> Self::Hessian;
+    fn hessian(&self, param: &Self::Param) -> Result<Self::Hessian, <Self as CostFunction>::Error>;
 
     /// Evaluate cost, gradient, *and* Hessian at `param` in one call.
     /// The default body delegates to [`Gradient::cost_and_gradient`]
@@ -409,15 +492,19 @@ pub trait Hessian: Gradient {
     ///
     /// **Contract.** The returned triple must equal what the three
     /// methods would return separately at the same `param`.
+    #[allow(clippy::type_complexity)]
     fn cost_and_gradient_and_hessian(
         &self,
         param: &Self::Param,
-    ) -> (
-        <Self as CostFunction>::Output,
-        <Self as Gradient>::Gradient,
-        Self::Hessian,
-    ) {
-        let (cost, grad) = self.cost_and_gradient(param);
-        (cost, grad, self.hessian(param))
+    ) -> Result<
+        (
+            <Self as CostFunction>::Output,
+            <Self as Gradient>::Gradient,
+            Self::Hessian,
+        ),
+        <Self as CostFunction>::Error,
+    > {
+        let (cost, grad) = self.cost_and_gradient(param)?;
+        Ok((cost, grad, self.hessian(param)?))
     }
 }

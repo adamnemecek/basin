@@ -27,13 +27,19 @@ fn main() {
             // `Solver::init` populates cost + gradient at the initial param,
             // matching the contract `next_iter` expects (gradient cached
             // from the previous iter or from init).
-            let state = solver.init(
-                &Rosenbrock::<Vec<f64>>::default(),
-                BasicState::new(vec![-1.2, 1.0]),
-            );
+            let state = solver
+                .init(
+                    &Rosenbrock::<Vec<f64>>::default(),
+                    BasicState::new(vec![-1.2, 1.0]),
+                )
+                .unwrap();
             (solver, state)
         },
-        |(mut solver, state)| solver.next_iter(&Rosenbrock::<Vec<f64>>::default(), state),
+        |(mut solver, state)| {
+            solver
+                .next_iter(&Rosenbrock::<Vec<f64>>::default(), state)
+                .unwrap()
+        },
     );
 
     bench(

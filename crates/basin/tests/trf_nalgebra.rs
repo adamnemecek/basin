@@ -17,7 +17,8 @@ fn trf_with_slack_bounds_reaches_unconstrained_min() {
 
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -47,7 +48,8 @@ fn trf_with_tight_bounds_converges_to_box_corner() {
 
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     // The strict-interior θ < 1 keeps the iterate just inside the
@@ -81,7 +83,7 @@ fn trf_init_projects_infeasible_start_strictly_inside_box() {
 
     let mut executor = Executor::new(problem, Trf::new(), BasicState::new(initial));
     executor = executor.terminate_on(MaxIter(0));
-    let result = executor.run();
+    let result = executor.run().unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     let x = result.param();
@@ -115,7 +117,8 @@ fn trf_emits_solver_converged_via_scaled_first_order_optimality() {
 
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
@@ -141,7 +144,8 @@ fn trf_caches_residual_and_jacobian_across_iterations() {
 
     let result = Executor::new(problem, Trf::new().tol_grad(0.0), BasicState::new(initial))
         .max_iter(3)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 3);

@@ -18,7 +18,8 @@ fn bfgs_converges_on_rosenbrock() {
         QuasiNewtonState::<DVector<f64>, DMatrix<f64>>::new(initial),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-8,
@@ -49,7 +50,8 @@ fn bfgs_terminates_on_gradient_tolerance() {
     )
     .max_iter(200)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
@@ -66,7 +68,8 @@ fn bfgs_converges_faster_than_gd_with_backtracking() {
     )
     .max_iter(500)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     let gd_result = Executor::new(
         Rosenbrock::<DVector<f64>>::default(),
@@ -75,7 +78,8 @@ fn bfgs_converges_faster_than_gd_with_backtracking() {
     )
     .max_iter(500)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     // BFGS should reach the gradient tolerance while GD won't (or will
     // need many more iters). At the very least BFGS should have a *much*
@@ -106,23 +110,28 @@ struct Quadratic {
 impl CostFunction for Quadratic {
     type Param = DVector<f64>;
     type Output = f64;
-    fn cost(&self, x: &DVector<f64>) -> f64 {
-        let mut c = 0.0;
-        for (i, xi) in x.iter().enumerate() {
-            c += 0.5 * self.diag[i] * xi * xi - xi;
-        }
-        c
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok({
+            let mut c = 0.0;
+            for (i, xi) in x.iter().enumerate() {
+                c += 0.5 * self.diag[i] * xi * xi - xi;
+            }
+            c
+        })
     }
 }
 
 impl Gradient for Quadratic {
     type Gradient = DVector<f64>;
-    fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-        let mut g = DVector::zeros(x.len());
-        for (i, xi) in x.iter().enumerate() {
-            g[i] = self.diag[i] * xi - 1.0;
-        }
-        g
+    fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+        Ok({
+            let mut g = DVector::zeros(x.len());
+            for (i, xi) in x.iter().enumerate() {
+                g[i] = self.diag[i] * xi - 1.0;
+            }
+            g
+        })
     }
 }
 
@@ -140,7 +149,8 @@ fn bfgs_on_5d_quadratic_converges_quickly() {
     )
     .max_iter(50)
     .terminate_on(GradientTolerance(1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     // Optimum: x[i] = 1 / diag[i]; cost = -½ Σ 1/diag[i].
@@ -179,7 +189,8 @@ fn bfgs_terminates_via_converged_when_at_machine_precision() {
     )
     .max_iter(200)
     .terminate_on(GradientTolerance(1e-30))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     let expected_cost = -0.5 * (1.0 + 0.5 + 1.0 / 3.0 + 0.25 + 0.2);

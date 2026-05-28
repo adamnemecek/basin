@@ -138,6 +138,8 @@ where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: ScaledAdd<f64> + Dot + Clone,
 {
+    type Error = P::Error;
+
     fn next(
         &mut self,
         problem: &P,
@@ -145,7 +147,7 @@ where
         cost: f64,
         gradient: &V,
         direction: &V,
-    ) -> LineSearchResult {
+    ) -> Result<LineSearchResult, Self::Error> {
         let finit = cost;
         let ginit = gradient.dot(direction);
 
@@ -153,18 +155,18 @@ where
         // Defensive: catch ascent direction or non-finite slope. The
         // `!is_finite()` guard routes NaN here too.
         if !ginit.is_finite() || ginit >= 0.0 {
-            return LineSearchResult {
+            return Ok(LineSearchResult {
                 alpha: 0.0,
                 cost_evals: 0,
                 gradient_evals: 0,
-            };
+            });
         }
         if !(self.alpha_init >= self.stpmin && self.alpha_init <= self.stpmax) {
-            return LineSearchResult {
+            return Ok(LineSearchResult {
                 alpha: 0.0,
                 cost_evals: 0,
                 gradient_evals: 0,
-            };
+            });
         }
 
         // Initialization (Fortran lines 3514–3541).
@@ -192,9 +194,9 @@ where
             // Evaluate f(stp), g(stp) — Fortran `task = 'FG'` callback.
             let mut trial = param.clone();
             trial.scaled_add(stp, direction);
-            let f = problem.cost(&trial);
+            let f = problem.cost(&trial)?;
             cost_evals += 1;
-            let g_full = problem.gradient(&trial);
+            let g_full = problem.gradient(&trial)?;
             gradient_evals += 1;
             let g = g_full.dot(direction);
 
@@ -218,11 +220,11 @@ where
             let converged = f <= ftest && g.abs() <= self.gtol * (-ginit);
 
             if warn_rounding || warn_xtol || warn_stpmax || warn_stpmin || converged {
-                return LineSearchResult {
+                return Ok(LineSearchResult {
                     alpha: stp,
                     cost_evals,
                     gradient_evals,
-                };
+                });
             }
 
             // Step update via `dcstep`, with optional modified-function
@@ -304,11 +306,11 @@ where
 
         // maxfev exhausted: return current best step (Armijo holds
         // at stx by invariant of dcstep, so this is a usable step).
-        LineSearchResult {
+        Ok(LineSearchResult {
             alpha: stx,
             cost_evals,
             gradient_evals,
-        }
+        })
     }
 }
 
@@ -482,15 +484,16 @@ mod tests {
     impl CostFunction for Quadratic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            (x[0] - 3.0).powi(2)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok((x[0] - 3.0).powi(2))
         }
     }
 
     impl Gradient for Quadratic {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            vec![2.0 * (x[0] - 3.0)]
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+            Ok(vec![2.0 * (x[0] - 3.0)])
         }
     }
 
@@ -505,17 +508,18 @@ mod tests {
     impl CostFunction for Cubic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
             let t = x[0] - 2.0;
-            t.powi(3) - 3.0 * t
+            Ok(t.powi(3) - 3.0 * t)
         }
     }
 
     impl Gradient for Cubic {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
             let t = x[0] - 2.0;
-            vec![3.0 * t.powi(2) - 3.0]
+            Ok(vec![3.0 * t.powi(2) - 3.0])
         }
     }
 
@@ -523,18 +527,18 @@ mod tests {
     fn satisfies_strong_wolfe_on_quadratic() {
         let p = Quadratic;
         let x = vec![0.0];
-        let f0 = p.cost(&x);
-        let g = p.gradient(&x);
+        let f0 = p.cost(&x).unwrap();
+        let g = p.gradient(&x).unwrap();
         let d = vec![-g[0]]; // = +6
         let mut ls = MoreThuente::new();
-        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d).unwrap();
 
         assert!(r.alpha > 0.0);
 
         let mut x_new = x.clone();
         x_new[0] += r.alpha * d[0];
-        let f_new = p.cost(&x_new);
-        let g_new = p.gradient(&x_new);
+        let f_new = p.cost(&x_new).unwrap();
+        let g_new = p.gradient(&x_new).unwrap();
         let g0_dot_d = g[0] * d[0];
         let gnew_dot_d = g_new[0] * d[0];
 
@@ -555,11 +559,11 @@ mod tests {
         // MT should land close to α = 0.5.
         let p = Quadratic;
         let x = vec![0.0];
-        let f0 = p.cost(&x);
-        let g = p.gradient(&x);
+        let f0 = p.cost(&x).unwrap();
+        let g = p.gradient(&x).unwrap();
         let d = vec![6.0];
         let mut ls = MoreThuente::new();
-        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d).unwrap();
 
         // gtol = 0.9 admits a wide range; check a sane proximity.
         assert!(
@@ -570,7 +574,7 @@ mod tests {
         // Verify Armijo holds at returned α.
         let mut x_new = x.clone();
         x_new[0] += r.alpha * d[0];
-        let f_new = p.cost(&x_new);
+        let f_new = p.cost(&x_new).unwrap();
         assert!(f_new <= f0 + ls.ftol * r.alpha * (g[0] * d[0]) + 1e-12);
     }
 
@@ -578,11 +582,11 @@ mod tests {
     fn ascent_direction_returns_zero_step() {
         let p = Quadratic;
         let x = vec![0.0];
-        let f0 = p.cost(&x);
-        let g = p.gradient(&x); // g = -6 at x=0
+        let f0 = p.cost(&x).unwrap();
+        let g = p.gradient(&x).unwrap(); // g = -6 at x=0
         let d = vec![g[0]]; // d = -6 → gᵀd = +36 > 0 (ascent)
         let mut ls = MoreThuente::new();
-        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d).unwrap();
 
         assert_eq!(r.alpha, 0.0);
         assert_eq!(r.cost_evals, 0);
@@ -598,17 +602,17 @@ mod tests {
         // line minimum.
         let p = Cubic;
         let x = vec![5.0];
-        let f0 = p.cost(&x);
-        let g = p.gradient(&x);
+        let f0 = p.cost(&x).unwrap();
+        let g = p.gradient(&x).unwrap();
         let d = vec![-1.0];
         let mut ls = MoreThuente::new().alpha_init(3.0);
-        let r = LineSearch::<Cubic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+        let r = LineSearch::<Cubic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d).unwrap();
 
         assert!(r.alpha > 0.0);
         let mut x_new = x.clone();
         x_new[0] += r.alpha * d[0];
-        let f_new = p.cost(&x_new);
-        let g_new = p.gradient(&x_new);
+        let f_new = p.cost(&x_new).unwrap();
+        let g_new = p.gradient(&x_new).unwrap();
         let g0_dot_d = g[0] * d[0];
         let gnew_dot_d = g_new[0] * d[0];
 
@@ -634,11 +638,11 @@ mod tests {
         // `WARNING: STP = STPMAX` warning (treated as success here).
         let p = Quadratic;
         let x = vec![0.0];
-        let f0 = p.cost(&x);
-        let g = p.gradient(&x);
+        let f0 = p.cost(&x).unwrap();
+        let g = p.gradient(&x).unwrap();
         let d = vec![6.0];
         let mut ls = MoreThuente::new().stpmax(0.1).alpha_init(0.1);
-        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d);
+        let r = LineSearch::<Quadratic, Vec<f64>>::next(&mut ls, &p, &x, f0, &g, &d).unwrap();
 
         assert!(
             (r.alpha - 0.1).abs() < 1e-12,

@@ -49,8 +49,9 @@ use crate::core::problem::CostFunction;
 /// impl CostFunction for BoundedSphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl BoxConstraints for BoundedSphere {

@@ -34,7 +34,22 @@ use crate::core::termination::TerminationReason;
 ///   [`next_iter`](Self::next_iter)'s `Option<TerminationReason>`
 ///   return rather than panicking; and use [`terminate`](Self::terminate)
 ///   only for clean convergence tests on the current state.
+///
+/// # Error type
+///
+/// The associated [`Error`](Self::Error) is the **hard-abort** error
+/// type the solver propagates out of [`init`](Self::init) and
+/// [`next_iter`](Self::next_iter). Concrete impls set
+/// `type Error = P::Error;` (or `<P as Residual>::Error` for NLLS
+/// solvers) so the user's typed problem error flows untouched out of
+/// [`Executor::run`](crate::core::executor::Executor::run). Soft per-point
+/// rejection still travels through `Ok(f64::INFINITY)` — see the
+/// [`problem`](crate::core::problem) module docs.
 pub trait Solver<P, S: State> {
+    /// Hard-abort error type — mirrors the underlying problem's
+    /// `type Error`. See the [trait docs](Self#error-type).
+    type Error;
+
     /// One-time setup before the iteration loop.
     ///
     /// # Contract
@@ -53,8 +68,11 @@ pub trait Solver<P, S: State> {
     ///   `init` returns.
     /// - **Implementor must:** count work it does here against the
     ///   eval counters (`state.cost_evals`, `state.gradient_evals`).
-    fn init(&mut self, _problem: &P, state: S) -> S {
-        state
+    /// - **Implementor may:** return `Err` to abort the run before the
+    ///   first iteration; the error bubbles out of
+    ///   [`Executor::run`](crate::core::executor::Executor::run).
+    fn init(&mut self, _problem: &P, state: S) -> Result<S, Self::Error> {
+        Ok(state)
     }
 
     /// Advance one iteration.
@@ -76,6 +94,11 @@ pub trait Solver<P, S: State> {
     ///   `state.iter()` reflects the last *fully completed* iteration.
     /// - **Implementor must:** count every cost / gradient call against
     ///   the corresponding eval counter on the state.
+    /// - **Implementor may:** return `Err` to *hard-abort* the run; the
+    ///   error bubbles out of
+    ///   [`Executor::run`](crate::core::executor::Executor::run). Distinct
+    ///   from the `Option<TerminationReason>` channel: that's a clean
+    ///   stop, `Err` is "the user's problem said abort."
     /// - **Implementor must (composition):** when running an inner solver
     ///   via [`InnerExecutor`](crate::core::inner::InnerExecutor) or
     ///   [`run_loop`](crate::core::executor::run_loop), roll the inner
@@ -89,7 +112,11 @@ pub trait Solver<P, S: State> {
     ///   read are wrong otherwise. See `AGENTS.md` "Solver composition"
     ///   for the full contract (eval aggregation, criteria
     ///   statelessness, failure routing).
-    fn next_iter(&mut self, problem: &P, state: S) -> (S, Option<TerminationReason>);
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        state: S,
+    ) -> Result<(S, Option<TerminationReason>), Self::Error>;
 
     /// Optional pre-iteration solver-specific termination test.
     ///

@@ -32,16 +32,19 @@ fn unbounded_rosenbrock_2d_converges() {
     impl CostFunction for Rosen {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2))
         }
     }
     impl Gradient for Rosen {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
-            let dfdx1 = 200.0 * (x[1] - x[0] * x[0]);
-            vec![dfdx0, dfdx1]
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+            Ok({
+                let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
+                let dfdx1 = 200.0 * (x[1] - x[0] * x[0]);
+                vec![dfdx0, dfdx1]
+            })
         }
     }
     impl basin::BoxConstraints for Rosen {
@@ -64,7 +67,8 @@ fn unbounded_rosenbrock_2d_converges() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(200))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
     assert!(
@@ -98,7 +102,8 @@ fn booth_at_corner_converges() {
             upper.clone(),
             1e-8,
         ))
-        .run();
+        .run()
+        .unwrap();
 
     // Booth: f(x, y) = (x + 2y − 7)² + (2x + y − 5)². At the upper
     // corner (1, 1): (1 + 2 − 7)² + (2 + 1 − 5)² = 16 + 4 = 20. Both
@@ -136,7 +141,8 @@ fn booth_slack_bounds_recover_unconstrained_minimum() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(100))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-10))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-4,
@@ -166,22 +172,27 @@ fn quadratic_5d_diagonal_converges_quickly() {
     impl CostFunction for Quadratic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            let mut c = 0.0;
-            for (i, xi) in x.iter().enumerate() {
-                c += 0.5 * self.diag[i] * xi * xi - xi;
-            }
-            c
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok({
+                let mut c = 0.0;
+                for (i, xi) in x.iter().enumerate() {
+                    c += 0.5 * self.diag[i] * xi * xi - xi;
+                }
+                c
+            })
         }
     }
     impl Gradient for Quadratic {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            let mut g = vec![0.0; x.len()];
-            for (i, xi) in x.iter().enumerate() {
-                g[i] = self.diag[i] * xi - 1.0;
-            }
-            g
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+            Ok({
+                let mut g = vec![0.0; x.len()];
+                for (i, xi) in x.iter().enumerate() {
+                    g[i] = self.diag[i] * xi - 1.0;
+                }
+                g
+            })
         }
     }
     impl basin::BoxConstraints for Quadratic {
@@ -206,7 +217,8 @@ fn quadratic_5d_diagonal_converges_quickly() {
     let result = Executor::new(problem, LBFGSB::new(), state)
         .terminate_on(MaxIter(50))
         .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-10))
-        .run();
+        .run()
+        .unwrap();
 
     // Optimum: x[i] = 1/diag[i]; cost = -½ Σ 1/diag[i].
     let expected_cost = -0.5 * (1.0 + 0.5 + 1.0 / 3.0 + 0.25 + 0.2);

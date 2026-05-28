@@ -48,7 +48,8 @@ fn converges_on_rosenbrock_2d() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     assert!(
@@ -84,7 +85,8 @@ fn aggregates_inner_cost_evals_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     // Memetic variant on the same seed and outer budget.
     let cma = CmaEs::<DVector<f64>, DMatrix<f64>>::new(m0, 0.3, 7);
@@ -98,7 +100,8 @@ fn aggregates_inner_cost_evals_into_outer() {
         BasicPopulationState::<DVector<f64>>::with_size(lambda),
     )
     .max_iter(outer_iters)
-    .run();
+    .run()
+    .unwrap();
 
     // Per outer iter (after iter 0; CmaInject skips iter-0 injection),
     // CmaInject does at minimum: NM init (n+1 evals) + 1 re-eval =

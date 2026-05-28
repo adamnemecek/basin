@@ -94,17 +94,18 @@ impl<P> HasSpec for Beale<P> {
 impl CostFunction for Beale<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        beale(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(beale(x))
     }
 }
 
 impl Gradient for Beale<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         beale_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -117,17 +118,18 @@ mod nalgebra_impl {
     impl CostFunction for Beale<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            beale(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(beale(x.as_slice()))
         }
     }
 
     impl Gradient for Beale<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             beale_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -141,20 +143,21 @@ mod ndarray_impl {
     impl CostFunction for Beale<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            beale(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(beale(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for Beale<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             beale_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -171,19 +174,20 @@ mod faer_impl {
     impl CostFunction for Beale<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let t1 = 1.5 - a + a * b;
             let t2 = 2.25 - a + a * b * b;
             let t3 = 2.625 - a + a * b * b * b;
-            t1 * t1 + t2 * t2 + t3 * t3
+            Ok(t1 * t1 + t2 * t2 + t3 * t3)
         }
     }
 
     impl Gradient for Beale<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let b2 = b * b;
@@ -193,7 +197,7 @@ mod faer_impl {
             let t3 = 2.625 - a + a * b3;
             let g0 = 2.0 * (t1 * (b - 1.0) + t2 * (b2 - 1.0) + t3 * (b3 - 1.0));
             let g1 = 2.0 * a * (t1 + 2.0 * b * t2 + 3.0 * b2 * t3);
-            Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+            Ok(Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 }))
         }
     }
 }

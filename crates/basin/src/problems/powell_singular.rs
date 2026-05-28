@@ -155,18 +155,20 @@ impl<P> Default for PowellSingular<P> {
 impl CostFunction for PowellSingular<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        powell_singular(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(powell_singular(x))
     }
 }
 
 impl Residual for PowellSingular<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = Vec<f64>;
-    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; 4];
         powell_singular_residuals(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -181,29 +183,31 @@ mod nalgebra_impl {
     impl CostFunction for PowellSingular<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            powell_singular(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(powell_singular(x.as_slice()))
         }
     }
 
     impl Residual for PowellSingular<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(4);
             powell_singular_residuals(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for PowellSingular<DVector<f64>> {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+        fn jacobian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
             let mut buf = [0.0_f64; 16];
             powell_singular_jacobian(x.as_slice(), &mut buf);
             // `from_row_slice` interprets `buf` in row-major order, matching
             // the layout `powell_singular_jacobian` produces.
-            DMatrix::from_row_slice(4, 4, &buf)
+            Ok(DMatrix::from_row_slice(4, 4, &buf))
         }
     }
 }
@@ -218,21 +222,23 @@ mod ndarray_impl {
     impl CostFunction for PowellSingular<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            powell_singular(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(powell_singular(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Residual for PowellSingular<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = Array1<f64>;
-        fn residual(&self, x: &Array1<f64>) -> Array1<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(4);
             powell_singular_residuals(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -249,21 +255,23 @@ mod faer_impl {
     impl CostFunction for PowellSingular<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let r0 = x[0] + 10.0 * x[1];
             let r1 = SQRT_5 * (x[2] - x[3]);
             let d12 = x[1] - 2.0 * x[2];
             let r2 = d12 * d12;
             let d03 = x[0] - x[3];
             let r3 = SQRT_10 * d03 * d03;
-            0.5 * (r0 * r0 + r1 * r1 + r2 * r2 + r3 * r3)
+            Ok(0.5 * (r0 * r0 + r1 * r1 + r2 * r2 + r3 * r3))
         }
     }
 
     impl Residual for PowellSingular<Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let mut out = Col::<f64>::zeros(4);
             out[0] = x[0] + 10.0 * x[1];
             out[1] = SQRT_5 * (x[2] - x[3]);
@@ -271,19 +279,19 @@ mod faer_impl {
             out[2] = d12 * d12;
             let d03 = x[0] - x[3];
             out[3] = SQRT_10 * d03 * d03;
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for PowellSingular<Col<f64>> {
         type Jacobian = Mat<f64>;
-        fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+        fn jacobian(&self, x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
             // Route through the row-major raw fn for a single source of
             // truth. The Col → slice copy is 4 entries.
             let xs = [x[0], x[1], x[2], x[3]];
             let mut buf = [0.0_f64; 16];
             powell_singular_jacobian(&xs, &mut buf);
-            Mat::from_fn(4, 4, |i, j| buf[i * 4 + j])
+            Ok(Mat::from_fn(4, 4, |i, j| buf[i * 4 + j]))
         }
     }
 }
@@ -392,7 +400,7 @@ mod tests {
     #[test]
     fn residual_trait_returns_expected_vector() {
         let p: PowellSingular = PowellSingular::default();
-        let r = p.residual(&vec![0.0, 0.0, 0.0, 0.0]);
+        let r = p.residual(&vec![0.0, 0.0, 0.0, 0.0]).unwrap();
         assert_eq!(r.len(), 4);
         for v in r {
             assert!(v.abs() < 1e-12);
@@ -409,7 +417,7 @@ mod tests {
         fn jacobian_at_classical_start_matches_documented_layout() {
             let p: PowellSingular<DVector<f64>> = PowellSingular::new();
             let x = DVector::from_vec(vec![3.0, -1.0, 0.0, 1.0]);
-            let j: DMatrix<f64> = p.jacobian(&x);
+            let j: DMatrix<f64> = p.jacobian(&x).unwrap();
             assert_eq!(j.shape(), (4, 4));
             // d12 = x₁ − 2·x₂ = -1; d03 = x₀ − x₃ = 2.
             // Row 0: [1, 10, 0, 0]
@@ -434,7 +442,7 @@ mod tests {
             // exercise the damping.
             let p: PowellSingular<DVector<f64>> = PowellSingular::new();
             let x = DVector::zeros(4);
-            let j = p.jacobian(&x);
+            let j = p.jacobian(&x).unwrap();
             let g = j.gram();
             let b = DVector::from_vec(vec![1.0, 1.0, 1.0, 1.0]);
             let err = g
@@ -454,7 +462,7 @@ mod tests {
         fn jacobian_at_classical_start_matches_documented_layout() {
             let p: PowellSingular<Col<f64>> = PowellSingular::new();
             let x = Col::<f64>::from_fn(4, |i| [3.0, -1.0, 0.0, 1.0][i]);
-            let j: Mat<f64> = p.jacobian(&x);
+            let j: Mat<f64> = p.jacobian(&x).unwrap();
             assert_eq!((j.nrows(), j.ncols()), (4, 4));
             assert!((j[(0, 0)] - 1.0).abs() < 1e-12);
             assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
@@ -470,7 +478,7 @@ mod tests {
         fn gram_at_origin_is_singular() {
             let p: PowellSingular<Col<f64>> = PowellSingular::new();
             let x = Col::<f64>::zeros(4);
-            let j = p.jacobian(&x);
+            let j = p.jacobian(&x).unwrap();
             let g = j.gram();
             let b = Col::<f64>::from_fn(4, |_| 1.0);
             let err = g

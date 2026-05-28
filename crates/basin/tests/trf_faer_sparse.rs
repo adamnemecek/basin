@@ -34,7 +34,8 @@ fn trf_with_slack_bounds_reaches_unconstrained_min() {
     );
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -62,7 +63,8 @@ fn trf_with_binding_upper_bound_converges_to_face() {
     );
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -80,6 +82,7 @@ fn trf_emits_solver_converged_via_scaled_first_order_optimality() {
     );
     let result = Executor::new(problem, Trf::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }

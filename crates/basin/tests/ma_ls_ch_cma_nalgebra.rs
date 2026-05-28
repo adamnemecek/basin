@@ -35,8 +35,9 @@ impl BoxedSphere {
 impl CostFunction for BoxedSphere {
     type Param = DVector<f64>;
     type Output = f64;
-    fn cost(&self, x: &DVector<f64>) -> f64 {
-        x.iter().map(|v| v * v).sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(x.iter().map(|v| v * v).sum())
     }
 }
 
@@ -60,7 +61,8 @@ fn converges_on_sphere_d10() {
     let result = Executor::new(problem, solver, MaLsChState::new())
         .max_iter(u64::MAX)
         .terminate_on(MaxCostEvals(20_000))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -80,7 +82,8 @@ fn converges_on_rastrigin_d10() {
     let result = Executor::new(problem, solver, MaLsChState::new())
         .max_iter(u64::MAX)
         .terminate_on(MaxCostEvals(50_000))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         result.cost() < 1.0,
@@ -98,14 +101,16 @@ fn same_seed_yields_identical_trajectory() {
         MaLsChState::new(),
     )
     .max_iter(10)
-    .run();
+    .run()
+    .unwrap();
     let result_b = Executor::new(
         BoxedSphere::new(5, 5.0),
         MaLsChCma::<DVector<f64>, DMatrix<f64>>::new(99).with_pop_size(15),
         MaLsChState::new(),
     )
     .max_iter(10)
-    .run();
+    .run()
+    .unwrap();
     assert_eq!(result_a.cost(), result_b.cost());
     assert_eq!(result_a.param(), result_b.param());
 }
@@ -120,14 +125,16 @@ fn different_seeds_yield_different_trajectories() {
         MaLsChState::new(),
     )
     .max_iter(5)
-    .run();
+    .run()
+    .unwrap();
     let result_b = Executor::new(
         BoxedSphere::new(5, 5.0),
         MaLsChCma::<DVector<f64>, DMatrix<f64>>::new(2).with_pop_size(15),
         MaLsChState::new(),
     )
     .max_iter(5)
-    .run();
+    .run()
+    .unwrap();
     assert_ne!(result_a.param(), result_b.param());
 }
 
@@ -162,7 +169,8 @@ fn chain_resumes_at_least_one_individual_twice() {
         MaLsChState::new(),
     )
     .max_iter(40)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     // Track max LS count across the run rather than just final state.
     // The final state can show low counts because SSGA replace-worst
@@ -170,7 +178,7 @@ fn chain_resumes_at_least_one_individual_twice() {
     // chain); the load-bearing question is whether ANY individual was
     // re-selected and accumulated ≥2 applications at some point.
     let mut max_ever = 0u32;
-    while let StepOutcome::Continue = stepper.step() {
+    while let StepOutcome::Continue = stepper.step().unwrap() {
         let s = stepper.state();
         for i in 0..pop_size {
             max_ever = max_ever.max(s.ls_application_count(i));
@@ -207,7 +215,8 @@ fn cost_evals_overshoot_is_bounded() {
     let result = Executor::new(problem, solver, MaLsChState::new())
         .max_iter(u64::MAX)
         .terminate_on(MaxCostEvals(budget))
-        .run();
+        .run()
+        .unwrap();
 
     let max_overshoot = nfrec + ls_intensity + lambda_inner;
     assert!(
@@ -238,10 +247,11 @@ fn population_stays_sorted_ascending() {
         MaLsChState::new(),
     )
     .max_iter(10)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..10 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         let s = stepper.state();

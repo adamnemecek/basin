@@ -26,8 +26,9 @@ impl BoxedSphere {
 impl CostFunction for BoxedSphere {
     type Param = Col<f64>;
     type Output = f64;
-    fn cost(&self, x: &Col<f64>) -> f64 {
-        x.iter().map(|v| v * v).sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(x.iter().map(|v| v * v).sum())
     }
 }
 
@@ -47,7 +48,8 @@ fn converges_on_sphere_d10() {
     let result = Executor::new(problem, solver, MaLsChState::new())
         .max_iter(u64::MAX)
         .terminate_on(MaxCostEvals(20_000))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -63,7 +65,8 @@ fn converges_on_rastrigin_d10() {
     let result = Executor::new(problem, solver, MaLsChState::new())
         .max_iter(u64::MAX)
         .terminate_on(MaxCostEvals(50_000))
-        .run();
+        .run()
+        .unwrap();
 
     assert!(
         result.cost() < 1.0,

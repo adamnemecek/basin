@@ -161,18 +161,20 @@ mod vec_impl {
     impl CostFunction for ExponentialFit<Vec<f64>> {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            exponential_fit(x, &self.t, &self.y)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(exponential_fit(x, &self.t, &self.y))
         }
     }
 
     impl Residual for ExponentialFit<Vec<f64>> {
         type Param = Vec<f64>;
         type Output = Vec<f64>;
-        fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
             let mut out = vec![0.0; self.t.len()];
             exponential_fit_residuals(x, &self.t, &self.y, &mut out);
-            out
+            Ok(out)
         }
     }
 }
@@ -188,29 +190,31 @@ mod nalgebra_impl {
     impl CostFunction for ExponentialFit<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            exponential_fit(x.as_slice(), &self.t, &self.y)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(exponential_fit(x.as_slice(), &self.t, &self.y))
         }
     }
 
     impl Residual for ExponentialFit<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(self.t.len());
             exponential_fit_residuals(x.as_slice(), &self.t, &self.y, out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for ExponentialFit<DVector<f64>> {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+        fn jacobian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
             let m = self.t.len();
             let mut buf = vec![0.0_f64; m * 2];
             exponential_fit_jacobian(x.as_slice(), &self.t, &mut buf);
             // Row-major buffer, m×2 layout.
-            DMatrix::from_row_slice(m, 2, &buf)
+            Ok(DMatrix::from_row_slice(m, 2, &buf))
         }
     }
 }
@@ -224,19 +228,21 @@ mod ndarray_impl {
     impl CostFunction for ExponentialFit<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            exponential_fit(
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(exponential_fit(
                 x.as_slice().expect("Array1 is contiguous"),
                 &self.t,
                 &self.y,
-            )
+            ))
         }
     }
 
     impl Residual for ExponentialFit<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = Array1<f64>;
-        fn residual(&self, x: &Array1<f64>) -> Array1<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(self.t.len());
             exponential_fit_residuals(
                 x.as_slice().expect("Array1 is contiguous"),
@@ -244,7 +250,7 @@ mod ndarray_impl {
                 &self.y,
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -260,29 +266,31 @@ mod faer_impl {
     impl CostFunction for ExponentialFit<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            exponential_fit(&[x[0], x[1]], &self.t, &self.y)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(exponential_fit(&[x[0], x[1]], &self.t, &self.y))
         }
     }
 
     impl Residual for ExponentialFit<Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let m = self.t.len();
             let mut buf = vec![0.0_f64; m];
             exponential_fit_residuals(&[x[0], x[1]], &self.t, &self.y, &mut buf);
-            Col::from_fn(m, |i| buf[i])
+            Ok(Col::from_fn(m, |i| buf[i]))
         }
     }
 
     impl Jacobian for ExponentialFit<Col<f64>> {
         type Jacobian = Mat<f64>;
-        fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+        fn jacobian(&self, x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
             let m = self.t.len();
             let mut buf = vec![0.0_f64; m * 2];
             exponential_fit_jacobian(&[x[0], x[1]], &self.t, &mut buf);
-            Mat::from_fn(m, 2, |i, j| buf[i * 2 + j])
+            Ok(Mat::from_fn(m, 2, |i, j| buf[i * 2 + j]))
         }
     }
 }

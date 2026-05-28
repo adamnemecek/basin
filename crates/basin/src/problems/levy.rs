@@ -135,17 +135,18 @@ impl<P> HasSpec for Levy<P> {
 impl CostFunction for Levy<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        levy(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(levy(x))
     }
 }
 
 impl Gradient for Levy<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         levy_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -158,17 +159,18 @@ mod nalgebra_impl {
     impl CostFunction for Levy<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            levy(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(levy(x.as_slice()))
         }
     }
 
     impl Gradient for Levy<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             levy_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -182,20 +184,21 @@ mod ndarray_impl {
     impl CostFunction for Levy<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            levy(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(levy(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for Levy<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             levy_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -212,19 +215,20 @@ mod faer_impl {
     impl CostFunction for Levy<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let v: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
-            levy(&v)
+            Ok(levy(&v))
         }
     }
 
     impl Gradient for Levy<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let v: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
             let mut g = vec![0.0; v.len()];
             levy_gradient(&v, &mut g);
-            Col::<f64>::from_fn(g.len(), |i| g[i])
+            Ok(Col::<f64>::from_fn(g.len(), |i| g[i]))
         }
     }
 }
@@ -270,17 +274,18 @@ impl LevyBoxed<Vec<f64>> {
 impl CostFunction for LevyBoxed<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        levy(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(levy(x))
     }
 }
 
 impl Gradient for LevyBoxed<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         levy_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -313,17 +318,18 @@ mod nalgebra_boxed_impl {
     impl CostFunction for LevyBoxed<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            levy(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(levy(x.as_slice()))
         }
     }
 
     impl Gradient for LevyBoxed<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             levy_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
@@ -357,20 +363,21 @@ mod ndarray_boxed_impl {
     impl CostFunction for LevyBoxed<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            levy(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(levy(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for LevyBoxed<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             levy_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 
@@ -404,19 +411,20 @@ mod faer_boxed_impl {
     impl CostFunction for LevyBoxed<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let v: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
-            levy(&v)
+            Ok(levy(&v))
         }
     }
 
     impl Gradient for LevyBoxed<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let v: Vec<f64> = (0..x.nrows()).map(|i| x[i]).collect();
             let mut g = vec![0.0; v.len()];
             levy_gradient(&v, &mut g);
-            Col::<f64>::from_fn(g.len(), |i| g[i])
+            Ok(Col::<f64>::from_fn(g.len(), |i| g[i]))
         }
     }
 
@@ -496,10 +504,10 @@ mod tests {
         assert!(hi.iter().all(|&v| v == STANDARD_UPPER));
 
         let x = vec![0.3, -0.7, 1.2, 2.1];
-        assert!((p.cost(&x) - levy(&x)).abs() < 1e-12);
+        assert!((p.cost(&x).unwrap() - levy(&x)).abs() < 1e-12);
         let mut g = vec![0.0; x.len()];
         levy_gradient(&x, &mut g);
-        assert_eq!(p.gradient(&x), g);
+        assert_eq!(p.gradient(&x).unwrap(), g);
     }
 
     #[test]

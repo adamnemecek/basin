@@ -166,14 +166,15 @@ use crate::core::termination::TerminationReason;
 /// impl Residual for Affine {
 ///     type Param = DVector<f64>;
 ///     type Output = DVector<f64>;
-///     fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
-///         DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0])
+///     type Error = std::convert::Infallible;
+///     fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, Self::Error> {
+///         Ok(DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0]))
 ///     }
 /// }
 /// impl Jacobian for Affine {
 ///     type Jacobian = DMatrix<f64>;
-///     fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
-///         DMatrix::identity(2, 2)
+///     fn jacobian(&self, _x: &DVector<f64>) -> Result<DMatrix<f64>, Self::Error> {
+///         Ok(DMatrix::identity(2, 2))
 ///     }
 /// }
 ///
@@ -183,7 +184,8 @@ use crate::core::termination::TerminationReason;
 ///     BasicState::new(DVector::from_vec(vec![0.0, 0.0])),
 /// )
 /// .max_iter(50)
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!((result.param()[0] - 1.0).abs() < 1e-6);
 /// assert!((result.param()[1] - 2.0).abs() < 1e-6);
 /// # }
@@ -382,14 +384,20 @@ where
         + MatDiagonal<V>
         + Clone,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = <P as Residual>::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         // Seed cost so iter-0 termination criteria see a populated
         // state. Also evaluate J(x₀) once to seed the Marquardt scaling
         // diagonal `D`. The Gram `A₀`, gradient `g₀`, and residual `r`
         // are stashed into the caches so the first `next_iter` reuses
         // them — no redundant evaluation (or re-formed Gram) at the
         // init/iter-0 boundary.
-        let (r, j) = problem.residual_and_jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param)?;
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;
@@ -412,14 +420,14 @@ where
         self.jtr_cache = Some(j.mat_transpose_vec(&r));
         self.gram_cache = Some(a);
         self.r_cache = Some(r);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         // `r` is at the current `state.param` after init (initial point)
         // or the previous iteration's bookkeeping (post-accept: r at the
         // new iterate; post-reject: unchanged). Only count an eval on a
@@ -428,7 +436,7 @@ where
             Some(r) => r,
             None => {
                 state.cost_evals += 1;
-                problem.residual(&state.param)
+                problem.residual(&state.param)?
             }
         };
 
@@ -444,7 +452,7 @@ where
             (Some(a), Some(g)) => (a, g),
             _ => {
                 state.gradient_evals += 1;
-                let j = problem.jacobian(&state.param);
+                let j = problem.jacobian(&state.param)?;
                 (j.gram(), j.mat_transpose_vec(&r))
             }
         };
@@ -479,7 +487,7 @@ where
             self.r_cache = Some(r);
             self.gram_cache = Some(a);
             self.jtr_cache = Some(g);
-            return (state, Some(TerminationReason::SolverConverged));
+            return Ok((state, Some(TerminationReason::SolverConverged)));
         }
 
         let mut neg_g = g.clone();
@@ -529,7 +537,7 @@ where
                         self.r_cache = Some(r);
                         self.gram_cache = Some(a);
                         self.jtr_cache = Some(g);
-                        return (state, Some(TerminationReason::SolverFailed));
+                        return Ok((state, Some(TerminationReason::SolverFailed)));
                     }
                     mu *= nu;
                     nu *= 2.0;
@@ -550,7 +558,7 @@ where
         // Trial step.
         let mut x_trial = state.param.clone();
         x_trial.scaled_add(1.0, &h);
-        let r_trial = problem.residual(&x_trial);
+        let r_trial = problem.residual(&x_trial)?;
         state.cost_evals += 1;
         let f_trial = 0.5 * r_trial.norm_squared();
 
@@ -622,9 +630,9 @@ where
         let xtol_converged = self.xtol > 0.0
             && h.norm_squared() <= self.xtol * self.xtol * state.param.norm_squared();
         if ftol_converged || xtol_converged {
-            return (state, Some(TerminationReason::SolverConverged));
+            return Ok((state, Some(TerminationReason::SolverConverged)));
         }
 
-        (state, None)
+        Ok((state, None))
     }
 }

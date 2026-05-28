@@ -37,7 +37,8 @@ fn levenberg_marquardt_converges_on_sparse_linear_regression() {
     let (problem, initial) = fixture();
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-15, "cost = {}", result.cost());
@@ -71,7 +72,8 @@ fn levenberg_marquardt_handles_sparse_diagonal_damping() {
         BasicState::new(initial),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-20, "cost = {}", result.cost());
@@ -82,6 +84,7 @@ fn levenberg_marquardt_emits_solver_converged_via_first_order_optimality() {
     let (problem, initial) = fixture();
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }

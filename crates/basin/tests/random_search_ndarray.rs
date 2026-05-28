@@ -15,7 +15,8 @@ fn same_seed_yields_identical_trajectory() {
         BasicPopulationState::<Array1<f64>>::with_size(16),
     )
     .max_iter(20)
-    .run();
+    .run()
+    .unwrap();
 
     let result_b = Executor::new(
         BoothBoxed::<Array1<f64>>::new(lower, upper),
@@ -23,7 +24,8 @@ fn same_seed_yields_identical_trajectory() {
         BasicPopulationState::<Array1<f64>>::with_size(16),
     )
     .max_iter(20)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result_a.cost(), result_b.cost());
     assert_eq!(result_a.param(), result_b.param());
@@ -40,7 +42,8 @@ fn converges_to_box_corner_on_tight_booth() {
         BasicPopulationState::<Array1<f64>>::with_size(64),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 0.05,
@@ -65,10 +68,11 @@ fn elite_keeps_cost_monotone_across_iterations() {
         BasicPopulationState::<Array1<f64>>::with_size(8),
     )
     .max_iter(50)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     let mut prev = stepper.state().cost();
-    while let StepOutcome::Continue = stepper.step() {
+    while let StepOutcome::Continue = stepper.step().unwrap() {
         let current = stepper.state().cost();
         assert!(current <= prev, "cost increased: {prev} → {current}");
         prev = current;
@@ -87,10 +91,11 @@ fn population_invariants_hold_after_iteration() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(10)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..10 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         let state = stepper.state();

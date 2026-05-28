@@ -80,8 +80,9 @@ impl<P> HasSpec for HolderTable<P> {
 impl CostFunction for HolderTable<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        holder_table(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(holder_table(x))
     }
 }
 
@@ -94,8 +95,9 @@ mod nalgebra_impl {
     impl CostFunction for HolderTable<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            holder_table(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(holder_table(x.as_slice()))
         }
     }
 }
@@ -109,8 +111,9 @@ mod ndarray_impl {
     impl CostFunction for HolderTable<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            holder_table(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(holder_table(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 }
@@ -124,12 +127,13 @@ mod faer_impl {
     impl CostFunction for HolderTable<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let pi = core::f64::consts::PI;
             let (a, b) = (x[0], x[1]);
             let inner = (1.0 - (a * a + b * b).sqrt() / pi).abs();
-            -(a.sin() * b.cos() * inner.exp()).abs()
+            Ok(-(a.sin() * b.cos() * inner.exp()).abs())
         }
     }
 }

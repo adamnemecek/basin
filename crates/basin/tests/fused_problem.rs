@@ -28,14 +28,15 @@ struct Sphere;
 impl CostFunction for Sphere {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        x.iter().map(|xi| xi * xi).sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(x.iter().map(|xi| xi * xi).sum())
     }
 }
 impl Gradient for Sphere {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        x.iter().map(|xi| 2.0 * xi).collect()
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok(x.iter().map(|xi| 2.0 * xi).collect())
     }
 }
 
@@ -43,9 +44,9 @@ impl Gradient for Sphere {
 fn default_fused_matches_separate_calls() {
     let p = Sphere;
     let x = vec![1.5, -2.25, 0.5];
-    let (fused_cost, fused_grad) = p.cost_and_gradient(&x);
-    assert_eq!(fused_cost, p.cost(&x));
-    assert_eq!(fused_grad, p.gradient(&x));
+    let (fused_cost, fused_grad) = p.cost_and_gradient(&x).unwrap();
+    assert_eq!(fused_cost, p.cost(&x).unwrap());
+    assert_eq!(fused_grad, p.gradient(&x).unwrap());
 }
 
 #[test]
@@ -57,7 +58,8 @@ fn gradient_descent_runs_with_no_opt_in() {
     let result = Executor::new(Sphere, solver, state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-10))
-        .run();
+        .run()
+        .unwrap();
     assert!(result.cost() < 1e-8, "got cost {}", result.cost());
 }
 
@@ -71,20 +73,23 @@ struct Counted {
 impl CostFunction for Counted {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        x.iter().map(|xi| xi * xi).sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(x.iter().map(|xi| xi * xi).sum())
     }
 }
 impl Gradient for Counted {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        x.iter().map(|xi| 2.0 * xi).collect()
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok(x.iter().map(|xi| 2.0 * xi).collect())
     }
-    fn cost_and_gradient(&self, x: &Vec<f64>) -> (f64, Vec<f64>) {
-        self.fused_calls.set(self.fused_calls.get() + 1);
-        let c = x.iter().map(|xi| xi * xi).sum();
-        let g = x.iter().map(|xi| 2.0 * xi).collect();
-        (c, g)
+    fn cost_and_gradient(&self, x: &Vec<f64>) -> Result<(f64, Vec<f64>), std::convert::Infallible> {
+        Ok({
+            self.fused_calls.set(self.fused_calls.get() + 1);
+            let c = x.iter().map(|xi| xi * xi).sum();
+            let g = x.iter().map(|xi| 2.0 * xi).collect();
+            (c, g)
+        })
     }
 }
 
@@ -99,7 +104,8 @@ fn solver_calls_fused_override() {
     let result = Executor::new(problem, solver, state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-10))
-        .run();
+        .run()
+        .unwrap();
 
     // GD's init + each next_iter goes through the fused call.
     let expected_min = result.iter() as usize + 1;
@@ -125,20 +131,21 @@ mod hessian {
     impl CostFunction for SphereN {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            x.dot(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(x.dot(x))
         }
     }
     impl Gradient for SphereN {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            2.0 * x
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(2.0 * x)
         }
     }
     impl Hessian for SphereN {
         type Hessian = DMatrix<f64>;
-        fn hessian(&self, x: &DVector<f64>) -> DMatrix<f64> {
-            2.0 * DMatrix::identity(x.len(), x.len())
+        fn hessian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
+            Ok(2.0 * DMatrix::identity(x.len(), x.len()))
         }
     }
 
@@ -146,10 +153,10 @@ mod hessian {
     fn default_triple_matches_separate_calls() {
         let p = SphereN;
         let x = DVector::from_vec(vec![1.0, -2.0, 3.0]);
-        let (c, g, h) = p.cost_and_gradient_and_hessian(&x);
-        assert_eq!(c, p.cost(&x));
-        assert_eq!(g, p.gradient(&x));
-        assert_eq!(h, p.hessian(&x));
+        let (c, g, h) = p.cost_and_gradient_and_hessian(&x).unwrap();
+        assert_eq!(c, p.cost(&x).unwrap());
+        assert_eq!(g, p.gradient(&x).unwrap());
+        assert_eq!(h, p.hessian(&x).unwrap());
     }
 
     /// User overrides `cost_and_gradient_and_hessian` to share work.
@@ -160,30 +167,33 @@ mod hessian {
     impl CostFunction for CountedTriple {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            x.dot(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(x.dot(x))
         }
     }
     impl Gradient for CountedTriple {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            2.0 * x
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(2.0 * x)
         }
     }
     impl Hessian for CountedTriple {
         type Hessian = DMatrix<f64>;
-        fn hessian(&self, x: &DVector<f64>) -> DMatrix<f64> {
-            2.0 * DMatrix::identity(x.len(), x.len())
+        fn hessian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
+            Ok(2.0 * DMatrix::identity(x.len(), x.len()))
         }
         fn cost_and_gradient_and_hessian(
             &self,
             x: &DVector<f64>,
-        ) -> (f64, DVector<f64>, DMatrix<f64>) {
-            self.fused_calls.set(self.fused_calls.get() + 1);
-            let c = x.dot(x);
-            let g = 2.0 * x;
-            let h = 2.0 * DMatrix::identity(x.len(), x.len());
-            (c, g, h)
+        ) -> Result<(f64, DVector<f64>, DMatrix<f64>), std::convert::Infallible> {
+            Ok({
+                self.fused_calls.set(self.fused_calls.get() + 1);
+                let c = x.dot(x);
+                let g = 2.0 * x;
+                let h = 2.0 * DMatrix::identity(x.len(), x.len());
+                (c, g, h)
+            })
         }
     }
 
@@ -194,8 +204,8 @@ mod hessian {
             fused_calls: counter.clone(),
         };
         let x = DVector::from_vec(vec![1.0, 2.0, 3.0]);
-        let _ = p.cost_and_gradient_and_hessian(&x);
-        let _ = p.cost_and_gradient_and_hessian(&x);
+        let _ = p.cost_and_gradient_and_hessian(&x).unwrap();
+        let _ = p.cost_and_gradient_and_hessian(&x).unwrap();
         assert_eq!(counter.get(), 2);
     }
 }
@@ -217,28 +227,35 @@ mod lsq {
     impl CostFunction for Affine {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            0.5 * ((x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(0.5 * ((x[0] - 1.0).powi(2) + (x[1] - 2.0).powi(2)))
         }
     }
     impl Residual for Affine {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
-            DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0])
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0]))
         }
     }
     impl Jacobian for Affine {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
-            DMatrix::identity(2, 2)
+        fn jacobian(&self, _x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
+            Ok(DMatrix::identity(2, 2))
         }
-        fn residual_and_jacobian(&self, x: &DVector<f64>) -> (DVector<f64>, DMatrix<f64>) {
-            self.fused_calls.set(self.fused_calls.get() + 1);
-            (
-                DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0]),
-                DMatrix::identity(2, 2),
-            )
+        fn residual_and_jacobian(
+            &self,
+            x: &DVector<f64>,
+        ) -> Result<(DVector<f64>, DMatrix<f64>), std::convert::Infallible> {
+            Ok({
+                self.fused_calls.set(self.fused_calls.get() + 1);
+                (
+                    DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0]),
+                    DMatrix::identity(2, 2),
+                )
+            })
         }
     }
 
@@ -252,7 +269,8 @@ mod lsq {
         let solver: LevenbergMarquardt<DVector<f64>, DMatrix<f64>> = LevenbergMarquardt::new();
         let result = Executor::new(problem, solver, state)
             .terminate_on(MaxIter(10))
-            .run();
+            .run()
+            .unwrap();
 
         // LM init does one fused call; subsequent iters reuse caches.
         assert!(counter.get() >= 1);
@@ -271,8 +289,9 @@ struct CostOnly;
 impl CostFunction for CostOnly {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        x.iter().map(|xi| (xi - 1.0).powi(2)).sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(x.iter().map(|xi| (xi - 1.0).powi(2)).sum())
     }
 }
 
@@ -284,7 +303,8 @@ fn finite_diff_runs_through_solver() {
     let result = Executor::new(problem, solver, state)
         .terminate_on(MaxIter(200))
         .terminate_on(GradientTolerance(1e-8))
-        .run();
+        .run()
+        .unwrap();
 
     let x = result.param();
     assert!((x[0] - 1.0).abs() < 1e-3);

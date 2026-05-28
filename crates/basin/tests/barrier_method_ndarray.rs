@@ -26,7 +26,8 @@ fn active_constraint_converges_to_projection() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -47,7 +48,8 @@ fn infeasible_start_is_reported_as_failure() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverFailed);
 }
@@ -63,7 +65,8 @@ fn eval_counts_are_recorded() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.cost_evals() > 0, "no cost evals recorded");
     assert!(
@@ -89,7 +92,8 @@ fn two_constraints_both_active() {
         BasicState::new(initial),
     )
     .max_iter(50)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(

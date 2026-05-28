@@ -85,7 +85,13 @@ impl<P> Solver<P, BasicState<f64>> for Brent
 where
     P: CostFunction<Param = f64, Output = f64> + BoxConstraints,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<f64>) -> BasicState<f64> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<f64>,
+    ) -> Result<BasicState<f64>, Self::Error> {
         let a = *problem.lower();
         let b = *problem.upper();
         assert!(
@@ -99,7 +105,7 @@ where
         if x == a || x == b {
             x = a + GOLDEN_C * (b - a);
         }
-        let fx = problem.cost(&x);
+        let fx = problem.cost(&x)?;
         self.inner = Some(Inner {
             a,
             b,
@@ -115,14 +121,14 @@ where
         state.param = x;
         state.cost = Some(fx);
         state.cost_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<f64>,
-    ) -> (BasicState<f64>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<f64>, Option<TerminationReason>), Self::Error> {
         let s = self.inner.as_mut().expect("Brent::init must run first");
         let m = 0.5 * (s.a + s.b);
         let tol1 = self.tol_rel * s.x.abs() + self.tol_abs;
@@ -169,7 +175,7 @@ where
             -tol1
         };
         let u = s.x + step;
-        let fu = problem.cost(&u);
+        let fu = problem.cost(&u)?;
 
         if fu <= s.fx {
             if u >= s.x {
@@ -203,7 +209,7 @@ where
         state.param = s.x;
         state.cost = Some(s.fx);
         state.cost_evals += 1;
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, _state: &BasicState<f64>) -> Option<TerminationReason> {
@@ -232,8 +238,9 @@ mod tests {
     impl CostFunction for Quadratic {
         type Param = f64;
         type Output = f64;
-        fn cost(&self, x: &f64) -> f64 {
-            (x - 2.0).powi(2)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &f64) -> Result<f64, Self::Error> {
+            Ok((x - 2.0).powi(2))
         }
     }
     impl BoxConstraints for Quadratic {
@@ -253,7 +260,8 @@ mod tests {
             BasicState::new(2.5),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
         assert_eq!(r.reason, TerminationReason::SolverConverged);
         assert!((r.param() - 2.0).abs() < 1e-6, "x = {}", r.param());
         assert!(*r.param() >= 0.0 && *r.param() <= 5.0);
@@ -268,7 +276,8 @@ mod tests {
             BasicState::new(42.0),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
         assert!((r.param() - 2.0).abs() < 1e-6, "x = {}", r.param());
     }
 
@@ -282,7 +291,8 @@ mod tests {
             BasicState::new(4.0),
         )
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
         assert!((r.param() - 3.0).abs() < 1e-5, "x = {}", r.param());
     }
 
@@ -293,9 +303,10 @@ mod tests {
     impl CostFunction for Cubic {
         type Param = f64;
         type Output = f64;
+        type Error = std::convert::Infallible;
         // x^3 − 3x; on [0, 2] the unique min is at x = 1, f(1) = −2.
-        fn cost(&self, x: &f64) -> f64 {
-            x.powi(3) - 3.0 * x
+        fn cost(&self, x: &f64) -> Result<f64, Self::Error> {
+            Ok(x.powi(3) - 3.0 * x)
         }
     }
     impl BoxConstraints for Cubic {
@@ -315,7 +326,8 @@ mod tests {
             BasicState::new(0.5),
         )
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
         assert_eq!(r.reason, TerminationReason::SolverConverged);
         assert!((r.param() - 1.0).abs() < 1e-6, "x = {}", r.param());
         assert!((r.cost() + 2.0).abs() < 1e-10, "f = {}", r.cost());

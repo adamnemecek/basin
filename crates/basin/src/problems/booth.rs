@@ -113,17 +113,18 @@ impl<P> HasSpec for Booth<P> {
 impl CostFunction for Booth<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        booth(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(booth(x))
     }
 }
 
 impl Gradient for Booth<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         booth_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -159,17 +160,18 @@ impl<P> HasSpec for BoothBoxed<P> {
 impl CostFunction for BoothBoxed<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        booth(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(booth(x))
     }
 }
 
 impl Gradient for BoothBoxed<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         booth_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -240,36 +242,40 @@ impl<P> HasSpec for BoothBoxedResiduals<P> {
 impl CostFunction for BoothResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        booth(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(booth(x))
     }
 }
 
 impl Residual for BoothResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = Vec<f64>;
-    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; 2];
         booth_residuals(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
 impl CostFunction for BoothBoxedResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        booth(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(booth(x))
     }
 }
 
 impl Residual for BoothBoxedResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = Vec<f64>;
-    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; 2];
         booth_residuals(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -294,34 +300,36 @@ mod nalgebra_impl {
     impl CostFunction for Booth<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            booth(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice()))
         }
     }
 
     impl Gradient for Booth<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             booth_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl CostFunction for BoothBoxed<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            booth(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice()))
         }
     }
 
     impl Gradient for BoothBoxed<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             booth_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
@@ -337,55 +345,59 @@ mod nalgebra_impl {
     impl CostFunction for BoothResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            booth(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice()))
         }
     }
 
     impl Residual for BoothResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(2);
             booth_residuals(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for BoothResiduals<DVector<f64>> {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+        fn jacobian(&self, _x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
             // Constant 2×2 Jacobian — independent of x.
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
-            DMatrix::from_row_slice(2, 2, &buf)
+            Ok(DMatrix::from_row_slice(2, 2, &buf))
         }
     }
 
     impl CostFunction for BoothBoxedResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            booth(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice()))
         }
     }
 
     impl Residual for BoothBoxedResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(2);
             booth_residuals(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for BoothBoxedResiduals<DVector<f64>> {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+        fn jacobian(&self, _x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
-            DMatrix::from_row_slice(2, 2, &buf)
+            Ok(DMatrix::from_row_slice(2, 2, &buf))
         }
     }
 
@@ -408,40 +420,42 @@ mod ndarray_impl {
     impl CostFunction for Booth<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            booth(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for Booth<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             booth_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 
     impl CostFunction for BoothBoxed<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            booth(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(booth(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for BoothBoxed<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             booth_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 
@@ -485,30 +499,32 @@ mod faer_impl {
     impl CostFunction for Booth<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            cost_inline(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(cost_inline(x))
         }
     }
 
     impl Gradient for Booth<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            grad_inline(x)
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(grad_inline(x))
         }
     }
 
     impl CostFunction for BoothBoxed<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            cost_inline(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(cost_inline(x))
         }
     }
 
     impl Gradient for BoothBoxed<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            grad_inline(x)
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(grad_inline(x))
         }
     }
 
@@ -531,50 +547,54 @@ mod faer_impl {
     impl CostFunction for BoothResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            cost_inline(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(cost_inline(x))
         }
     }
 
     impl Residual for BoothResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
-            residuals_inline(x)
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(residuals_inline(x))
         }
     }
 
     impl Jacobian for BoothResiduals<Col<f64>> {
         type Jacobian = Mat<f64>;
-        fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
+        fn jacobian(&self, _x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
-            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
+            Ok(Mat::from_fn(2, 2, |i, j| buf[i * 2 + j]))
         }
     }
 
     impl CostFunction for BoothBoxedResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
-            cost_inline(x)
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(cost_inline(x))
         }
     }
 
     impl Residual for BoothBoxedResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
-            residuals_inline(x)
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(residuals_inline(x))
         }
     }
 
     impl Jacobian for BoothBoxedResiduals<Col<f64>> {
         type Jacobian = Mat<f64>;
-        fn jacobian(&self, _x: &Col<f64>) -> Mat<f64> {
+        fn jacobian(&self, _x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
             let mut buf = [0.0_f64; 4];
             booth_residuals_jacobian(&mut buf);
-            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
+            Ok(Mat::from_fn(2, 2, |i, j| buf[i * 2 + j]))
         }
     }
 

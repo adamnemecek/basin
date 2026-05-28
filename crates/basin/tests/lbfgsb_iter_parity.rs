@@ -26,28 +26,33 @@ struct Rosen5D {
 impl CostFunction for Rosen5D {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        let n = x.len();
-        let mut f = 0.0;
-        for i in 0..n - 1 {
-            let t = x[i + 1] - x[i] * x[i];
-            f += 100.0 * t * t + (1.0 - x[i]).powi(2);
-        }
-        f
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok({
+            let n = x.len();
+            let mut f = 0.0;
+            for i in 0..n - 1 {
+                let t = x[i + 1] - x[i] * x[i];
+                f += 100.0 * t * t + (1.0 - x[i]).powi(2);
+            }
+            f
+        })
     }
 }
 
 impl Gradient for Rosen5D {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        let n = x.len();
-        let mut g = vec![0.0; n];
-        for i in 0..n - 1 {
-            let t = x[i + 1] - x[i] * x[i];
-            g[i] += -400.0 * x[i] * t - 2.0 * (1.0 - x[i]);
-            g[i + 1] += 200.0 * t;
-        }
-        g
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok({
+            let n = x.len();
+            let mut g = vec![0.0; n];
+            for i in 0..n - 1 {
+                let t = x[i + 1] - x[i] * x[i];
+                g[i] += -400.0 * x[i] * t - 2.0 * (1.0 - x[i]);
+                g[i + 1] += 200.0 * t;
+            }
+            g
+        })
     }
 }
 
@@ -110,7 +115,8 @@ fn rosenbrock_5d_matches_fortran_trajectory() {
     // iterations regardless of how small the projected gradient gets.
     let mut stepper = Executor::new(problem, LBFGSB::new().tol_pg(0.0), state)
         .terminate_on(MaxIter(30))
-        .into_stepper();
+        .into_stepper()
+        .unwrap();
 
     // x_tol: variables can be at the boundary or in the interior;
     // either way the trajectory should agree to ~1e-10 absolute. The
@@ -127,7 +133,7 @@ fn rosenbrock_5d_matches_fortran_trajectory() {
 
     // iters 1..=30: step then compare.
     for k in 1..=30 {
-        let outcome = stepper.step();
+        let outcome = stepper.step().unwrap();
         match outcome {
             basin::StepOutcome::Continue => {}
             basin::StepOutcome::Stopped(reason) => {

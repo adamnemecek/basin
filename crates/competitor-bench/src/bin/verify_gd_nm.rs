@@ -34,7 +34,8 @@ fn main() {
         BasicState::new(start.clone()),
     )
     .max_iter(MAX_ITERS)
-    .run();
+    .run()
+    .unwrap();
     println!("  basin   {:>4} iters  cost={:.6e}", r.iter(), r.cost());
 
     let ls: MoreThuenteLineSearch<Vec<f64>, Vec<f64>, f64> = MoreThuenteLineSearch::new();
@@ -60,7 +61,8 @@ fn main() {
         BasicSimplexState::new(start.clone()),
     )
     .max_iter(MAX_ITERS)
-    .run();
+    .run()
+    .unwrap();
     println!("  basin   {:>4} iters  cost={:.6e}", r.iter(), r.cost());
 
     // Hand argmin the *exact* simplex basin builds (relative step 0.05),

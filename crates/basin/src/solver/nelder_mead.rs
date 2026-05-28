@@ -49,8 +49,9 @@ use crate::core::termination::TerminationReason;
 /// impl CostFunction for Rosenbrock {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2)
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+///         Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0].powi(2)).powi(2))
 ///     }
 /// }
 ///
@@ -61,7 +62,8 @@ use crate::core::termination::TerminationReason;
 /// )
 /// .max_iter(1_000)
 /// .terminate_on(SimplexTolerance::new(1e-10, 1e-10))
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!(result.cost() < 1e-6);
 /// ```
 pub struct NelderMead<Mode = Unbounded> {
@@ -261,15 +263,16 @@ fn apply_permutation<T>(slice: &mut [T], idx: &[usize]) {
 /// Evaluate every vertex's cost and sort the simplex ascending. Shared
 /// between the `Unbounded` and `Projected` `Solver::init` paths after
 /// any projection of the initial vertices.
-fn init_costs_and_sort<P, V>(problem: &P, state: &mut BasicSimplexState<V>)
+fn init_costs_and_sort<P, V>(problem: &P, state: &mut BasicSimplexState<V>) -> Result<(), P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
 {
     for (v, c) in state.vertices.iter().zip(state.costs.iter_mut()) {
-        *c = problem.cost(v);
+        *c = problem.cost(v)?;
     }
     state.cost_evals += state.vertices.len() as u64;
     sort_simplex(&mut state.vertices, &mut state.costs);
+    Ok(())
 }
 
 /// One Nelder-Mead iteration, parameterised by a projection closure.
@@ -283,7 +286,7 @@ fn next_iter_inner<P, V, F>(
     mut state: BasicSimplexState<V>,
     p: Params,
     project: &F,
-) -> (BasicSimplexState<V>, Option<TerminationReason>)
+) -> Result<(BasicSimplexState<V>, Option<TerminationReason>), P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ScaledAdd<f64>,
@@ -302,7 +305,7 @@ where
     // Reflection: x_r = x_bar + α(x_bar − x_{n+1}) = (1+α)·x_bar − α·x_{n+1}
     let mut x_r = affine(&x_bar, &state.vertices[worst], -p.alpha);
     project(&mut x_r);
-    let fr = problem.cost(&x_r);
+    let fr = problem.cost(&x_r)?;
     state.cost_evals += 1;
 
     if f1 <= fr && fr < fn_ {
@@ -313,7 +316,7 @@ where
         // Try expansion: x_e = x_bar + β(x_r − x_bar).
         let mut x_e = affine(&x_bar, &x_r, p.beta);
         project(&mut x_e);
-        let fe = problem.cost(&x_e);
+        let fe = problem.cost(&x_e)?;
         state.cost_evals += 1;
         if fe < fr {
             state.vertices[worst] = x_e;
@@ -327,34 +330,39 @@ where
         // x_oc = x_bar + γ(x_r − x_bar).
         let mut x_oc = affine(&x_bar, &x_r, p.gamma);
         project(&mut x_oc);
-        let foc = problem.cost(&x_oc);
+        let foc = problem.cost(&x_oc)?;
         state.cost_evals += 1;
         if foc <= fr {
             state.vertices[worst] = x_oc;
             state.costs[worst] = foc;
         } else {
-            shrink_inner(problem, &mut state, p.delta, project);
+            shrink_inner(problem, &mut state, p.delta, project)?;
         }
     } else {
         // fr ≥ f_{n+1}: inside contraction.
         // x_ic = x_bar − γ(x_bar − x_{n+1}) = (1−γ)·x_bar + γ·x_{n+1}.
         let mut x_ic = affine(&x_bar, &state.vertices[worst], p.gamma);
         project(&mut x_ic);
-        let fic = problem.cost(&x_ic);
+        let fic = problem.cost(&x_ic)?;
         state.cost_evals += 1;
         if fic < fnp1 {
             state.vertices[worst] = x_ic;
             state.costs[worst] = fic;
         } else {
-            shrink_inner(problem, &mut state, p.delta, project);
+            shrink_inner(problem, &mut state, p.delta, project)?;
         }
     }
 
     sort_simplex(&mut state.vertices, &mut state.costs);
-    (state, None)
+    Ok((state, None))
 }
 
-fn shrink_inner<P, V, F>(problem: &P, state: &mut BasicSimplexState<V>, delta: f64, project: &F)
+fn shrink_inner<P, V, F>(
+    problem: &P,
+    state: &mut BasicSimplexState<V>,
+    delta: f64,
+    project: &F,
+) -> Result<(), P::Error>
 where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ScaledAdd<f64>,
@@ -369,9 +377,10 @@ where
         let mut new_v = affine(best, v, delta);
         project(&mut new_v);
         *v = new_v;
-        *c = problem.cost(v);
+        *c = problem.cost(v)?;
     }
     state.cost_evals += n_shrunk;
+    Ok(())
 }
 
 impl<P, V> Solver<P, BasicSimplexState<V>> for NelderMead<Unbounded>
@@ -379,18 +388,24 @@ where
     P: CostFunction<Param = V, Output = f64>,
     V: Clone + ScaledAdd<f64>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicSimplexState<V>,
+    ) -> Result<BasicSimplexState<V>, Self::Error> {
         let n = state.vertices.len() - 1;
         self.params = Some(Self::resolve(self.config, n));
-        init_costs_and_sort(problem, &mut state);
-        state
+        init_costs_and_sort(problem, &mut state)?;
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         state: BasicSimplexState<V>,
-    ) -> (BasicSimplexState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicSimplexState<V>, Option<TerminationReason>), Self::Error> {
         let p = self
             .params
             .expect("NelderMead::init must run before next_iter");
@@ -403,7 +418,13 @@ where
     P: CostFunction<Param = V, Output = f64> + BoxConstraints,
     V: Clone + ScaledAdd<f64> + ClampInPlace,
 {
-    fn init(&mut self, problem: &P, mut state: BasicSimplexState<V>) -> BasicSimplexState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicSimplexState<V>,
+    ) -> Result<BasicSimplexState<V>, Self::Error> {
         let n = state.vertices.len() - 1;
         self.params = Some(Self::resolve(self.config, n));
         // Project every initial vertex once so iter-0 termination
@@ -415,15 +436,15 @@ where
         for v in state.vertices.iter_mut() {
             v.clamp_in_place(lo, hi);
         }
-        init_costs_and_sort(problem, &mut state);
-        state
+        init_costs_and_sort(problem, &mut state)?;
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         state: BasicSimplexState<V>,
-    ) -> (BasicSimplexState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicSimplexState<V>, Option<TerminationReason>), Self::Error> {
         let p = self
             .params
             .expect("NelderMead::init must run before next_iter");

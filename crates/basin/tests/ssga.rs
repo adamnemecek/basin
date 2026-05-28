@@ -19,7 +19,8 @@ fn converges_on_low_dim_rastrigin() {
     )
     .max_iter(u64::MAX)
     .terminate_on(MaxCostEvals(4000))
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 5.0,
@@ -41,14 +42,16 @@ fn same_seed_yields_identical_trajectory() {
         BasicPopulationState::<Vec<f64>>::with_size(10),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
     let result_b = Executor::new(
         problem_b,
         Ssga::new(7).with_pop_size(10),
         BasicPopulationState::<Vec<f64>>::with_size(10),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
     assert_eq!(result_a.cost(), result_b.cost());
     assert_eq!(result_a.param(), result_b.param());
 }
@@ -63,14 +66,16 @@ fn different_seeds_yield_different_trajectories() {
         BasicPopulationState::<Vec<f64>>::with_size(10),
     )
     .max_iter(20)
-    .run();
+    .run()
+    .unwrap();
     let result_b = Executor::new(
         RastriginBoxed::<Vec<f64>>::with_standard_bounds(3),
         Ssga::new(2).with_pop_size(10),
         BasicPopulationState::<Vec<f64>>::with_size(10),
     )
     .max_iter(20)
-    .run();
+    .run()
+    .unwrap();
     assert_ne!(result_a.param(), result_b.param());
 }
 
@@ -87,10 +92,11 @@ fn elite_keeps_cost_monotone_across_iterations() {
         BasicPopulationState::<Vec<f64>>::with_size(20),
     )
     .max_iter(40)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     let mut prev = stepper.state().cost();
-    while let StepOutcome::Continue = stepper.step() {
+    while let StepOutcome::Continue = stepper.step().unwrap() {
         let curr = stepper.state().cost();
         assert!(
             curr <= prev,
@@ -111,10 +117,11 @@ fn population_invariants_hold_after_iteration() {
         BasicPopulationState::<Vec<f64>>::with_size(pop_size),
     )
     .max_iter(20)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..20 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         let s = stepper.state();
@@ -140,10 +147,11 @@ fn population_stays_feasible() {
         BasicPopulationState::<Vec<f64>>::with_size(15),
     )
     .max_iter(30)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..30 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         for (i, x) in stepper.state().candidates().iter().enumerate() {

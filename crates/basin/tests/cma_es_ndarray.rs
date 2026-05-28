@@ -22,7 +22,8 @@ fn same_seed_yields_identical_trajectory() {
         ),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
 
     let result_b = Executor::new(
         Sphere::<Array1<f64>>::new(),
@@ -32,7 +33,8 @@ fn same_seed_yields_identical_trajectory() {
         ),
     )
     .max_iter(30)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result_a.cost(), result_b.cost());
     assert_eq!(result_a.param(), result_b.param());
@@ -51,7 +53,8 @@ fn different_seeds_yield_different_trajectories() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(5)
-    .run();
+    .run()
+    .unwrap();
 
     let result_b = Executor::new(
         Sphere::<Array1<f64>>::new(),
@@ -59,7 +62,8 @@ fn different_seeds_yield_different_trajectories() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(5)
-    .run();
+    .run()
+    .unwrap();
 
     assert_ne!(result_a.param(), result_b.param());
 }
@@ -79,7 +83,8 @@ fn converges_on_sphere_5d() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(80)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -103,7 +108,8 @@ fn converges_on_rosenbrock_2d() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(800)
-    .run();
+    .run()
+    .unwrap();
 
     let p = result.param();
     assert!(
@@ -128,7 +134,8 @@ fn sphere_terminates_solver_converged_on_tol_x() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(2000)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
@@ -150,7 +157,8 @@ fn with_stds_ones_matches_default() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(40)
-    .run();
+    .run()
+    .unwrap();
 
     let with_ones = Executor::new(
         Sphere::<Array1<f64>>::new(),
@@ -158,7 +166,8 @@ fn with_stds_ones_matches_default() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(40)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(default.cost(), with_ones.cost());
     assert_eq!(default.param(), with_ones.param());
@@ -180,7 +189,8 @@ fn with_stds_anisotropic_converges_on_sphere() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(120)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -199,8 +209,9 @@ fn with_stds_preconditions_ill_scaled_quadratic() {
     impl CostFunction for IllScaledQuadratic {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            x[0] * x[0] + 1e6 * x[1] * x[1]
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(x[0] * x[0] + 1e6 * x[1] * x[1])
         }
     }
 
@@ -214,7 +225,8 @@ fn with_stds_preconditions_ill_scaled_quadratic() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(300)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -256,10 +268,11 @@ fn population_invariants_hold_after_iteration() {
         BasicPopulationState::<Array1<f64>>::with_size(lambda),
     )
     .max_iter(10)
-    .into_stepper();
+    .into_stepper()
+    .unwrap();
 
     for _ in 0..10 {
-        let StepOutcome::Continue = stepper.step() else {
+        let StepOutcome::Continue = stepper.step().unwrap() else {
             break;
         };
         let state = stepper.state();

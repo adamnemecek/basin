@@ -28,21 +28,23 @@
 //! impl CostFunction for Sphere {
 //!     type Param = Vec<f64>;
 //!     type Output = f64;
-//!     fn cost(&self, x: &Vec<f64>) -> f64 {
-//!         x.iter().map(|xi| xi * xi).sum()
+//!     type Error = std::convert::Infallible;
+//!     fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+//!         Ok(x.iter().map(|xi| xi * xi).sum())
 //!     }
 //! }
 //! impl Gradient for Sphere {
 //!     type Gradient = Vec<f64>;
-//!     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-//!         x.iter().map(|xi| 2.0 * xi).collect()
+//!     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+//!         Ok(x.iter().map(|xi| 2.0 * xi).collect())
 //!     }
 //! }
 //!
 //! let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
 //!     .max_iter(1_000)
 //!     .terminate_on(GradientTolerance(1e-8))
-//!     .run();
+//!     .run()
+//!     .unwrap();
 //! assert!(result.cost() < 1e-12);
 //! ```
 #![cfg_attr(docsrs, feature(doc_cfg), doc(auto_cfg))]

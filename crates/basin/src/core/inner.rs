@@ -166,7 +166,7 @@ impl<S: State, So> InnerExecutor<S, So> {
     /// [`run_loop`] — `init` is called
     /// on every invocation, so the inner solver sees a fresh setup pass
     /// each time (e.g. seeding cost/gradient at the new starting point).
-    pub fn run<P>(&mut self, problem: &P, state: S) -> OptimizationResult<S>
+    pub fn run<P>(&mut self, problem: &P, state: S) -> Result<OptimizationResult<S>, So::Error>
     where
         So: Solver<P, S>,
     {

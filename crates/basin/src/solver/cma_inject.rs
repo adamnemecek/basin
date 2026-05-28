@@ -114,10 +114,16 @@ where
     I: Solver<P, S>,
     S: State,
 {
-    fn init(&mut self, problem: &P, state: S) -> S {
+    type Error = I::Error;
+
+    fn init(&mut self, problem: &P, state: S) -> Result<S, Self::Error> {
         self.inner.init(problem, state)
     }
-    fn next_iter(&mut self, problem: &P, state: S) -> (S, Option<TerminationReason>) {
+    fn next_iter(
+        &mut self,
+        problem: &P,
+        state: S,
+    ) -> Result<(S, Option<TerminationReason>), Self::Error> {
         self.inner.next_iter(problem, state)
     }
     fn terminate(&self, state: &S) -> Option<TerminationReason> {
@@ -396,7 +402,7 @@ pub(crate) fn default_c_y(n: usize) -> f64 {
 impl<P, I, V, M> Solver<P, BasicPopulationState<V>> for CmaInject<I, V, M>
 where
     P: CostFunction<Param = V, Output = f64>,
-    I: MemeticInner<V> + Solver<P, <I as WarmStart<V>>::State>,
+    I: MemeticInner<V> + Solver<P, <I as WarmStart<V>>::State, Error = P::Error>,
     I::State: State<Param = V, Float = f64>,
     V: VectorLen
         + Clone
@@ -415,8 +421,15 @@ where
         + RankOneUpdate<V>
         + SymmetricEigen<V>
         + Clone,
+    CmaEs<V, M>: Solver<P, BasicPopulationState<V>, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         // Hansen's preliminary experiments inject from iter 1 onward,
         // so we delegate the initial population to vanilla CMA-ES.
         self.cma.init(problem, state)
@@ -426,13 +439,13 @@ where
         &mut self,
         problem: &P,
         state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         // 1. Vanilla CMA-ES iteration: update m, σ, C from the
         //    previous generation, sample λ fresh candidates sorted by
         //    cost ascending.
-        let (mut state, reason) = self.cma.next_iter(problem, state);
+        let (mut state, reason) = self.cma.next_iter(problem, state)?;
         if let Some(r) = reason {
-            return (state, Some(r));
+            return Ok((state, Some(r)));
         }
 
         // Snapshot internals for clipping.
@@ -453,7 +466,8 @@ where
             let inner_state = self.inner.solver().seed_scaled(&state.candidates[i], sigma);
 
             // 3. Drive the inner.
-            let inner_result: OptimizationResult<I::State> = self.inner.run(problem, inner_state);
+            let inner_result: OptimizationResult<I::State> =
+                self.inner.run(problem, inner_state)?;
 
             // 4. Eval aggregation: roll inner total-work into outer
             //    cost_evals via the trait (AGENTS.md "Solver
@@ -462,7 +476,7 @@ where
 
             // 5. Failure routing: bubble SolverFailed only (rule 3).
             if inner_result.reason.is_failure() {
-                return (state, Some(inner_result.reason));
+                return Ok((state, Some(inner_result.reason)));
             }
 
             // 6. Extract refined point.
@@ -495,7 +509,7 @@ where
 
             // 11. Re-evaluate: clipping moves the point in original
             //     space, so the cost field has to match.
-            let cost_new = problem.cost(&x_inj);
+            let cost_new = problem.cost(&x_inj)?;
             state.cost_evals += 1;
 
             state.candidates[i] = x_inj;
@@ -507,7 +521,7 @@ where
             sort_population_ascending(&mut state.candidates, &mut state.costs);
         }
 
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, state: &BasicPopulationState<V>) -> Option<TerminationReason> {

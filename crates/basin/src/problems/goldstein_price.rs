@@ -121,17 +121,18 @@ impl<P> HasSpec for GoldsteinPrice<P> {
 impl CostFunction for GoldsteinPrice<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        goldstein_price(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(goldstein_price(x))
     }
 }
 
 impl Gradient for GoldsteinPrice<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         goldstein_price_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -144,17 +145,18 @@ mod nalgebra_impl {
     impl CostFunction for GoldsteinPrice<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            goldstein_price(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(goldstein_price(x.as_slice()))
         }
     }
 
     impl Gradient for GoldsteinPrice<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             goldstein_price_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -168,20 +170,21 @@ mod ndarray_impl {
     impl CostFunction for GoldsteinPrice<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            goldstein_price(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(goldstein_price(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for GoldsteinPrice<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             goldstein_price_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -198,20 +201,21 @@ mod faer_impl {
     impl CostFunction for GoldsteinPrice<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let u = a + b + 1.0;
             let p = 19.0 - 14.0 * a + 3.0 * a * a - 14.0 * b + 6.0 * a * b + 3.0 * b * b;
             let v = 2.0 * a - 3.0 * b;
             let q = 18.0 - 32.0 * a + 12.0 * a * a + 48.0 * b - 36.0 * a * b + 27.0 * b * b;
-            (1.0 + u * u * p) * (30.0 + v * v * q)
+            Ok((1.0 + u * u * p) * (30.0 + v * v * q))
         }
     }
 
     impl Gradient for GoldsteinPrice<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             debug_assert_eq!(x.nrows(), 2);
             let (a, b) = (x[0], x[1]);
             let u = a + b + 1.0;
@@ -231,7 +235,7 @@ mod faer_impl {
 
             let g0 = dadx * big_b + big_a * dbdx;
             let g1 = dady * big_b + big_a * dbdy;
-            Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 })
+            Ok(Col::<f64>::from_fn(2, |i| if i == 0 { g0 } else { g1 }))
         }
     }
 }

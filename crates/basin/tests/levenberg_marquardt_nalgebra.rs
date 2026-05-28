@@ -19,7 +19,8 @@ fn levenberg_marquardt_converges_on_rosenbrock_residuals() {
 
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(50)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-15, "cost = {}", result.cost());
@@ -48,7 +49,8 @@ fn levenberg_marquardt_recovers_on_rank_deficient_powell_singular() {
 
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -73,7 +75,8 @@ fn levenberg_marquardt_converges_on_powell_singular_classical_start() {
 
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(
@@ -93,7 +96,8 @@ fn levenberg_marquardt_emits_solver_converged_via_first_order_optimality() {
 
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(100)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
 }
@@ -114,7 +118,8 @@ fn levenberg_marquardt_converges_fast_on_poorly_scaled_exponential_fit() {
 
     let result = Executor::new(problem, LevenbergMarquardt::new(), BasicState::new(initial))
         .max_iter(200)
-        .run();
+        .run()
+        .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
@@ -152,7 +157,8 @@ fn levenberg_marquardt_pairs_with_relative_cost_tolerance() {
     )
     .max_iter(200)
     .terminate_on(RelativeCostTolerance::new(1e-10))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::RelativeCostTolerance);
     assert!(result.cost() < 1e-3, "cost = {}", result.cost());
@@ -179,7 +185,8 @@ fn levenberg_marquardt_converges_via_relative_gradient_tolerance() {
         BasicState::new(initial),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
@@ -215,7 +222,8 @@ fn levenberg_marquardt_converges_via_ftol() {
         BasicState::new(initial),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
@@ -248,7 +256,8 @@ fn levenberg_marquardt_converges_via_xtol() {
         BasicState::new(initial),
     )
     .max_iter(200)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SolverConverged);
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
@@ -282,6 +291,7 @@ fn relative_gradient_tolerance_is_invariant_to_residual_scaling() {
         )
         .max_iter(200)
         .run()
+        .unwrap()
     };
 
     let small = solve(1.0);
@@ -326,7 +336,8 @@ fn levenberg_marquardt_caches_residual_and_jacobian_across_iterations() {
         BasicState::new(initial),
     )
     .max_iter(3)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 3);

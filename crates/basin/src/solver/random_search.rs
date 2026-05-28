@@ -101,8 +101,9 @@ use crate::core::termination::TerminationReason;
 /// impl CostFunction for BoundedSphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl BoxConstraints for BoundedSphere {
@@ -117,7 +118,8 @@ use crate::core::termination::TerminationReason;
 ///     BasicPopulationState::<Vec<f64>>::with_size(16),
 /// )
 /// .max_iter(500)
-/// .run();
+/// .run()
+/// .unwrap();
 /// assert!(result.cost() < 1.0);
 /// ```
 pub struct RandomSearch {
@@ -184,7 +186,13 @@ where
     P: CostFunction<Param = V, Output = f64> + BoxConstraints<Param = V>,
     V: SampleUniformBox + Clone,
 {
-    fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         let lo = problem.lower();
         let hi = problem.upper();
         // The state can arrive with a caller-supplied initial population
@@ -199,20 +207,20 @@ where
         state.costs.clear();
         for _ in 0..self.lambda {
             let x = V::sample_uniform_box(lo, hi, &mut self.rng);
-            let c = problem.cost(&x);
+            let c = problem.cost(&x)?;
             state.candidates.push(x);
             state.costs.push(c);
         }
         state.cost_evals += self.lambda as u64;
         sort_population_ascending(&mut state.candidates, &mut state.costs);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         // Snapshot the elite before resampling — this is what makes
         // state.cost() monotone.
         let elite_x = state.candidates[0].clone();
@@ -226,7 +234,7 @@ where
         state.costs.push(elite_c);
         for _ in 0..self.lambda {
             let x = V::sample_uniform_box(lo, hi, &mut self.rng);
-            let c = problem.cost(&x);
+            let c = problem.cost(&x)?;
             state.candidates.push(x);
             state.costs.push(c);
         }
@@ -236,6 +244,6 @@ where
         // when it's still the best, so truncation never drops it.
         state.candidates.truncate(self.lambda);
         state.costs.truncate(self.lambda);
-        (state, None)
+        Ok((state, None))
     }
 }

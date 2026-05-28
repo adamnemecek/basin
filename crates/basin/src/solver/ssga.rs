@@ -415,7 +415,13 @@ where
         + std::ops::Index<usize, Output = f64>
         + std::ops::IndexMut<usize, Output = f64>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicPopulationState<V>) -> BasicPopulationState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicPopulationState<V>,
+    ) -> Result<BasicPopulationState<V>, Self::Error> {
         let lo = problem.lower();
         let hi = problem.upper();
         let mut rng = ChaCha8Rng::seed_from_u64(self.seed);
@@ -427,21 +433,21 @@ where
         state.costs.clear();
         for _ in 0..self.pop_size {
             let x = V::sample_uniform_box(lo, hi, &mut rng);
-            let c = problem.cost(&x);
+            let c = problem.cost(&x)?;
             state.candidates.push(x);
             state.costs.push(c);
         }
         state.cost_evals += self.pop_size as u64;
         sort_population_ascending(&mut state.candidates, &mut state.costs);
         self.rng = Some(rng);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicPopulationState<V>,
-    ) -> (BasicPopulationState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicPopulationState<V>, Option<TerminationReason>), Self::Error> {
         let rng = self
             .rng
             .as_mut()
@@ -467,13 +473,13 @@ where
                 self.bga_range_fraction,
                 rng,
             );
-            let c_child = problem.cost(&child);
+            let c_child = problem.cost(&child)?;
             state.cost_evals += 1;
             replace_worst_if_better(&mut state.candidates, &mut state.costs, child, c_child);
         }
 
         sort_population_ascending(&mut state.candidates, &mut state.costs);
-        (state, None)
+        Ok((state, None))
     }
 }
 

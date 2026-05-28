@@ -87,17 +87,18 @@ impl<P> Default for Rosenbrock<P> {
 impl CostFunction for Rosenbrock<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        rosenbrock(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(rosenbrock(x))
     }
 }
 
 impl Gradient for Rosenbrock<Vec<f64>> {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; x.len()];
         rosenbrock_gradient(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -110,17 +111,18 @@ mod nalgebra_impl {
     impl CostFunction for Rosenbrock<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            rosenbrock(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock(x.as_slice()))
         }
     }
 
     impl Gradient for Rosenbrock<DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(x.len());
             rosenbrock_gradient(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 }
@@ -135,20 +137,21 @@ mod ndarray_impl {
     impl CostFunction for Rosenbrock<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            rosenbrock(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Gradient for Rosenbrock<Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(x.len());
             rosenbrock_gradient(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -165,7 +168,8 @@ mod faer_impl {
     impl CostFunction for Rosenbrock<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let n = x.nrows();
             let mut s = 0.0;
             for i in 0..n.saturating_sub(1) {
@@ -173,13 +177,13 @@ mod faer_impl {
                 let b = 1.0 - x[i];
                 s += 100.0 * a * a + b * b;
             }
-            s
+            Ok(s)
         }
     }
 
     impl Gradient for Rosenbrock<Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let n = x.nrows();
             let mut out = Col::<f64>::zeros(n);
             for i in 0..n.saturating_sub(1) {
@@ -187,7 +191,7 @@ mod faer_impl {
                 out[i] += -400.0 * x[i] * a - 2.0 * (1.0 - x[i]);
                 out[i + 1] += 200.0 * a;
             }
-            out
+            Ok(out)
         }
     }
 }
@@ -267,18 +271,20 @@ impl<P> HasSpec for RosenbrockResiduals<P> {
 impl CostFunction for RosenbrockResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        rosenbrock(x)
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok(rosenbrock(x))
     }
 }
 
 impl Residual for RosenbrockResiduals<Vec<f64>> {
     type Param = Vec<f64>;
     type Output = Vec<f64>;
-    fn residual(&self, x: &Vec<f64>) -> Vec<f64> {
+    type Error = std::convert::Infallible;
+    fn residual(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
         let mut out = vec![0.0; 2];
         rosenbrock_residuals(x, &mut out);
-        out
+        Ok(out)
     }
 }
 
@@ -293,27 +299,29 @@ mod nalgebra_residuals_impl {
     impl CostFunction for RosenbrockResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            rosenbrock(x.as_slice())
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock(x.as_slice()))
         }
     }
 
     impl Residual for RosenbrockResiduals<DVector<f64>> {
         type Param = DVector<f64>;
         type Output = DVector<f64>;
-        fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
             let mut out = DVector::zeros(2);
             rosenbrock_residuals(x.as_slice(), out.as_mut_slice());
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for RosenbrockResiduals<DVector<f64>> {
         type Jacobian = DMatrix<f64>;
-        fn jacobian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+        fn jacobian(&self, x: &DVector<f64>) -> Result<DMatrix<f64>, std::convert::Infallible> {
             let mut buf = [0.0_f64; 4];
             rosenbrock_residuals_jacobian(x.as_slice(), &mut buf);
-            DMatrix::from_row_slice(2, 2, &buf)
+            Ok(DMatrix::from_row_slice(2, 2, &buf))
         }
     }
 }
@@ -327,21 +335,23 @@ mod ndarray_residuals_impl {
     impl CostFunction for RosenbrockResiduals<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            rosenbrock(x.as_slice().expect("Array1 is contiguous"))
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(rosenbrock(x.as_slice().expect("Array1 is contiguous")))
         }
     }
 
     impl Residual for RosenbrockResiduals<Array1<f64>> {
         type Param = Array1<f64>;
         type Output = Array1<f64>;
-        fn residual(&self, x: &Array1<f64>) -> Array1<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
             let mut out = Array1::zeros(2);
             rosenbrock_residuals(
                 x.as_slice().expect("Array1 is contiguous"),
                 out.as_slice_mut().expect("Array1 is contiguous"),
             );
-            out
+            Ok(out)
         }
     }
 }
@@ -357,31 +367,33 @@ mod faer_residuals_impl {
     impl CostFunction for RosenbrockResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let a = x[1] - x[0] * x[0];
             let b = 1.0 - x[0];
-            100.0 * a * a + b * b
+            Ok(100.0 * a * a + b * b)
         }
     }
 
     impl Residual for RosenbrockResiduals<Col<f64>> {
         type Param = Col<f64>;
         type Output = Col<f64>;
-        fn residual(&self, x: &Col<f64>) -> Col<f64> {
+        type Error = std::convert::Infallible;
+        fn residual(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
             let mut out = Col::<f64>::zeros(2);
             out[0] = 10.0 * (x[1] - x[0] * x[0]);
             out[1] = 1.0 - x[0];
-            out
+            Ok(out)
         }
     }
 
     impl Jacobian for RosenbrockResiduals<Col<f64>> {
         type Jacobian = Mat<f64>;
-        fn jacobian(&self, x: &Col<f64>) -> Mat<f64> {
+        fn jacobian(&self, x: &Col<f64>) -> Result<Mat<f64>, std::convert::Infallible> {
             let xs = [x[0], x[1]];
             let mut buf = [0.0_f64; 4];
             rosenbrock_residuals_jacobian(&xs, &mut buf);
-            Mat::from_fn(2, 2, |i, j| buf[i * 2 + j])
+            Ok(Mat::from_fn(2, 2, |i, j| buf[i * 2 + j]))
         }
     }
 }
@@ -500,7 +512,7 @@ mod tests {
     #[test]
     fn residual_trait_returns_expected_vector() {
         let p: RosenbrockResiduals = RosenbrockResiduals::default();
-        let r = p.residual(&vec![1.0, 1.0]);
+        let r = p.residual(&vec![1.0, 1.0]).unwrap();
         assert_eq!(r.len(), 2);
         for v in r {
             assert!(v.abs() < 1e-12);
@@ -517,7 +529,7 @@ mod tests {
         fn jacobian_at_minimum_matches_documented_layout() {
             let p: RosenbrockResiduals<DVector<f64>> = RosenbrockResiduals::new();
             let x = DVector::from_vec(vec![1.0, 1.0]);
-            let j: DMatrix<f64> = p.jacobian(&x);
+            let j: DMatrix<f64> = p.jacobian(&x).unwrap();
             assert_eq!(j.shape(), (2, 2));
             // Layout at x = (1, 1): [[−20·1, 10], [−1, 0]]
             assert!((j[(0, 0)] + 20.0).abs() < 1e-12);
@@ -534,8 +546,8 @@ mod tests {
             // linalg layer through a real Jacobian.
             let p: RosenbrockResiduals<DVector<f64>> = RosenbrockResiduals::new();
             let x = DVector::from_vec(vec![-1.2, 1.0]);
-            let j = p.jacobian(&x);
-            let r = p.residual(&x);
+            let j = p.jacobian(&x).unwrap();
+            let r = p.residual(&x).unwrap();
             let g = j.gram();
             let rhs = j.mat_transpose_vec(&r);
             let delta = g.solve_spd(&rhs).expect("JᵀJ at (-1.2, 1.0) is SPD");
@@ -562,7 +574,7 @@ mod tests {
         fn jacobian_at_minimum_matches_documented_layout() {
             let p: RosenbrockResiduals<Col<f64>> = RosenbrockResiduals::new();
             let x = Col::<f64>::from_fn(2, |i| [1.0, 1.0][i]);
-            let j: Mat<f64> = p.jacobian(&x);
+            let j: Mat<f64> = p.jacobian(&x).unwrap();
             assert_eq!((j.nrows(), j.ncols()), (2, 2));
             assert!((j[(0, 0)] + 20.0).abs() < 1e-12);
             assert!((j[(0, 1)] - 10.0).abs() < 1e-12);
@@ -576,15 +588,15 @@ mod tests {
             // central-difference estimate of the residual it pairs with.
             let p: RosenbrockResiduals<Col<f64>> = RosenbrockResiduals::new();
             let x = Col::<f64>::from_fn(2, |i| [-1.2, 1.0][i]);
-            let j = p.jacobian(&x);
+            let j = p.jacobian(&x).unwrap();
             let h = 1e-6;
             for k in 0..2 {
                 let mut xp = x.clone();
                 let mut xm = x.clone();
                 xp[k] += h;
                 xm[k] -= h;
-                let rp = p.residual(&xp);
-                let rm = p.residual(&xm);
+                let rp = p.residual(&xp).unwrap();
+                let rm = p.residual(&xm).unwrap();
                 for i in 0..2 {
                     let fd = (rp[i] - rm[i]) / (2.0 * h);
                     assert!(

@@ -337,9 +337,15 @@ impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Bounded, S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V> + BoxConstraints,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
-    S: LineSearch<P, V>,
+    S: LineSearch<P, V, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: LbfgsState<V>) -> LbfgsState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: LbfgsState<V>,
+    ) -> Result<LbfgsState<V>, Self::Error> {
         let n = state.param.as_float_slice().len();
         let m = state.m_capacity;
         let mut work = LbfgsbWork::new(n, m);
@@ -356,20 +362,20 @@ where
             &mut work.boxed,
         );
 
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state.work = Some(work);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: LbfgsState<V>,
-    ) -> (LbfgsState<V>, Option<TerminationReason>) {
+    ) -> Result<(LbfgsState<V>, Option<TerminationReason>), Self::Error> {
         // Take the gradient and cost cached at the current `param`;
         // restore them on early exits.
         let g_v = state
@@ -417,7 +423,7 @@ where
             if sbgnrm <= self.tol_pg {
                 state.gradient = Some(g_v);
                 state.cost = Some(f_old);
-                return (state, Some(TerminationReason::SolverConverged));
+                return Ok((state, Some(TerminationReason::SolverConverged)));
             }
 
             let col = state.ws.len();
@@ -463,7 +469,7 @@ where
                     if try_restart(&mut state, &g_v, f_old, &mut restart_budget) {
                         continue;
                     } else {
-                        return (state, Some(TerminationReason::SolverFailed));
+                        return Ok((state, Some(TerminationReason::SolverFailed)));
                     }
                 }
             }
@@ -516,7 +522,7 @@ where
                         if try_restart(&mut state, &g_v, f_old, &mut restart_budget) {
                             continue;
                         } else {
-                            return (state, Some(TerminationReason::SolverFailed));
+                            return Ok((state, Some(TerminationReason::SolverFailed)));
                         }
                     }
                 }
@@ -546,7 +552,7 @@ where
                     if try_restart(&mut state, &g_v, f_old, &mut restart_budget) {
                         continue;
                     } else {
-                        return (state, Some(TerminationReason::SolverFailed));
+                        return Ok((state, Some(TerminationReason::SolverFailed)));
                     }
                 }
 
@@ -574,7 +580,7 @@ where
                     if try_restart(&mut state, &g_v, f_old, &mut restart_budget) {
                         continue;
                     } else {
-                        return (state, Some(TerminationReason::SolverFailed));
+                        return Ok((state, Some(TerminationReason::SolverFailed)));
                     }
                 }
                 // We don't read `SubsmStatus` — the projected step
@@ -641,7 +647,7 @@ where
             let _ = (alpha_init, stpmx);
             let ls_result = self
                 .line_search
-                .next(problem, &state.param, f_old, &g_v, &d_v);
+                .next(problem, &state.param, f_old, &g_v, &d_v)?;
             state.cost_evals += ls_result.cost_evals;
             state.gradient_evals += ls_result.gradient_evals;
 
@@ -655,12 +661,12 @@ where
                 state.gradient = Some(g_v.clone());
                 state.cost = Some(f_old);
                 if state.ws.is_empty() {
-                    return (state, Some(TerminationReason::SolverFailed));
+                    return Ok((state, Some(TerminationReason::SolverFailed)));
                 }
                 if try_restart_after_lnsrch(&mut state, &mut restart_budget) {
                     continue;
                 } else {
-                    return (state, Some(TerminationReason::SolverFailed));
+                    return Ok((state, Some(TerminationReason::SolverFailed)));
                 }
             }
 
@@ -670,7 +676,7 @@ where
             // Recompute f, g at the new iterate. (MoreThuente
             // discards the final trial's values; cleanest workaround
             // is one fused cost+grad eval per iter.)
-            let (f_new, g_new) = problem.cost_and_gradient(&state.param);
+            let (f_new, g_new) = problem.cost_and_gradient(&state.param)?;
             state.cost_evals += 1;
             state.gradient_evals += 1;
 
@@ -741,7 +747,7 @@ where
 
             state.cost = Some(f_new);
             state.gradient = Some(g_new);
-            return (state, None);
+            return Ok((state, None));
         }
     }
 }
@@ -750,25 +756,31 @@ impl<P, V, S> Solver<P, LbfgsState<V>> for LBFGS<Unbounded, S>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: AsFloatSliceMut + Clone + Dot + ScaledAdd<f64>,
-    S: LineSearch<P, V>,
+    S: LineSearch<P, V, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: LbfgsState<V>) -> LbfgsState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: LbfgsState<V>,
+    ) -> Result<LbfgsState<V>, Self::Error> {
         // Cache cost and gradient at the initial iterate. `state.work`
         // stays `None` — the box-constrained scratch buffers are
         // never touched on the unbounded path.
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: LbfgsState<V>,
-    ) -> (LbfgsState<V>, Option<TerminationReason>) {
+    ) -> Result<(LbfgsState<V>, Option<TerminationReason>), Self::Error> {
         let g_v = state
             .gradient
             .take()
@@ -850,7 +862,7 @@ where
 
         let ls_result = self
             .line_search
-            .next(problem, &state.param, f_old, &g_v, &d_v);
+            .next(problem, &state.param, f_old, &g_v, &d_v)?;
         state.cost_evals += ls_result.cost_evals;
         state.gradient_evals += ls_result.gradient_evals;
 
@@ -861,12 +873,12 @@ where
             // accepted iterate, and bubble the failure.
             state.gradient = Some(g_v);
             state.cost = Some(f_old);
-            return (state, Some(TerminationReason::SolverFailed));
+            return Ok((state, Some(TerminationReason::SolverFailed)));
         }
 
         // x ← x + stp · d.
         state.param.scaled_add(stp, &d_v);
-        let (f_new, g_new) = problem.cost_and_gradient(&state.param);
+        let (f_new, g_new) = problem.cost_and_gradient(&state.param)?;
         state.cost_evals += 1;
         state.gradient_evals += 1;
 
@@ -906,7 +918,7 @@ where
 
         state.cost = Some(f_new);
         state.gradient = Some(g_new);
-        (state, None)
+        Ok((state, None))
     }
 }
 
@@ -1178,14 +1190,15 @@ mod tests {
         impl CostFunction for Quad {
             type Param = Vec<f64>;
             type Output = f64;
-            fn cost(&self, x: &Vec<f64>) -> f64 {
-                x.iter().zip(&self.c).map(|(a, b)| (a - b).powi(2)).sum()
+            type Error = std::convert::Infallible;
+            fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+                Ok(x.iter().zip(&self.c).map(|(a, b)| (a - b).powi(2)).sum())
             }
         }
         impl Gradient for Quad {
             type Gradient = Vec<f64>;
-            fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-                x.iter().zip(&self.c).map(|(a, b)| 2.0 * (a - b)).collect()
+            fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+                Ok(x.iter().zip(&self.c).map(|(a, b)| 2.0 * (a - b)).collect())
             }
         }
         impl BoxConstraints for Quad {
@@ -1211,7 +1224,8 @@ mod tests {
         let result = Executor::new(problem, solver, state)
             .terminate_on(MaxIter(50))
             .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-10))
-            .run();
+            .run()
+            .unwrap();
         let final_x = result.state.param.clone();
         // Optimum: clamp((3, -1), [0,0], [2, 2]) = (2, 0).
         assert!((final_x[0] - 2.0).abs() < 1e-6, "x0 = {}", final_x[0]);
@@ -1233,16 +1247,17 @@ mod tests {
         impl CostFunction for Rosen {
             type Param = Vec<f64>;
             type Output = f64;
-            fn cost(&self, x: &Vec<f64>) -> f64 {
-                (1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2)
+            type Error = std::convert::Infallible;
+            fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+                Ok((1.0 - x[0]).powi(2) + 100.0 * (x[1] - x[0] * x[0]).powi(2))
             }
         }
         impl Gradient for Rosen {
             type Gradient = Vec<f64>;
-            fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+            fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
                 let dfdx0 = -2.0 * (1.0 - x[0]) - 400.0 * x[0] * (x[1] - x[0] * x[0]);
                 let dfdx1 = 200.0 * (x[1] - x[0] * x[0]);
-                vec![dfdx0, dfdx1]
+                Ok(vec![dfdx0, dfdx1])
             }
         }
         impl BoxConstraints for Rosen {
@@ -1265,7 +1280,8 @@ mod tests {
         let result = Executor::new(problem, solver, state)
             .terminate_on(MaxIter(200))
             .terminate_on(ProjectedGradientTolerance::new(lower, upper, 1e-8))
-            .run();
+            .run()
+            .unwrap();
         let final_x = result.state.param.clone();
         assert!(
             (final_x[0] - 1.0).abs() < 1e-3 && (final_x[1] - 1.0).abs() < 1e-3,

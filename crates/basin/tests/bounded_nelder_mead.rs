@@ -27,7 +27,8 @@ fn slack_bounds_recover_unconstrained_minimum() {
     )
     .max_iter(2_000)
     .terminate_on(SimplexTolerance::new(1e-8, 1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
     assert!(
@@ -60,7 +61,8 @@ fn tight_bounds_converge_to_box_corner() {
     )
     .max_iter(2_000)
     .terminate_on(SimplexTolerance::new(1e-10, 1e-10))
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         (result.param()[0] - 1.0).abs() < 1e-4,
@@ -92,7 +94,8 @@ fn infeasible_initial_simplex_is_projected_at_init() {
         BasicSimplexState::from_simplex(simplex),
     )
     .max_iter(0)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     for v in result.state.vertices() {
@@ -138,7 +141,8 @@ fn adaptive_projected_on_rastrigin_3d() {
     )
     .max_iter(2_000)
     .terminate_on(SimplexTolerance::new(1e-8, 1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     // Global optimum is 0 at origin. From a small basin around origin
     // NM should reach it. Generous threshold.

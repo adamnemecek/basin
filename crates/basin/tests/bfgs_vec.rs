@@ -21,7 +21,8 @@ fn bfgs_converges_on_rosenbrock() {
         QuasiNewtonState::<Vec<f64>, DenseMatrix>::new(initial),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-8,
@@ -52,7 +53,8 @@ fn bfgs_terminates_on_gradient_tolerance() {
     )
     .max_iter(200)
     .terminate_on(GradientTolerance(1e-6))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     assert!(result.cost() < 1e-10, "cost = {}", result.cost());
@@ -69,21 +71,26 @@ struct Quadratic {
 impl CostFunction for Quadratic {
     type Param = Vec<f64>;
     type Output = f64;
-    fn cost(&self, x: &Vec<f64>) -> f64 {
-        x.iter()
-            .enumerate()
-            .map(|(i, xi)| 0.5 * self.diag[i] * xi * xi - xi)
-            .sum()
+    type Error = std::convert::Infallible;
+    fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+        Ok({
+            x.iter()
+                .enumerate()
+                .map(|(i, xi)| 0.5 * self.diag[i] * xi * xi - xi)
+                .sum()
+        })
     }
 }
 
 impl Gradient for Quadratic {
     type Gradient = Vec<f64>;
-    fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-        x.iter()
-            .enumerate()
-            .map(|(i, xi)| self.diag[i] * xi - 1.0)
-            .collect()
+    fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+        Ok({
+            x.iter()
+                .enumerate()
+                .map(|(i, xi)| self.diag[i] * xi - 1.0)
+                .collect()
+        })
     }
 }
 
@@ -101,7 +108,8 @@ fn bfgs_on_5d_quadratic_converges_quickly() {
     )
     .max_iter(50)
     .terminate_on(GradientTolerance(1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::GradientTolerance);
     // Optimum: x[i] = 1 / diag[i]; cost = -½ Σ 1/diag[i].

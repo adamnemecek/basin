@@ -62,21 +62,23 @@ use crate::line_search::{Constant, LineSearch};
 /// impl CostFunction for Sphere {
 ///     type Param = Vec<f64>;
 ///     type Output = f64;
-///     fn cost(&self, x: &Vec<f64>) -> f64 {
-///         x.iter().map(|xi| xi * xi).sum()
+///     type Error = std::convert::Infallible;
+///     fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+///         Ok(x.iter().map(|xi| xi * xi).sum())
 ///     }
 /// }
 /// impl Gradient for Sphere {
 ///     type Gradient = Vec<f64>;
-///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-///         x.iter().map(|xi| 2.0 * xi).collect()
+///     fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+///         Ok(x.iter().map(|xi| 2.0 * xi).collect())
 ///     }
 /// }
 ///
 /// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
 ///     .max_iter(1_000)
 ///     .terminate_on(GradientTolerance(1e-8))
-///     .run();
+///     .run()
+///     .unwrap();
 /// assert!(result.cost() < 1e-12);
 /// ```
 pub struct GradientDescent<L, V> {
@@ -128,28 +130,34 @@ impl<P, V, L> Solver<P, BasicState<V>> for GradientDescent<L, V>
 where
     P: CostFunction<Param = V, Output = f64> + Gradient<Gradient = V>,
     V: ScaledAdd<f64> + NegInPlace + ScaleInPlace + Clone,
-    L: LineSearch<P, V>,
+    L: LineSearch<P, V, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = P::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         // Start momentum from rest, even if this solver instance is reused
         // across runs (composition): velocity must not leak between runs.
         self.velocity = None;
         // Seed cost and gradient at the initial param so iter-0 termination
         // checks (e.g. `GradientTolerance` on a near-optimal start) see a
         // complete state. Same work we'd do on iter 1, hoisted.
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         let grad = state
             .gradient
             .take()
@@ -161,7 +169,7 @@ where
         direction.neg_in_place();
         let step = self
             .line_search
-            .next(problem, &state.param, prev_cost, &grad, &direction);
+            .next(problem, &state.param, prev_cost, &grad, &direction)?;
         state.cost_evals += step.cost_evals;
         state.gradient_evals += step.gradient_evals;
 
@@ -188,12 +196,12 @@ where
             self.velocity = Some(velocity);
         }
 
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        (state, None)
+        Ok((state, None))
     }
 }
 
@@ -225,15 +233,16 @@ mod tests {
     impl CostFunction for Quadratic {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            x.iter().map(|v| v * v).sum()
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+            Ok(x.iter().map(|v| v * v).sum())
         }
     }
 
     impl Gradient for Quadratic {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            x.iter().map(|v| 2.0 * v).collect()
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+            Ok(x.iter().map(|v| 2.0 * v).collect())
         }
     }
 
@@ -248,15 +257,16 @@ mod tests {
     impl CostFunction for IllConditioned {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            x[0] * x[0] + 100.0 * x[1] * x[1]
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, Self::Error> {
+            Ok(x[0] * x[0] + 100.0 * x[1] * x[1])
         }
     }
 
     impl Gradient for IllConditioned {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            vec![2.0 * x[0], 200.0 * x[1]]
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, Self::Error> {
+            Ok(vec![2.0 * x[0], 200.0 * x[1]])
         }
     }
 
@@ -265,8 +275,8 @@ mod tests {
         // β = 0 with v₀ = 0: first iterate is x − α·∇f, unaffected by the
         // momentum branch. f = Σx², ∇f = 2x, so x₁ = 1 − 0.1·2 = 0.8.
         let mut solver = GradientDescent::new(0.1).with_momentum(0.0);
-        let state = solver.init(&Quadratic, BasicState::new(vec![1.0]));
-        let (state, reason) = solver.next_iter(&Quadratic, state);
+        let state = solver.init(&Quadratic, BasicState::new(vec![1.0])).unwrap();
+        let (state, reason) = solver.next_iter(&Quadratic, state).unwrap();
         assert!(reason.is_none());
         assert!((state.param()[0] - 0.8).abs() < 1e-12);
     }
@@ -287,14 +297,16 @@ mod tests {
             BasicState::new(start.clone()),
         )
         .max_iter(iters)
-        .run();
+        .run()
+        .unwrap();
         let momentum = Executor::new(
             IllConditioned,
             GradientDescent::new(alpha).with_momentum(0.9),
             BasicState::new(start),
         )
         .max_iter(iters)
-        .run();
+        .run()
+        .unwrap();
 
         assert!(
             momentum.cost() < plain.cost(),
@@ -312,9 +324,11 @@ mod tests {
         let mut solver = GradientDescent::new(0.05).with_momentum(0.8);
 
         let run = |solver: &mut GradientDescent<Constant, Vec<f64>>| {
-            let mut state = solver.init(&Quadratic, BasicState::new(start.clone()));
+            let mut state = solver
+                .init(&Quadratic, BasicState::new(start.clone()))
+                .unwrap();
             for _ in 0..10 {
-                let (next, _) = solver.next_iter(&Quadratic, state);
+                let (next, _) = solver.next_iter(&Quadratic, state).unwrap();
                 state = next;
             }
             state.param().clone()

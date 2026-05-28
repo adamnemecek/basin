@@ -77,15 +77,16 @@ mod nalgebra_impl {
     impl CostFunction for EqualityConstrainedQuadratic<DMatrix<f64>, DVector<f64>> {
         type Param = DVector<f64>;
         type Output = f64;
-        fn cost(&self, x: &DVector<f64>) -> f64 {
-            (x - &self.c).norm_squared()
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &DVector<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok((x - &self.c).norm_squared())
         }
     }
 
     impl Gradient for EqualityConstrainedQuadratic<DMatrix<f64>, DVector<f64>> {
         type Gradient = DVector<f64>;
-        fn gradient(&self, x: &DVector<f64>) -> DVector<f64> {
-            2.0 * (x - &self.c)
+        fn gradient(&self, x: &DVector<f64>) -> Result<DVector<f64>, std::convert::Infallible> {
+            Ok(2.0 * (x - &self.c))
         }
     }
 
@@ -109,20 +110,21 @@ mod faer_impl {
     impl CostFunction for EqualityConstrainedQuadratic<Mat<f64>, Col<f64>> {
         type Param = Col<f64>;
         type Output = f64;
-        fn cost(&self, x: &Col<f64>) -> f64 {
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Col<f64>) -> Result<f64, std::convert::Infallible> {
             let mut s = 0.0;
             for i in 0..x.nrows() {
                 let d = x[i] - self.c[i];
                 s += d * d;
             }
-            s
+            Ok(s)
         }
     }
 
     impl Gradient for EqualityConstrainedQuadratic<Mat<f64>, Col<f64>> {
         type Gradient = Col<f64>;
-        fn gradient(&self, x: &Col<f64>) -> Col<f64> {
-            Col::from_fn(x.nrows(), |i| 2.0 * (x[i] - self.c[i]))
+        fn gradient(&self, x: &Col<f64>) -> Result<Col<f64>, std::convert::Infallible> {
+            Ok(Col::from_fn(x.nrows(), |i| 2.0 * (x[i] - self.c[i])))
         }
     }
 
@@ -145,21 +147,22 @@ mod vec_impl {
     impl CostFunction for EqualityConstrainedQuadratic<DenseMatrix, Vec<f64>> {
         type Param = Vec<f64>;
         type Output = f64;
-        fn cost(&self, x: &Vec<f64>) -> f64 {
-            x.iter()
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Vec<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok(x.iter()
                 .zip(&self.c)
                 .map(|(xi, ci)| (xi - ci).powi(2))
-                .sum()
+                .sum())
         }
     }
 
     impl Gradient for EqualityConstrainedQuadratic<DenseMatrix, Vec<f64>> {
         type Gradient = Vec<f64>;
-        fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
-            x.iter()
+        fn gradient(&self, x: &Vec<f64>) -> Result<Vec<f64>, std::convert::Infallible> {
+            Ok(x.iter()
                 .zip(&self.c)
                 .map(|(xi, ci)| 2.0 * (xi - ci))
-                .collect()
+                .collect())
         }
     }
 
@@ -183,15 +186,16 @@ mod ndarray_impl {
     impl CostFunction for EqualityConstrainedQuadratic<Array2<f64>, Array1<f64>> {
         type Param = Array1<f64>;
         type Output = f64;
-        fn cost(&self, x: &Array1<f64>) -> f64 {
-            (x - &self.c).mapv(|v| v * v).sum()
+        type Error = std::convert::Infallible;
+        fn cost(&self, x: &Array1<f64>) -> Result<f64, std::convert::Infallible> {
+            Ok((x - &self.c).mapv(|v| v * v).sum())
         }
     }
 
     impl Gradient for EqualityConstrainedQuadratic<Array2<f64>, Array1<f64>> {
         type Gradient = Array1<f64>;
-        fn gradient(&self, x: &Array1<f64>) -> Array1<f64> {
-            (x - &self.c).mapv(|v| 2.0 * v)
+        fn gradient(&self, x: &Array1<f64>) -> Result<Array1<f64>, std::convert::Infallible> {
+            Ok((x - &self.c).mapv(|v| 2.0 * v))
         }
     }
 

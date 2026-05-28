@@ -102,29 +102,34 @@ impl<P, G> Solver<P, MultiStartState> for PerVertexRefine<G>
 where
     P: CostFunction<Param = Vec<f64>, Output = f64>
         + Gradient<Param = Vec<f64>, Gradient = Vec<f64>>,
-    G: Solver<P, BasicState<Vec<f64>>>,
+    G: Solver<P, BasicState<Vec<f64>>, Error = P::Error>,
 {
-    fn init(&mut self, problem: &P, mut state: MultiStartState) -> MultiStartState {
+    type Error = P::Error;
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: MultiStartState,
+    ) -> Result<MultiStartState, Self::Error> {
         for (v, c) in state.iterates.iter().zip(state.costs.iter_mut()) {
-            *c = problem.cost(v);
+            *c = problem.cost(v)?;
         }
         state.cost_evals += state.iterates.len() as u64;
         sort_by_cost(&mut state.iterates, &mut state.costs);
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: MultiStartState,
-    ) -> (MultiStartState, Option<TerminationReason>) {
+    ) -> Result<(MultiStartState, Option<TerminationReason>), Self::Error> {
         let mut new_iterates: Vec<Vec<f64>> = Vec::with_capacity(state.iterates.len());
         let mut new_costs: Vec<f64> = Vec::with_capacity(state.iterates.len());
         let mut aggregated_cost_evals: u64 = 0;
         let prev_iterates = std::mem::take(&mut state.iterates);
 
         for v in prev_iterates {
-            let result = self.inner.run(problem, BasicState::new(v));
+            let result = self.inner.run(problem, BasicState::new(v))?;
 
             // Failure routing (contract 3): bubble `SolverFailed` via
             // the outer's mid-iter return; consume everything else.
@@ -140,7 +145,7 @@ where
                     state.iterates.push(vec![0.0; 2]);
                     state.costs.push(f64::INFINITY);
                 }
-                return (state, Some(result.reason));
+                return Ok((state, Some(result.reason)));
             }
 
             // Eval aggregation (contract 1).
@@ -153,7 +158,7 @@ where
         state.costs = new_costs;
         state.cost_evals += aggregated_cost_evals;
         sort_by_cost(&mut state.iterates, &mut state.costs);
-        (state, None)
+        Ok((state, None))
     }
 }
 
@@ -164,8 +169,13 @@ where
 struct AlwaysFails;
 
 impl<P, S: State> Solver<P, S> for AlwaysFails {
-    fn next_iter(&mut self, _problem: &P, state: S) -> (S, Option<TerminationReason>) {
-        (state, Some(TerminationReason::SolverFailed))
+    type Error = std::convert::Infallible;
+    fn next_iter(
+        &mut self,
+        _problem: &P,
+        state: S,
+    ) -> Result<(S, Option<TerminationReason>), Self::Error> {
+        Ok((state, Some(TerminationReason::SolverFailed)))
     }
 }
 
@@ -180,7 +190,10 @@ fn inner_executor_polishes_starts_to_booth_optimum() {
         .terminate_on(GradientTolerance(1e-8));
     let outer = PerVertexRefine::new(inner);
 
-    let result = Executor::new(problem, outer, outer_state).max_iter(3).run();
+    let result = Executor::new(problem, outer, outer_state)
+        .max_iter(3)
+        .run()
+        .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -211,7 +224,10 @@ fn inner_executor_aggregates_cost_evals_into_outer() {
         .terminate_on(GradientTolerance(1e-8));
     let outer = PerVertexRefine::new(inner);
 
-    let result = Executor::new(problem, outer, outer_state).max_iter(2).run();
+    let result = Executor::new(problem, outer, outer_state)
+        .max_iter(2)
+        .run()
+        .unwrap();
 
     // The outer's init seeds 3 cost evals (one per starting iterate).
     // Each inner GD run does at least an `init` cost eval (1) plus some
@@ -236,7 +252,10 @@ fn inner_executor_bubbles_inner_solver_failed_via_outer() {
     let inner = InnerExecutor::new(AlwaysFails);
     let outer = PerVertexRefine::new(inner);
 
-    let result = Executor::new(problem, outer, outer_state).max_iter(5).run();
+    let result = Executor::new(problem, outer, outer_state)
+        .max_iter(5)
+        .run()
+        .unwrap();
 
     assert_eq!(
         result.reason,

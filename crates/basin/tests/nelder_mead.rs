@@ -7,7 +7,7 @@ use basin::{
 #[test]
 fn nelder_mead_standard_minimises_rosenbrock() {
     let problem = Rosenbrock::<Vec<f64>>::default();
-    let initial_cost = problem.cost(&vec![-1.2, 1.0]);
+    let initial_cost = problem.cost(&vec![-1.2, 1.0]).unwrap();
 
     let result = Executor::new(
         problem,
@@ -15,7 +15,8 @@ fn nelder_mead_standard_minimises_rosenbrock() {
         BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(2_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < 1e-6,
@@ -38,7 +39,8 @@ fn nelder_mead_adaptive_minimises_rosenbrock() {
         BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(2_000)
-    .run();
+    .run()
+    .unwrap();
 
     // For n = 2, adaptive collapses to standard, so the bar is the same.
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
@@ -54,7 +56,8 @@ fn nelder_mead_hits_max_iter_when_too_few() {
         BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(5)
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 5);
@@ -70,7 +73,8 @@ fn nelder_mead_keeps_best_first_after_each_iter() {
         BasicSimplexState::new(vec![-1.2, 1.0]),
     )
     .max_iter(100)
-    .run();
+    .run()
+    .unwrap();
 
     for w in result.state.costs().windows(2) {
         assert!(
@@ -92,7 +96,8 @@ fn nelder_mead_adaptive_sphere_5d() {
         BasicSimplexState::new(vec![1.0; 5]),
     )
     .max_iter(2_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.cost() < 1e-8, "cost = {}", result.cost());
 }
@@ -108,7 +113,8 @@ fn simplex_tolerance_fires_when_simplex_collapses() {
     )
     .max_iter(2_000)
     .terminate_on(SimplexTolerance::new(1e-8, 1e-8))
-    .run();
+    .run()
+    .unwrap();
 
     assert_eq!(result.reason, TerminationReason::SimplexTolerance);
     assert!(result.iter() > 0 && result.iter() < 2_000);
@@ -142,7 +148,8 @@ fn nelder_mead_from_simplex_accepts_custom_geometry() {
         BasicSimplexState::from_simplex(simplex),
     )
     .max_iter(2_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.cost() < 1e-6);
 }

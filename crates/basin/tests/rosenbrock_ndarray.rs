@@ -11,7 +11,7 @@ use ndarray::{array, Array1};
 fn gradient_descent_with_ndarray_array1() {
     let problem = Rosenbrock::<Array1<f64>>::default();
     let initial = array![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let result = Executor::new(
         problem,
@@ -19,7 +19,8 @@ fn gradient_descent_with_ndarray_array1() {
         BasicState::new(initial),
     )
     .max_iter(10_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < initial_cost * 0.1,
@@ -33,7 +34,7 @@ fn gradient_descent_with_ndarray_array1() {
 fn gradient_descent_with_ndarray_array1_and_backtracking() {
     let problem = Rosenbrock::<Array1<f64>>::default();
     let initial = array![-1.2, 1.0];
-    let initial_cost = problem.cost(&initial);
+    let initial_cost = problem.cost(&initial).unwrap();
 
     let result = Executor::new(
         problem,
@@ -41,7 +42,8 @@ fn gradient_descent_with_ndarray_array1_and_backtracking() {
         BasicState::new(initial),
     )
     .max_iter(10_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(
         result.cost() < initial_cost * 0.1,
@@ -62,7 +64,8 @@ fn nelder_mead_with_ndarray_array1() {
         BasicSimplexState::new(initial),
     )
     .max_iter(2_000)
-    .run();
+    .run()
+    .unwrap();
 
     assert!(result.cost() < 1e-6, "cost = {}", result.cost());
 }

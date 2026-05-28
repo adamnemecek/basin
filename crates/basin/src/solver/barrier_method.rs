@@ -254,10 +254,17 @@ where
         + LinearInequalityConstraints<Param = V, Matrix = M>,
     M: MatVec<V> + MatTransposeVec<V>,
     V: ScaledAdd<f64> + NegInPlace + VectorIndex + VectorLen + NormSquared + Clone,
-    So: WarmStart<V> + for<'a> Solver<LogBarrier<'a, P>, So::State>,
+    So: WarmStart<V>
+        + for<'a> Solver<LogBarrier<'a, P>, So::State, Error = <P as CostFunction>::Error>,
     So::State: GradientState<Param = V>,
 {
-    fn init(&mut self, problem: &P, mut state: BasicState<V>) -> BasicState<V> {
+    type Error = <P as CostFunction>::Error;
+
+    fn init(
+        &mut self,
+        problem: &P,
+        mut state: BasicState<V>,
+    ) -> Result<BasicState<V>, Self::Error> {
         self.mu = self.mu0;
         self.gap = f64::INFINITY;
 
@@ -269,22 +276,22 @@ where
 
         // Seed the *true* objective so framework criteria and the public
         // result read f, not the barrier value.
-        let (cost, grad) = problem.cost_and_gradient(state.param());
+        let (cost, grad) = problem.cost_and_gradient(state.param())?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
-        state
+        Ok(state)
     }
 
     fn next_iter(
         &mut self,
         problem: &P,
         mut state: BasicState<V>,
-    ) -> (BasicState<V>, Option<TerminationReason>) {
+    ) -> Result<(BasicState<V>, Option<TerminationReason>), Self::Error> {
         if self.infeasible {
             // Phase 1 deferred: bubble an infeasible start as a failure.
-            return (state, Some(TerminationReason::SolverFailed));
+            return Ok((state, Some(TerminationReason::SolverFailed)));
         }
 
         // Minimize the barrier objective at the current μ on a *separate*
@@ -304,7 +311,7 @@ where
             &mut self.inner_solver,
             &mut criteria,
             self.inner_max_iter,
-        );
+        )?;
 
         // Eval aggregation (composition contract): roll the inner's counts
         // into the outer state regardless of how the inner stopped.
@@ -312,13 +319,13 @@ where
         state.increment_gradient_evals(result.state.gradient_evals());
 
         if result.reason.is_failure() {
-            return (state, Some(TerminationReason::SolverFailed));
+            return Ok((state, Some(TerminationReason::SolverFailed)));
         }
 
         // Adopt the inner's iterate, then evaluate the *true* f / ∇f there
         // (the inner left cost/gradient at the barrier objective).
         state.param = result.state.param().clone();
-        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        let (cost, grad) = problem.cost_and_gradient(&state.param)?;
         state.cost = Some(cost);
         state.gradient = Some(grad);
         state.cost_evals += 1;
@@ -327,7 +334,7 @@ where
         // Record the duality gap for this μ, then shrink for the next solve.
         self.gap = problem.b().vec_len() as f64 * self.mu;
         self.mu /= self.reduction;
-        (state, None)
+        Ok((state, None))
     }
 
     fn terminate(&self, _state: &BasicState<V>) -> Option<TerminationReason> {
