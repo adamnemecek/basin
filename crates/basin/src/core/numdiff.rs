@@ -47,7 +47,10 @@
 
 use crate::core::constraint::BoxConstraints;
 use crate::core::math::{DenseMatrixFromFn, VectorIndex, VectorLen};
-use crate::core::problem::{CostFunction, Gradient, Hessian, Jacobian, Residual};
+use crate::core::problem::{
+    CostAndGradient, CostAndGradientAndHessian, CostFunction, Gradient, Hessian, Jacobian,
+    Residual, ResidualAndJacobian,
+};
 
 /// Which finite-difference stencil to use for a given derivative.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -286,6 +289,33 @@ where
             ),
         }
     }
+}
+
+// Fused-trait opt-ins. `FiniteDiff` has no shared work between its
+// synthesized cost / gradient / Hessian / Jacobian (each stencil
+// evaluates the inner function independently), so the defaulted bodies
+// are correct. Implementing the fused traits here lets `FiniteDiff` flow
+// into the migrated solver bounds (`CostAndGradient`,
+// `ResidualAndJacobian`, …) without changes from the caller.
+impl<P, V> CostAndGradient for FiniteDiff<P>
+where
+    P: CostFunction<Param = V, Output = f64>,
+    V: Clone + VectorLen + VectorIndex,
+{
+}
+
+impl<P, V> CostAndGradientAndHessian for FiniteDiff<P>
+where
+    P: CostFunction<Param = V, Output = f64>,
+    V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
+{
+}
+
+impl<P, V> ResidualAndJacobian for FiniteDiff<P>
+where
+    P: Residual<Param = V, Output = V>,
+    V: Clone + VectorLen + VectorIndex + DenseMatrixFromFn,
+{
 }
 
 // ----------------------------------------------------------------------

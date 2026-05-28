@@ -254,6 +254,33 @@ mod faer_impl {
     }
 }
 
+// ----------------------------------------------------------------------
+// Fused-trait opt-ins.
+// ----------------------------------------------------------------------
+// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
+// receives the defaulted fallback impl; no problem-specific fusion.
+
+#[cfg(feature = "nalgebra")]
+impl crate::ResidualAndJacobian
+    for SparseLeastSquares<nalgebra_sparse::CscMatrix<f64>, nalgebra::DVector<f64>>
+{
+}
+#[cfg(feature = "nalgebra")]
+impl crate::ResidualAndJacobian
+    for SparseLeastSquaresBoxed<nalgebra_sparse::CscMatrix<f64>, nalgebra::DVector<f64>>
+{
+}
+#[cfg(feature = "faer")]
+impl crate::ResidualAndJacobian
+    for SparseLeastSquares<faer::sparse::SparseColMat<usize, f64>, faer::Col<f64>>
+{
+}
+#[cfg(feature = "faer")]
+impl crate::ResidualAndJacobian
+    for SparseLeastSquaresBoxed<faer::sparse::SparseColMat<usize, f64>, faer::Col<f64>>
+{
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

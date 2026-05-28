@@ -51,6 +51,7 @@ impl Gradient for Rosen5D {
         g
     }
 }
+impl basin::CostAndGradient for Rosen5D {}
 
 impl BoxConstraints for Rosen5D {
     fn lower(&self) -> &Vec<f64> {

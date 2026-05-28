@@ -3,7 +3,7 @@ use crate::core::math::{
     FloorZerosInPlace, GramMatrix, LinearSolveSpd, MatDiagonal, MatTransposeVec, NegInPlace,
     NormInfinity, NormSquared, ScaleInPlace, ScaledAdd,
 };
-use crate::core::problem::{Jacobian, Residual};
+use crate::core::problem::{Jacobian, Residual, ResidualAndJacobian};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
@@ -159,7 +159,7 @@ use crate::core::termination::TerminationReason;
 ///
 /// ```
 /// # #[cfg(feature = "nalgebra")] {
-/// use basin::{BasicState, Executor, Jacobian, LevenbergMarquardt, Residual};
+/// use basin::{BasicState, Executor, Jacobian, LevenbergMarquardt, Residual, ResidualAndJacobian};
 /// use nalgebra::{DMatrix, DVector};
 ///
 /// struct Affine;
@@ -177,6 +177,7 @@ use crate::core::termination::TerminationReason;
 ///         DMatrix::identity(2, 2)
 ///     }
 /// }
+/// impl ResidualAndJacobian for Affine {}
 ///
 /// let result = Executor::new(
 ///     Affine,
@@ -364,7 +365,7 @@ impl<V, M> LevenbergMarquardt<V, M> {
 
 impl<P, V, M> Solver<P, BasicState<V>> for LevenbergMarquardt<V, M>
 where
-    P: Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
+    P: ResidualAndJacobian + Residual<Param = V, Output = V> + Jacobian<Param = V, Output = M>,
     V: ScaledAdd<f64>
         + NormSquared
         + NormInfinity
@@ -390,8 +391,7 @@ where
         // are stashed into the caches so the first `next_iter` reuses
         // them — no redundant evaluation (or re-formed Gram) at the
         // init/iter-0 boundary.
-        let r = problem.residual(&state.param);
-        let j = problem.jacobian(&state.param);
+        let (r, j) = problem.residual_and_jacobian(&state.param);
         state.cost = Some(0.5 * r.norm_squared());
         state.cost_evals += 1;
         state.gradient_evals += 1;

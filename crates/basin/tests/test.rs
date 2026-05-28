@@ -40,6 +40,7 @@ impl Gradient for MyProblem {
         DVector::from_vec(vec![2.0 * (x[0] - 2.0), 2.0 * (x[1] - 2.0)])
     }
 }
+impl basin::CostAndGradient for MyProblem {}
 
 // 1c. The constraints, in standard form `A x ≤ b`. Implementing *this* trait
 //     (and not a box-bounds trait) is what routes the problem to the barrier

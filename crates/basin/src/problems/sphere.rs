@@ -172,6 +172,20 @@ mod faer_impl {
     }
 }
 
+// ----------------------------------------------------------------------
+// Fused-trait opt-ins.
+// ----------------------------------------------------------------------
+// Each per-backend (CostFunction + Gradient) or (Residual + Jacobian) pair
+// receives the defaulted fallback impl; no problem-specific fusion.
+
+impl crate::CostAndGradient for Sphere<Vec<f64>> {}
+#[cfg(feature = "nalgebra")]
+impl crate::CostAndGradient for Sphere<nalgebra::DVector<f64>> {}
+#[cfg(feature = "ndarray")]
+impl crate::CostAndGradient for Sphere<ndarray::Array1<f64>> {}
+#[cfg(feature = "faer")]
+impl crate::CostAndGradient for Sphere<faer::Col<f64>> {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

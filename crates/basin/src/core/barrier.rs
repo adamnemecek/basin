@@ -133,6 +133,21 @@ where
     }
 }
 
+// `LogBarrier` is the unconstrained problem the inner solver actually
+// minimizes. Inner gradient solvers now bound on [`CostAndGradient`], so
+// the adapter must opt in. The default fallback (separate cost + gradient
+// calls) is correct here — fusing would require sharing the slack vector
+// across the two methods, which is possible but a separate optimization.
+impl<P, V, M> crate::core::problem::CostAndGradient for LogBarrier<'_, P>
+where
+    P: CostFunction<Param = V, Output = f64>
+        + Gradient<Param = V, Gradient = V>
+        + LinearInequalityConstraints<Param = V, Matrix = M>,
+    M: MatVec<V> + MatTransposeVec<V>,
+    V: ScaledAdd<f64> + NegInPlace + VectorIndex + VectorLen,
+{
+}
+
 #[cfg(all(test, feature = "nalgebra"))]
 mod tests {
     use super::*;

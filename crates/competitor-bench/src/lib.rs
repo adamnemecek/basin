@@ -217,6 +217,7 @@ impl Jacobian for VarDim<DVector<f64>> {
         DMatrix::from_row_slice(self.n + 2, self.n, &out)
     }
 }
+impl basin::ResidualAndJacobian for VarDim<DVector<f64>> {}
 
 impl Residual for VarDim<Col<f64>> {
     type Param = Col<f64>;
@@ -239,6 +240,7 @@ impl Jacobian for VarDim<Col<f64>> {
         Mat::from_fn(self.n + 2, self.n, |i, j| out[i * self.n + j])
     }
 }
+impl basin::ResidualAndJacobian for VarDim<Col<f64>> {}
 
 /// lm-crate-side Variably Dimensioned problem.
 pub struct LmVarDim {
@@ -398,6 +400,7 @@ impl Jacobian for UnderDet<DVector<f64>> {
         DMatrix::from_row_slice(self.data.m, self.data.n, &out)
     }
 }
+impl basin::ResidualAndJacobian for UnderDet<DVector<f64>> {}
 
 impl Residual for UnderDet<Col<f64>> {
     type Param = Col<f64>;
@@ -420,6 +423,7 @@ impl Jacobian for UnderDet<Col<f64>> {
         Mat::from_fn(self.data.m, self.data.n, |i, j| out[i * self.data.n + j])
     }
 }
+impl basin::ResidualAndJacobian for UnderDet<Col<f64>> {}
 
 /// lm-crate-side underdetermined problem.
 pub struct LmUnderDet {

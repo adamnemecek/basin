@@ -42,6 +42,7 @@ fn rosenbrock_vec() {
             vec![a, b]
         }
     }
+    impl basin::CostAndGradient for Rosen {}
 
     let state = LbfgsState::new(vec![-1.2, 1.0], 5);
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
@@ -78,6 +79,7 @@ fn rosenbrock_nalgebra() {
             DVector::from_vec(vec![a, b])
         }
     }
+    impl basin::CostAndGradient for Rosen {}
 
     let state = LbfgsState::new(DVector::from_vec(vec![-1.2, 1.0]), 5);
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)
@@ -114,6 +116,7 @@ fn rosenbrock_faer() {
             Col::from_fn(2, |i| if i == 0 { a } else { b })
         }
     }
+    impl basin::CostAndGradient for Rosen {}
 
     let x0 = Col::from_fn(2, |i| if i == 0 { -1.2 } else { 1.0 });
     let state = LbfgsState::new(x0, 5);
@@ -151,6 +154,7 @@ fn rosenbrock_ndarray() {
             array![a, b]
         }
     }
+    impl basin::CostAndGradient for Rosen {}
 
     let state = LbfgsState::new(array![-1.2, 1.0], 5);
     let result = Executor::new(Rosen, LBFGS::<Unbounded>::new(), state)

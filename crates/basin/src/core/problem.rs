@@ -270,3 +270,231 @@ pub trait Hessian {
     /// Evaluate the Hessian at `param`.
     fn hessian(&self, param: &Self::Param) -> Self::Output;
 }
+
+/// Fused cost + gradient evaluation: `(f(x), ∇f(x))` from one call.
+/// Solvers bind on this trait whenever they evaluate cost *and* gradient
+/// at the same point, so a problem that can share work between the two
+/// (autodiff tape, simulation adjoint, analytic intermediates) does so
+/// in a single call.
+///
+/// # Opt-in pattern
+///
+/// `CostAndGradient` is a *supertrait* of [`CostFunction`] and
+/// [`Gradient`] with a defaulted method that delegates to two separate
+/// calls. There is no blanket impl, so users opt in explicitly:
+///
+/// ```
+/// use basin::{CostAndGradient, CostFunction, Gradient};
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = Vec<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &Vec<f64>) -> f64 {
+///         x.iter().map(|xi| xi * xi).sum()
+///     }
+/// }
+/// impl Gradient for Sphere {
+///     type Param = Vec<f64>;
+///     type Gradient = Vec<f64>;
+///     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> {
+///         x.iter().map(|xi| 2.0 * xi).collect()
+///     }
+/// }
+///
+/// // One-line opt-in: take the default (calls cost + gradient separately).
+/// impl CostAndGradient for Sphere {}
+/// ```
+///
+/// To actually fuse the computation, override the method:
+///
+/// ```
+/// # use basin::{CostAndGradient, CostFunction, Gradient};
+/// # struct Cached;
+/// # impl CostFunction for Cached {
+/// #     type Param = Vec<f64>;
+/// #     type Output = f64;
+/// #     fn cost(&self, x: &Vec<f64>) -> f64 { x.iter().map(|xi| xi * xi).sum() }
+/// # }
+/// # impl Gradient for Cached {
+/// #     type Param = Vec<f64>;
+/// #     type Gradient = Vec<f64>;
+/// #     fn gradient(&self, x: &Vec<f64>) -> Vec<f64> { x.iter().map(|xi| 2.0 * xi).collect() }
+/// # }
+/// impl CostAndGradient for Cached {
+///     fn cost_and_gradient(&self, x: &Vec<f64>) -> (f64, Vec<f64>) {
+///         // shared intermediate work happens once
+///         let squared: Vec<f64> = x.iter().map(|xi| xi * xi).collect();
+///         let cost = squared.iter().sum();
+///         let grad = x.iter().map(|xi| 2.0 * xi).collect();
+///         (cost, grad)
+///     }
+/// }
+/// ```
+///
+/// # Contract
+///
+/// - **Implementor must:** keep the fused result *consistent* with what
+///   [`CostFunction::cost`] and [`Gradient::gradient`] would return
+///   separately at the same `param`. The framework caches results and
+///   trades freely between fused and unfused calls; divergence breaks
+///   solver invariants and termination criteria.
+/// - **Implementor must:** preserve purity and call-order independence
+///   from the supertraits (see [`CostFunction::cost`]).
+///
+/// # Eval counting
+///
+/// One fused call counts as **one** `cost_evals` *and* **one**
+/// `gradient_evals` increment — it produced both values, in the work of
+/// one fused evaluation. [`MaxCostEvals`](crate::MaxCostEvals) and
+/// [`MaxGradientEvals`](crate::MaxGradientEvals) budgets continue to gate
+/// solvers exactly as before.
+pub trait CostAndGradient: CostFunction + Gradient<Param = <Self as CostFunction>::Param> {
+    /// Evaluate cost *and* gradient at `param` in one call. The default
+    /// body delegates to [`CostFunction::cost`] and
+    /// [`Gradient::gradient`]; override to actually share work.
+    fn cost_and_gradient(
+        &self,
+        param: &<Self as CostFunction>::Param,
+    ) -> (<Self as CostFunction>::Output, <Self as Gradient>::Gradient) {
+        (
+            CostFunction::cost(self, param),
+            Gradient::gradient(self, param),
+        )
+    }
+}
+
+/// Fused cost + gradient + Hessian evaluation:
+/// `(f(x), ∇f(x), ∇²f(x))` from one call. Same opt-in pattern as
+/// [`CostAndGradient`] — a supertrait of [`CostFunction`], [`Gradient`],
+/// and [`Hessian`] with a defaulted method, no blanket impl.
+///
+/// # Opt-in pattern
+///
+/// ```
+/// # #[cfg(feature = "nalgebra")] {
+/// use basin::{CostAndGradientAndHessian, CostFunction, Gradient, Hessian};
+/// use nalgebra::{DMatrix, DVector};
+///
+/// struct Sphere;
+/// impl CostFunction for Sphere {
+///     type Param = DVector<f64>;
+///     type Output = f64;
+///     fn cost(&self, x: &DVector<f64>) -> f64 { x.dot(x) }
+/// }
+/// impl Gradient for Sphere {
+///     type Param = DVector<f64>;
+///     type Gradient = DVector<f64>;
+///     fn gradient(&self, x: &DVector<f64>) -> DVector<f64> { 2.0 * x }
+/// }
+/// impl Hessian for Sphere {
+///     type Param = DVector<f64>;
+///     type Output = DMatrix<f64>;
+///     fn hessian(&self, x: &DVector<f64>) -> DMatrix<f64> {
+///         2.0 * DMatrix::identity(x.len(), x.len())
+///     }
+/// }
+///
+/// // One-line opt-in: take the (unfused) default.
+/// impl CostAndGradientAndHessian for Sphere {}
+/// # }
+/// ```
+///
+/// # Contract
+///
+/// - **Implementor must:** keep the fused triple *consistent* with what
+///   [`CostFunction::cost`], [`Gradient::gradient`], and
+///   [`Hessian::hessian`] would return separately at the same `param`.
+/// - **Implementor must:** preserve purity and call-order independence
+///   from the supertraits.
+///
+/// # Eval counting
+///
+/// One fused call counts as one `cost_evals` *and* one `gradient_evals`
+/// increment (Hessian evaluations are not currently tracked in
+/// [`State`](crate::State) but are still counted as one work unit by the
+/// problem). [`MaxCostEvals`](crate::MaxCostEvals) /
+/// [`MaxGradientEvals`](crate::MaxGradientEvals) budgets gate solvers
+/// uniformly.
+pub trait CostAndGradientAndHessian:
+    CostFunction
+    + Gradient<Param = <Self as CostFunction>::Param>
+    + Hessian<Param = <Self as CostFunction>::Param>
+{
+    /// Evaluate cost, gradient, and Hessian at `param` in one call. The
+    /// default body delegates to the three trait methods; override to
+    /// actually share work.
+    fn cost_and_gradient_and_hessian(
+        &self,
+        param: &<Self as CostFunction>::Param,
+    ) -> (
+        <Self as CostFunction>::Output,
+        <Self as Gradient>::Gradient,
+        <Self as Hessian>::Output,
+    ) {
+        (self.cost(param), self.gradient(param), self.hessian(param))
+    }
+}
+
+/// Fused residual + Jacobian evaluation: `(r(x), J(x))` from one call.
+/// The least-squares analogue of [`CostAndGradient`] — a supertrait of
+/// [`Residual`] and [`Jacobian`] with a defaulted method, no blanket
+/// impl.
+///
+/// Nonlinear least-squares problems often spend most of their compute in
+/// `r(x)` itself, and `J(x)` reuses the same intermediates (forward-mode
+/// AD on the residual graph, finite-element assembly, simulation
+/// adjoints). Override the defaulted method to share that work.
+///
+/// # Opt-in pattern
+///
+/// ```
+/// # #[cfg(feature = "nalgebra")] {
+/// use basin::{Jacobian, Residual, ResidualAndJacobian};
+/// use nalgebra::{DMatrix, DVector};
+///
+/// struct Affine;
+/// impl Residual for Affine {
+///     type Param = DVector<f64>;
+///     type Output = DVector<f64>;
+///     fn residual(&self, x: &DVector<f64>) -> DVector<f64> {
+///         DVector::from_vec(vec![x[0] - 1.0, x[1] - 2.0])
+///     }
+/// }
+/// impl Jacobian for Affine {
+///     type Param = DVector<f64>;
+///     type Output = DMatrix<f64>;
+///     fn jacobian(&self, _x: &DVector<f64>) -> DMatrix<f64> {
+///         DMatrix::identity(2, 2)
+///     }
+/// }
+///
+/// impl ResidualAndJacobian for Affine {}
+/// # }
+/// ```
+///
+/// # Contract
+///
+/// - **Implementor must:** keep the fused pair *consistent* with what
+///   [`Residual::residual`] and [`Jacobian::jacobian`] would return
+///   separately at the same `param`.
+/// - **Implementor must:** preserve purity, call-order independence,
+///   and the fixed-`m` shape contract from the supertraits.
+///
+/// # Eval counting
+///
+/// NLLS solvers count one fused call as one `cost_evals` *and* one
+/// `gradient_evals` increment — the same convention as
+/// [`CostAndGradient`], because `½‖r‖²` plays the role of cost and `Jᵀr`
+/// the role of gradient.
+pub trait ResidualAndJacobian: Residual + Jacobian<Param = <Self as Residual>::Param> {
+    /// Evaluate residual *and* Jacobian at `param` in one call. The
+    /// default body delegates to [`Residual::residual`] and
+    /// [`Jacobian::jacobian`]; override to actually share work.
+    fn residual_and_jacobian(
+        &self,
+        param: &<Self as Residual>::Param,
+    ) -> (<Self as Residual>::Output, <Self as Jacobian>::Output) {
+        (self.residual(param), self.jacobian(param))
+    }
+}

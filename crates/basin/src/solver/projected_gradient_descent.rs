@@ -1,6 +1,6 @@
 use crate::core::constraint::BoxConstraints;
 use crate::core::math::{ClampInPlace, NegInPlace, ScaledAdd};
-use crate::core::problem::{CostFunction, Gradient};
+use crate::core::problem::{CostAndGradient, CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
@@ -77,7 +77,10 @@ use crate::line_search::{Constant, LineSearch};
 /// box caps it at `(1, 1)`:
 ///
 /// ```
-/// use basin::{BasicState, BoxConstraints, CostFunction, Executor, Gradient, ProjectedGradientDescent};
+/// use basin::{
+///     BasicState, BoxConstraints, CostAndGradient, CostFunction, Executor, Gradient,
+///     ProjectedGradientDescent,
+/// };
 ///
 /// struct ShiftedSphere {
 ///     lower: Vec<f64>,
@@ -101,6 +104,7 @@ use crate::line_search::{Constant, LineSearch};
 ///     fn lower(&self) -> &Vec<f64> { &self.lower }
 ///     fn upper(&self) -> &Vec<f64> { &self.upper }
 /// }
+/// impl CostAndGradient for ShiftedSphere {}
 ///
 /// let problem = ShiftedSphere { lower: vec![-1.0, -1.0], upper: vec![1.0, 1.0] };
 /// let result = Executor::new(
@@ -143,7 +147,10 @@ impl<S> ProjectedGradientDescent<S> {
 
 impl<P, V, S> Solver<P, BasicState<V>> for ProjectedGradientDescent<S>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V> + BoxConstraints,
+    P: CostAndGradient
+        + CostFunction<Param = V, Output = f64>
+        + Gradient<Param = V, Gradient = V>
+        + BoxConstraints,
     V: ScaledAdd<f64> + NegInPlace + ClampInPlace + Clone,
     S: LineSearch<P, V>,
 {
@@ -152,8 +159,9 @@ where
         // see a feasible iterate. Subsequent iterations preserve
         // feasibility by construction.
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -180,8 +188,9 @@ where
         state.gradient_evals += step.gradient_evals;
         state.param.scaled_add(step.alpha, &direction);
         state.param.clamp_in_place(problem.lower(), problem.upper());
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost_new, grad_new) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost_new);
+        state.gradient = Some(grad_new);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         (state, None)

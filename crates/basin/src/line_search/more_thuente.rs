@@ -494,6 +494,7 @@ mod tests {
             vec![2.0 * (x[0] - 3.0)]
         }
     }
+    impl crate::CostAndGradient for Quadratic {}
 
     /// 1D cubic with non-trivial bracketing: f(x) = (x-2)^3 - 3(x-2),
     /// has a local min at x = 3 (f = -2) and a local max at x = 1
@@ -520,6 +521,7 @@ mod tests {
             vec![3.0 * t.powi(2) - 3.0]
         }
     }
+    impl crate::CostAndGradient for Cubic {}
 
     #[test]
     fn satisfies_strong_wolfe_on_quadratic() {

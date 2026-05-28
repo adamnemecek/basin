@@ -1,6 +1,6 @@
 use crate::core::inner::WarmStart;
 use crate::core::math::{NegInPlace, ScaleInPlace, ScaledAdd};
-use crate::core::problem::{CostFunction, Gradient};
+use crate::core::problem::{CostAndGradient, CostFunction, Gradient};
 use crate::core::solver::Solver;
 use crate::core::state::BasicState;
 use crate::core::termination::TerminationReason;
@@ -56,7 +56,10 @@ use crate::line_search::{Constant, LineSearch};
 /// Minimize the 2-D sphere `f(x) = x₀² + x₁²` from `(1, 1)`:
 ///
 /// ```
-/// use basin::{BasicState, CostFunction, Executor, Gradient, GradientDescent, GradientTolerance};
+/// use basin::{
+///     BasicState, CostAndGradient, CostFunction, Executor, Gradient, GradientDescent,
+///     GradientTolerance,
+/// };
 ///
 /// struct Sphere;
 /// impl CostFunction for Sphere {
@@ -73,6 +76,7 @@ use crate::line_search::{Constant, LineSearch};
 ///         x.iter().map(|xi| 2.0 * xi).collect()
 ///     }
 /// }
+/// impl CostAndGradient for Sphere {}
 ///
 /// let result = Executor::new(Sphere, GradientDescent::new(0.1), BasicState::new(vec![1.0, 1.0]))
 ///     .max_iter(1_000)
@@ -127,7 +131,7 @@ impl<L, V> GradientDescent<L, V> {
 
 impl<P, V, L> Solver<P, BasicState<V>> for GradientDescent<L, V>
 where
-    P: CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
+    P: CostAndGradient + CostFunction<Param = V, Output = f64> + Gradient<Param = V, Gradient = V>,
     V: ScaledAdd<f64> + NegInPlace + ScaleInPlace + Clone,
     L: LineSearch<P, V>,
 {
@@ -138,8 +142,9 @@ where
         // Seed cost and gradient at the initial param so iter-0 termination
         // checks (e.g. `GradientTolerance` on a near-optimal start) see a
         // complete state. Same work we'd do on iter 1, hoisted.
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         state
@@ -188,8 +193,9 @@ where
             self.velocity = Some(velocity);
         }
 
-        state.cost = Some(problem.cost(&state.param));
-        state.gradient = Some(problem.gradient(&state.param));
+        let (cost, grad) = problem.cost_and_gradient(&state.param);
+        state.cost = Some(cost);
+        state.gradient = Some(grad);
         state.cost_evals += 1;
         state.gradient_evals += 1;
         (state, None)
@@ -236,6 +242,7 @@ mod tests {
             x.iter().map(|v| 2.0 * v).collect()
         }
     }
+    impl crate::CostAndGradient for Quadratic {}
 
     /// Ill-conditioned quadratic `f(x) = x₀² + 100·x₁²` (condition number
     /// 100), gradient `[2x₀, 200x₁]`. A step small enough to be stable on
@@ -260,6 +267,7 @@ mod tests {
             vec![2.0 * x[0], 200.0 * x[1]]
         }
     }
+    impl crate::CostAndGradient for IllConditioned {}
 
     #[test]
     fn with_momentum_zero_is_plain_descent_first_step() {

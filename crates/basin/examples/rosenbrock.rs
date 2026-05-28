@@ -26,6 +26,7 @@ impl Gradient for Rosenbrock {
         ]
     }
 }
+impl basin::CostAndGradient for Rosenbrock {}
 
 fn main() {
     let problem = Rosenbrock;
