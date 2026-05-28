@@ -39,6 +39,9 @@ pub enum TerminationReason {
     /// `|f_k − f_{k−1}| ≤ tol · |f_{k−1}|` — scale-invariant cost
     /// reduction test (MINPACK `ftol`).
     RelativeCostTolerance,
+    /// `f(x_k) ≤ target` — user-supplied target cost reached
+    /// (NLopt's `stopval` / SciPy's `f_min`).
+    TargetCost,
     /// Simplex collapsed below the configured tolerance.
     SimplexTolerance,
     /// Wall-clock time limit reached.
@@ -421,6 +424,40 @@ where
             .is_some_and(|l| curr.is_finite() && (l - curr).abs() <= self.tol * l.abs());
         self.last = Some(curr);
         triggered.then_some(TerminationReason::RelativeCostTolerance)
+    }
+}
+
+/// Stop when `f(x_k) ≤ target` — a user-supplied target cost level.
+/// This is NLopt's `stopval` and SciPy's `f_min`: an absolute *level*
+/// stop, not a change-in-cost stop like [`CostTolerance`].
+///
+/// Most useful for global / stochastic solvers (random search, CMA-ES,
+/// the steady-state GA) where "good enough" is a more natural stopping
+/// rule than asymptotic convergence, and for benchmarking
+/// ("how long until the solver hits cost ≤ ε?").
+///
+/// # Semantics under different state shapes
+///
+/// `state.cost()` means *best-so-far* for [`BasicSimplexState`] and
+/// [`BasicPopulationState`] (it returns `costs[0]`, the best vertex /
+/// individual), and *current iterate* for single-iterate states like
+/// [`BasicState`] / [`QuasiNewtonState`]. So on a non-monotone solver
+/// (e.g. CMA-ES sampling, a line search that allows transient
+/// increases) this fires once the best ever seen drops to the target,
+/// not on a transient dip of the current iterate alone.
+///
+/// [`BasicState`]: crate::core::state::BasicState
+/// [`BasicSimplexState`]: crate::core::state::BasicSimplexState
+/// [`BasicPopulationState`]: crate::core::state::BasicPopulationState
+/// [`QuasiNewtonState`]: crate::core::state::QuasiNewtonState
+pub struct TargetCost(pub f64);
+
+impl<S> TerminationCriterion<S> for TargetCost
+where
+    S: State<Float = f64>,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        (state.cost() <= self.0).then_some(TerminationReason::TargetCost)
     }
 }
 

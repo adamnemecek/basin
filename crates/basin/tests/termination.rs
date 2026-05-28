@@ -2,7 +2,7 @@ use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
     GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter,
     MaxTime, NelderMead, ParamTolerance, RelativeCostTolerance, RelativeGradientTolerance,
-    RelativeParamTolerance, Solver, State, TerminationCriterion, TerminationReason,
+    RelativeParamTolerance, Solver, State, TargetCost, TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -224,6 +224,58 @@ fn relative_cost_tolerance_fires_when_relative_reduction_small() {
 
     assert_eq!(result.reason, TerminationReason::RelativeCostTolerance);
     assert!(result.iter() < 5, "fired late at iter {}", result.iter());
+}
+
+#[test]
+fn target_cost_fires_at_iter_zero_when_start_is_below_target() {
+    // f(x_0) = 0.5·‖(0.5, 0.5)‖² = 0.25 ≤ 1.0, so the criterion fires
+    // before any iteration runs.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![0.5, 0.5]),
+    )
+    .terminate_on(TargetCost(1.0))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::TargetCost);
+    assert_eq!(result.iter(), 0);
+}
+
+#[test]
+fn target_cost_fires_when_cost_drops_to_target() {
+    // f_k = 0.5·(1-α)^(2k)·‖x_0‖²; with α = 0.5, ‖x_0‖² = 2, we hit
+    // f ≤ 1e-3 after a small number of iterations and well before
+    // max_iter.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(1_000)
+    .terminate_on(TargetCost(1e-3))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::TargetCost);
+    assert!(result.iter() > 0 && result.iter() < 1_000);
+    assert!(result.state.cost() <= 1e-3);
+}
+
+#[test]
+fn target_cost_does_not_fire_when_target_unreachable() {
+    // Target below the global min (f ≥ 0) — should never fire, MaxIter
+    // wins.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.1),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .terminate_on(MaxIter(10))
+    .terminate_on(TargetCost(-1.0))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxIter);
+    assert_eq!(result.iter(), 10);
 }
 
 #[test]

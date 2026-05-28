@@ -507,6 +507,7 @@ fn reason_str(r: TerminationReason) -> &'static str {
         TerminationReason::RelativeParamTolerance => "relative_param_tolerance",
         TerminationReason::CostTolerance => "cost_tolerance",
         TerminationReason::RelativeCostTolerance => "relative_cost_tolerance",
+        TerminationReason::TargetCost => "target_cost",
         TerminationReason::SimplexTolerance => "simplex_tolerance",
         TerminationReason::MaxTime => "max_time",
         TerminationReason::SolverConverged => "solver_converged",
