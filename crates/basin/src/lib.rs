@@ -84,8 +84,9 @@ pub use crate::core::state::{
 };
 pub use crate::core::termination::{
     CostTolerance, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter, MaxTime,
-    ParamTolerance, ProjectedGradientTolerance, RelativeCostTolerance, RelativeGradientTolerance,
-    RelativeParamTolerance, SimplexTolerance, TargetCost, TerminationCriterion, TerminationReason,
+    NoImprovement, ParamTolerance, ProjectedGradientTolerance, RelativeCostTolerance,
+    RelativeGradientTolerance, RelativeParamTolerance, SimplexTolerance, TargetCost,
+    TerminationCriterion, TerminationReason,
 };
 pub use crate::line_search::{
     Backtracking, Constant, LineSearch, LineSearchResult, MoreThuente, Wolfe,

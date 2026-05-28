@@ -1,8 +1,9 @@
 use basin::{
     Backtracking, BasicSimplexState, BasicState, CostFunction, CostTolerance, Executor, Gradient,
     GradientDescent, GradientState, GradientTolerance, MaxCostEvals, MaxGradientEvals, MaxIter,
-    MaxTime, NelderMead, ParamTolerance, RelativeCostTolerance, RelativeGradientTolerance,
-    RelativeParamTolerance, Solver, State, TargetCost, TerminationCriterion, TerminationReason,
+    MaxTime, NelderMead, NoImprovement, ParamTolerance, RelativeCostTolerance,
+    RelativeGradientTolerance, RelativeParamTolerance, Solver, State, TargetCost,
+    TerminationCriterion, TerminationReason,
 };
 use std::time::Duration;
 
@@ -276,6 +277,65 @@ fn target_cost_does_not_fire_when_target_unreachable() {
 
     assert_eq!(result.reason, TerminationReason::MaxIter);
     assert_eq!(result.iter(), 10);
+}
+
+#[test]
+fn no_improvement_fires_after_patience_stalled_iters() {
+    // tol = 10.0 is larger than any drop on the quadratic from [1, 1]
+    // (max drop is 0.75 at iter 1), so every iter past the first counts
+    // as "no improvement". With patience = 3 the criterion fires once
+    // stalled == 3, which is at state.iter() == 3.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(100)
+    .terminate_on(NoImprovement::new(3, 10.0))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::NoImprovement);
+    assert_eq!(result.iter(), 3);
+}
+
+#[test]
+fn no_improvement_does_not_fire_under_monotone_decrease() {
+    // Quadratic with GD(α=0.5) gives f_k = 0.25^k — strictly
+    // decreasing. With tol = 0.0 every iteration is "an improvement",
+    // so the patience counter never advances and MaxIter wins.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .terminate_on(MaxIter(20))
+    .terminate_on(NoImprovement::new(5, 0.0))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::MaxIter);
+    assert_eq!(result.iter(), 20);
+}
+
+#[test]
+fn no_improvement_resets_counter_on_real_improvement() {
+    // f_k = 0.25^k on Quadratic with GD(α=0.5). Drops are 0.75,
+    // 0.1875, 0.0469, 0.0117, 0.0029, …. With tol = 0.1 the first two
+    // drops count as improvements (resetting `stalled` to 0 each
+    // time), then drops 3+ all fall below tol. So stalled increments
+    // from iter 3 onward; with patience = 3 the criterion fires at
+    // iter 5 — not iter 3, which is what it would do without the
+    // reset-on-improvement behavior.
+    let result = Executor::new(
+        Quadratic,
+        GradientDescent::new(0.5),
+        BasicState::new(vec![1.0, 1.0]),
+    )
+    .max_iter(100)
+    .terminate_on(NoImprovement::new(3, 0.1))
+    .run();
+
+    assert_eq!(result.reason, TerminationReason::NoImprovement);
+    assert_eq!(result.iter(), 5);
 }
 
 #[test]

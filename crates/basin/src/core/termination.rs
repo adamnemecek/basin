@@ -42,6 +42,9 @@ pub enum TerminationReason {
     /// `f(x_k) ≤ target` — user-supplied target cost reached
     /// (NLopt's `stopval` / SciPy's `f_min`).
     TargetCost,
+    /// Best-so-far cost has not improved by more than `tol` in
+    /// `patience` consecutive iterations — the early-stopping pattern.
+    NoImprovement,
     /// Simplex collapsed below the configured tolerance.
     SimplexTolerance,
     /// Wall-clock time limit reached.
@@ -458,6 +461,77 @@ where
 {
     fn check(&mut self, state: &S) -> Option<TerminationReason> {
         (state.cost() <= self.0).then_some(TerminationReason::TargetCost)
+    }
+}
+
+/// Stop when the best cost seen so far has not improved by more than
+/// `tol` in `patience` consecutive iterations — the early-stopping
+/// pattern from ML, minus the validation set.
+///
+/// Improvement is counted strictly: an observation counts as
+/// improvement iff `curr < best_so_far − tol`. So `tol` is the minimum
+/// drop that resets the patience counter (Keras calls this
+/// `min_delta`). `tol = 0.0` means "any strict decrease resets".
+///
+/// Most useful for stochastic / global / non-monotone solvers (random
+/// search, CMA-ES, the steady-state GA, future basin-hopping) where
+/// the one-step [`CostTolerance`] family fires spuriously on accidental
+/// small `|Δf|`. By tracking the running minimum of `state.cost()`
+/// across all checks, this criterion is robust against transient
+/// increases (CMA-ES generation-to-generation variation, non-monotone
+/// line search, GA replacement noise).
+///
+/// # Semantics under different state shapes
+///
+/// Tracks `min` of `state.cost()` across checks. For
+/// [`BasicSimplexState`] / [`BasicPopulationState`] that's the best
+/// vertex / individual at each generation; for [`BasicState`] /
+/// [`QuasiNewtonState`] it's the current iterate's cost. Either way
+/// the running minimum is monotone non-increasing, so "improvement"
+/// has a single consistent meaning.
+///
+/// [`BasicState`]: crate::core::state::BasicState
+/// [`BasicSimplexState`]: crate::core::state::BasicSimplexState
+/// [`BasicPopulationState`]: crate::core::state::BasicPopulationState
+/// [`QuasiNewtonState`]: crate::core::state::QuasiNewtonState
+pub struct NoImprovement {
+    patience: u64,
+    tol: f64,
+    best: Option<f64>,
+    stalled: u64,
+}
+
+impl NoImprovement {
+    /// New criterion that fires after `patience` consecutive checks
+    /// without an improvement of more than `tol`.
+    pub fn new(patience: u64, tol: f64) -> Self {
+        Self {
+            patience,
+            tol,
+            best: None,
+            stalled: 0,
+        }
+    }
+}
+
+impl<S> TerminationCriterion<S> for NoImprovement
+where
+    S: State<Float = f64>,
+{
+    fn check(&mut self, state: &S) -> Option<TerminationReason> {
+        let curr = state.cost();
+        let improved = match self.best {
+            None => true,
+            Some(best) => curr.is_finite() && curr < best - self.tol,
+        };
+        if improved {
+            self.best = Some(curr);
+            self.stalled = 0;
+            None
+        } else {
+            self.stalled += 1;
+            (self.stalled >= self.patience).then_some(TerminationReason::NoImprovement)
+        }
     }
 }
 
