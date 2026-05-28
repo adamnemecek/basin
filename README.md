@@ -117,9 +117,9 @@ pleasure to learn from.
 [MIT](LICENSE)
 
 [argmin]: https://github.com/argmin-rs/argmin
-[nalgebra]: https://nalgebra.org
+[nalgebra]: https://nalgebra.rs
 [ndarray]: https://github.com/rust-ndarray/ndarray
-[faer]: https://github.com/sarah-quinones/faer-rs
+[faer]: https://faer.veganb.tw
 [basin.bz/docs]: https://basin.bz/docs/
 [docs.rs/basin]: https://docs.rs/basin
 [solver visualizer]: https://basin.bz/visualizer/
