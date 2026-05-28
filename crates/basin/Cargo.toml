@@ -5,10 +5,13 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "An optimization library for Rust"
+authors.workspace = true
+description = "Numerical optimization with pluggable linear-algebra backends (nalgebra, ndarray, faer)."
+homepage = "https://basin.bz"
+documentation = "https://docs.rs/basin"
 readme = "README.md"
-keywords = ["optimization", "math", "numerics", "solver"]
-categories = ["mathematics", "science"]
+keywords = ["optimization", "math", "numerics", "solver", "nonlinear"]
+categories = ["mathematics", "science", "algorithms"]
 
 # Build docs.rs with every backend enabled so the feature-gated solver and
 # problem impls (nalgebra / ndarray / faer) render — not just the default
@@ -66,7 +69,10 @@ ndarray = { version = "0.17", optional = true, default-features = false }
 # tenet: no parallelism in default features) and npy (file I/O). We enable
 # only `std` + `linalg` so the core dense types work on native and wasm.
 # Rayon is reachable via the opt-in `parallel` feature above.
-faer = { version = "0.24", optional = true, default-features = false, features = ["std", "linalg"] }
+faer = { version = "0.24", optional = true, default-features = false, features = [
+  "std",
+  "linalg",
+] }
 # Transitive dep of faer, surfaced as an optional dep so it only enters the
 # graph behind the `faer` feature. basin doesn't use this crate directly.
 generativity = { version = "1", optional = true }
@@ -91,7 +97,9 @@ rand_distr = { version = "0.6", default-features = false }
 # rayon (tenet: no parallelism by default) and plotters/html_reports
 # (heavy tree, no value for CLI microbenchmarks), keeping just the
 # `cargo bench` integration shim.
-criterion = { version = "0.8", default-features = false, features = ["cargo_bench_support"] }
+criterion = { version = "0.8", default-features = false, features = [
+  "cargo_bench_support",
+] }
 
 [[bench]]
 name = "rosenbrock"

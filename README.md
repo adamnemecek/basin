@@ -1,4 +1,4 @@
-# basin <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jolars/basin/main/images/logo-dark.png" /><img src="https://raw.githubusercontent.com/jolars/basin/main/images/logo.png" align="right" width="189" alt="basin logo" /></picture>
+# Basin <picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/jolars/basin/main/images/logo-dark.png" /><img src="https://raw.githubusercontent.com/jolars/basin/main/images/logo.png" align="right" width="189" alt="basin logo" /></picture>
 
 [![CI](https://github.com/jolars/basin/actions/workflows/ci.yml/badge.svg)](https://github.com/jolars/basin/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/basin.svg)](https://crates.io/crates/basin)
@@ -13,7 +13,9 @@ first-class, and the default build compiles to `wasm32-unknown-unknown` with no
 BLAS/LAPACK or threads.
 
 Narrative documentation lives at [basin.bz/docs]; the rustdoc reference is at
-[docs.rs/basin]. There is also an in-browser [solver visualizer].
+[docs.rs/basin]. There is also an in-browser [solver visualizer] and a
+[benchmarks site] comparing Basin against competing crates and across backends
+and solvers.
 
 ## Install
 
@@ -21,11 +23,11 @@ Narrative documentation lives at [basin.bz/docs]; the rustdoc reference is at
 cargo add basin
 ```
 
-basin works on plain `Vec<f64>` out of the box. Linear-algebra backends are
+Basin works on plain `Vec<f64>` out of the box. Linear-algebra backends are
 opt-in, one feature each:
 
 ```sh
-cargo add basin --features nalgebra   # or: ndarray, faer
+cargo add basin --features nalgebra  # or: ndarray, faer
 ```
 
 ## Example
@@ -79,7 +81,8 @@ surprise.
 - **Global/stochastic:** random search, CMA-ES, a steady-state genetic
   algorithm, and memetic combinations.
 - **Constrained:** box bounds via projected gradient descent, bounded
-  Nelder--Mead, L-BFGS-B, and bounded CMA-ES.
+  Nelder--Mead, L-BFGS-B, and bounded CMA-ES; log-barrier and augmented
+  Lagrangian wrappers for more general constraints.
 
 See [Solvers] for which backends each one supports.
 
@@ -92,13 +95,22 @@ any backend; linear-algebra-heavy solvers may require a specific one and say so
 in their docs.
 
 The default build is wasm-friendly: no BLAS/LAPACK and no threads. Parallelism
-and BLAS-backed paths are behind opt-in features (`parallel`, `ndarray-blas`).
+and BLAS-backed paths are behind opt-in features (`parallel`).
 
 ## Status
 
-Early-stage alpha: the public API is still iterating and breaking changes are
-expected. WebAssembly bindings (`basin-wasm`) power the visualizer but are not
-published to a package registry yet.
+The public API is still iterating and breaking changes are expected. WebAssembly
+bindings (`basin-wasm`) power the visualizer but are not published to a package
+registry yet.
+
+## Acknowledgements
+
+Basin owes a substantial intellectual debt to [argmin]: the overall shape of the
+crate: the `Executor` driver loop, the `Solver` / `Problem` trait split,
+per-solver `State`, and the pluggable termination layer is borrowed from it, and
+several solver implementations and test-problem conventions were modeled on
+argmin's. Thanks to the argmin authors and contributors for a library that is a
+pleasure to learn from.
 
 ## License
 
@@ -111,4 +123,5 @@ published to a package registry yet.
 [basin.bz/docs]: https://basin.bz/docs/
 [docs.rs/basin]: https://docs.rs/basin
 [solver visualizer]: https://basin.bz/visualizer/
+[benchmarks site]: https://basin.bz/benchmarks/
 [Solvers]: https://basin.bz/docs/solvers/
