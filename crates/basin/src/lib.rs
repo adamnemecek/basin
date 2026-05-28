@@ -46,7 +46,7 @@
 //!     .run();
 //! assert!(result.cost() < 1e-12);
 //! ```
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, feature(doc_cfg), doc(auto_cfg))]
 #![deny(missing_docs)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
