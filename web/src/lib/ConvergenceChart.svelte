@@ -7,18 +7,28 @@ type Series = { label: string; color: string; points: Point[] };
 let {
     series,
     ariaLabel = "convergence chart",
-}: { series: Series[]; ariaLabel?: string } = $props();
+    /** Drop the per-chart axis titles ("suboptimality f(x) − f*",
+     * "wall-clock time"). For multi-panel grids where the caller provides
+     * shared labels around the grid edges. Tightens the left + bottom
+     * padding too so the plot area gets the freed-up space. */
+    compact = false,
+}: { series: Series[]; ariaLabel?: string; compact?: boolean } = $props();
 
 // Static viewBox; the SVG scales to its container via `w-full h-auto`.
 const W = 380;
 const H = 264;
-const padL = 56;
-const padR = 14;
+// Right and top need a bit of breathing room so the rightmost / topmost tick
+// labels don't bump against the viewBox edge (the last x label, e.g. "20 ms",
+// also uses an `end` text-anchor below so it tucks inside the plot edge).
+const padR = 20;
 const padT = 16;
-const padB = 38;
-const innerW = W - padL - padR;
-const innerH = H - padT - padB;
-const axisY = padT + innerH;
+// Left/bottom padding depend on `compact` so they react if the prop flips.
+// Bumped slightly to give the widest y label ("1e-10") clearance on the left.
+const padL = $derived(compact ? 42 : 60);
+const padB = $derived(compact ? 24 : 38);
+const innerW = $derived(W - padL - padR);
+const innerH = $derived(H - padT - padB);
+const axisY = $derived(padT + innerH);
 
 // Log–log layout: x = log10(time), y = log10(suboptimality). The iter-0
 // sample sits at t = 0, which has no log; it's clamped to the left edge so
@@ -39,10 +49,17 @@ const g = $derived.by(() => {
         padL + ((Math.log10(Math.max(t, tFloor)) - xLo) / xSpan) * innerW;
     const yPx = (s: number) => axisY - ((Math.log10(s) - yLo) / ySpan) * innerH;
 
-    // x ticks at each decade of time, labelled as a duration.
-    const xTicks: { x: number; label: string }[] = [];
+    // x ticks at each decade of time, labelled as a duration. First and last
+    // tick labels use start / end anchors so they tuck inside the plot
+    // edges instead of centering past them and getting clipped.
+    const xTicks: { x: number; label: string; anchor: "start" | "middle" | "end" }[] = [];
     for (let k = xLo; k <= xHi; k++) {
-        xTicks.push({ x: xPx(10 ** k), label: formatDuration(10 ** k).replace(/\.0+ /, " ") });
+        const anchor = k === xLo ? "start" : k === xHi ? "end" : "middle";
+        xTicks.push({
+            x: xPx(10 ** k),
+            label: formatDuration(10 ** k).replace(/\.0+ /, " "),
+            anchor,
+        });
     }
 
     // y ticks at decades of suboptimality, thinned to ≤ ~7 labels so a wide
@@ -107,7 +124,7 @@ const g = $derived.by(() => {
             class="fill-slate-400 dark:fill-slate-500"
             x={t.x}
             y={axisY + 8}
-            text-anchor="middle"
+            text-anchor={t.anchor}
             dominant-baseline="hanging">{t.label}</text
         >
     {/each}
@@ -130,21 +147,25 @@ const g = $derived.by(() => {
         y2={axisY}
     />
 
-    <!-- captions -->
-    <text
-        class="fill-slate-500 dark:fill-slate-400"
-        x={padL}
-        y={padT - 5}
-        text-anchor="start">suboptimality f(x) − f*</text
-    >
-    <text
-        class="fill-slate-500 dark:fill-slate-400"
-        x={padL + innerW / 2}
-        y={H - 4}
-        text-anchor="middle">wall-clock time</text
-    >
+    {#if !compact}
+        <!-- captions: per-chart axis titles, omitted in compact mode -->
+        <g transform="translate(14 {padT + innerH / 2})">
+            <text
+                class="fill-slate-500 dark:fill-slate-400"
+                transform="rotate(-90)"
+                text-anchor="middle"
+                dominant-baseline="middle">suboptimality f(x) − f*</text
+            >
+        </g>
+        <text
+            class="fill-slate-500 dark:fill-slate-400"
+            x={padL + innerW / 2}
+            y={H - 4}
+            text-anchor="middle">wall-clock time</text
+        >
+    {/if}
 
-    <!-- series: one polyline per library (dense traces, no markers) -->
+    <!-- series: one polyline per series (dense traces, no markers) -->
     {#each g.lines as line}
         <path d={line.d} fill="none" stroke-width="2" style="stroke: {line.color}" />
     {/each}

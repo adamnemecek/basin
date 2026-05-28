@@ -12,9 +12,9 @@ const axes = [
     },
     {
         title: "Solvers",
-        status: "Planned",
-        href: null,
-        body: "Head-to-head runs of different solvers on the same classical problems (Rosenbrock, Beale, Powell, …).",
+        status: "Live",
+        href: "/benchmarks/solvers/",
+        body: "Head-to-head runs of GD, Nelder–Mead, BFGS, L-BFGS, and CMA-ES on Rosenbrock from six starting points — suboptimality against wall-clock time under a fixed time budget per run.",
     },
     {
         title: "Competitors",
@@ -33,11 +33,11 @@ const axes = [
 <section class="max-w-screen-2xl mx-auto px-4 md:px-8 py-16">
     <h1 class="text-3xl md:text-4xl font-semibold tracking-tight">Benchmarks</h1>
     <p class="mt-4 max-w-2xl text-slate-600 dark:text-slate-300">
-        Basin's benchmark suite is built along three axes. The <strong
+        Basin's benchmark suite is built along three axes: <strong
             >backends</strong
-        >
-        and <strong>competitors</strong> axes are live; the solver axis is on the
-        way.
+        >,
+        <strong>solvers</strong>, and
+        <strong>competitors</strong>. Pick one to drill in.
     </p>
 
     <div class="mt-10 grid gap-6 sm:grid-cols-3">
